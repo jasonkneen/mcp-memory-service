@@ -68,10 +68,10 @@ This script handles:
 ### Installing via Smithery
 
 To install Memory Service for Claude Desktop automatically via [Smithery](https://smithery.ai/server/@doobidoo/mcp-memory-service):
-
-```bash
+~~~bash
 npx -y @smithery/cli install @doobidoo/mcp-memory-service --client claude
-```
+~~~
+**Note:** The Smithery installation method currently does not work as intended. Please use the other installation methods until this issue is resolved.
 
 ### Detailed Installation Guide
 
