@@ -565,6 +565,32 @@ const CONSOLE_COLORS = {
 };
 
 /**
+ * Retry wrapper with exponential backoff for transient connection failures.
+ * Used to tolerate the race condition where the MCP/HTTP server starts lazily
+ * after Claude Code fires the SessionStart hook.
+ *
+ * @param {Function} fn          - Async function to attempt
+ * @param {number}   maxAttempts - Maximum number of tries (default: 4)
+ * @param {number}   initialDelayMs - Delay before second attempt in ms (default: 2000)
+ * @returns {Promise<*>} Result of fn on first success
+ * @throws  Last error if all attempts fail
+ */
+async function withRetry(fn, maxAttempts = 4, initialDelayMs = 2000, verbose = true, cleanMode = false) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            return await fn();
+        } catch (err) {
+            if (attempt === maxAttempts) throw err;
+            const delay = initialDelayMs * Math.pow(2, attempt - 1);
+            if (verbose && !cleanMode) {
+                console.log(`${CONSOLE_COLORS.YELLOW}⏳ Memory Hook${CONSOLE_COLORS.RESET} ${CONSOLE_COLORS.DIM}→${CONSOLE_COLORS.RESET} ${CONSOLE_COLORS.GRAY}HTTP not ready, retrying in ${delay / 1000}s... (attempt ${attempt}/${maxAttempts})${CONSOLE_COLORS.RESET}`);
+            }
+            await new Promise(resolve => setTimeout(resolve, delay));
+        }
+    }
+}
+
+/**
  * Main session start hook function with enhanced visual output
  */
 async function onSessionStart(context) {
@@ -660,10 +686,19 @@ async function executeSessionStart(context) {
         let connectionInfo = null;
 
         if (showStorageSource && verbose && !cleanMode) {
-            // Initialize unified memory client for health check and memory queries
+            // Initialize unified memory client for health check and memory queries.
+            // Use retry-with-backoff so that a SessionStart hook fired before the
+            // HTTP/MCP server is ready (lazy startup race condition, issue #479)
+            // gets several chances to connect before falling back to env detection.
             try {
                 memoryClient = new MemoryClient(config.memoryService);
-                const connection = await memoryClient.connect();
+                const connection = await withRetry(
+                    () => memoryClient.connect(),
+                    4,    // up to 4 attempts
+                    2000, // 2s, 4s, 8s backoff (max ~14s total)
+                    verbose,
+                    cleanMode
+                );
                 connectionInfo = memoryClient.getConnectionInfo();
 
                 if (verbose && showMemoryDetails && !cleanMode && connectionInfo?.activeProtocol) {
@@ -710,6 +745,7 @@ async function executeSessionStart(context) {
                         }
                     }
             } catch (error) {
+                memoryClient = null;
                 // Memory client connection failed, fall back to environment detection
                 if (verbose && showMemoryDetails && !cleanMode) {
                     console.log(`${CONSOLE_COLORS.YELLOW}⚠️  Memory Connection${CONSOLE_COLORS.RESET} ${CONSOLE_COLORS.DIM}→${CONSOLE_COLORS.RESET} ${CONSOLE_COLORS.GRAY}${error.message}, using environment fallback${CONSOLE_COLORS.RESET}`);
@@ -784,19 +820,19 @@ async function executeSessionStart(context) {
             }
         }
         
-        // Initialize memory client for memory queries if not already connected
+        // Initialize memory client for memory queries if not already connected.
+        // If we reach this point without a client (health-check block was skipped),
+        // use the same retry-with-backoff strategy to handle the lazy-startup race.
         if (!memoryClient) {
             try {
-                // Add quick timeout for initial connection
-                const connectionTimeout = new Promise((_, reject) =>
-                    setTimeout(() => reject(new Error('Quick connection timeout')), 2000)
-                );
-
                 memoryClient = new MemoryClient(config.memoryService);
-                await Promise.race([
-                    memoryClient.connect(),
-                    connectionTimeout
-                ]);
+                await withRetry(
+                    () => memoryClient.connect(),
+                    4,    // up to 4 attempts
+                    2000, // 2s, 4s, 8s backoff (max ~14s total)
+                    verbose,
+                    cleanMode
+                );
                 connectionInfo = memoryClient.getConnectionInfo();
             } catch (error) {
                 if (verbose && !cleanMode) {
