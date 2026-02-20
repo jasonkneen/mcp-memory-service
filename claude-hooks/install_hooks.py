@@ -459,6 +459,42 @@ class HookInstaller:
 
         return len(issues) == 0, issues
 
+    def _read_mcp_http_port_from_claude_json(self) -> str:
+        """Read MCP_HTTP_PORT from the memory server env block in ~/.claude.json.
+
+        Returns:
+            Port string extracted from server config env, or "8000" as default.
+        """
+        claude_json_path = Path.home() / '.claude.json'
+        if not claude_json_path.exists():
+            return "8000"
+
+        try:
+            with open(claude_json_path, 'r', encoding='utf-8') as f:
+                claude_config = json.load(f)
+
+            # Search all known memory server names under mcpServers
+            mcp_servers = claude_config.get('mcpServers', {})
+            for server_name in self.MEMORY_SERVER_NAMES:
+                server_config = mcp_servers.get(server_name, {})
+                port_str = server_config.get('env', {}).get('MCP_HTTP_PORT')
+                if port_str is not None:
+                    # Validate port is a valid integer in range 1-65535
+                    try:
+                        port_int = int(port_str)
+                        if 1 <= port_int <= 65535:
+                            self.info(f"Detected MCP_HTTP_PORT={port_int} from ~/.claude.json server '{server_name}'")
+                            return str(port_int)
+                        else:
+                            self.warn(f"MCP_HTTP_PORT {port_str!r} out of range (1-65535), using default 8000")
+                    except ValueError:
+                        self.warn(f"MCP_HTTP_PORT {port_str!r} is not a valid integer, using default 8000")
+
+        except (json.JSONDecodeError, OSError) as e:
+            self.warn(f"Could not read MCP_HTTP_PORT from ~/.claude.json: {e}")
+
+        return "8000"
+
     def generate_hooks_config_from_mcp(self, detected_config: Dict, env_type: str = "standalone") -> Dict:
         """Generate hooks configuration based on detected Claude Code MCP setup.
 
@@ -495,6 +531,10 @@ class HookInstaller:
         # Detect Python path based on platform
         python_path = self._detect_python_path()
 
+        # Read MCP_HTTP_PORT from ~/.claude.json server env block (default: 8000)
+        http_port = self._read_mcp_http_port_from_claude_json()
+        http_endpoint = f"http://localhost:{http_port}"
+
         config = {
             "codeExecution": {
                 "enabled": True,
@@ -508,7 +548,7 @@ class HookInstaller:
                 "preferredProtocol": protocol_config["preferredProtocol"],
                 "fallbackEnabled": protocol_config["fallbackEnabled"],
                 "http": {
-                    "endpoint": "https://localhost:8443",
+                    "endpoint": http_endpoint,
                     "apiKey": "auto-detect",
                     "healthCheckTimeout": 3000,
                     "useDetailedHealthCheck": True
