@@ -292,7 +292,31 @@ def _get_merged_taxonomy() -> Dict[str, List[str]]:
     # Cache the merged taxonomy
     _MERGED_TAXONOMY_CACHE = merged
 
-    return merged
+    return _MERGED_TAXONOMY_CACHE
+
+
+def get_base_types() -> set:
+    """
+    Get the set of all base (top-level) memory types.
+
+    Returns:
+        Set of base type strings (keys of the merged taxonomy)
+
+    Examples:
+        >>> base = get_base_types()
+        >>> "observation" in base
+        True
+        >>> "code_edit" in base  # subtype, not a base type
+        False
+    """
+    global _BASE_TYPES_CACHE
+
+    if _BASE_TYPES_CACHE is not None:
+        return _BASE_TYPES_CACHE
+
+    taxonomy = _get_merged_taxonomy()
+    _BASE_TYPES_CACHE = set(taxonomy.keys())
+    return _BASE_TYPES_CACHE
 
 
 def validate_memory_type(memory_type: str) -> bool:
@@ -491,6 +515,11 @@ class MemoryTypeOntology:
     def get_all_types(cls) -> List[str]:
         """Get flattened list of all types."""
         return get_all_types()
+
+    @classmethod
+    def get_base_types(cls) -> set:
+        """Get set of all base (top-level) memory types."""
+        return get_base_types()
 
     @classmethod
     def validate_relationship(cls, rel_type: str) -> bool:
