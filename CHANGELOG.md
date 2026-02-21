@@ -10,6 +10,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [10.17.4] - 2026-02-21
+
+### Fixed
+- **Resolve all remaining CodeQL code scanning alerts (21 alerts)**: Fixed all open security/quality alerts across 14 files.
+  - **py/unused-import (1 alert)**: Removed unused `import sys` from `server/utils/response_limiter.py`.
+  - **py/empty-except (10 alerts)**: Added explanatory comments to all bare `except: pass` blocks in `__init__.py`, `backup/scheduler.py`, `quality/async_scorer.py`, `storage/hybrid.py`, `storage/sqlite_vec.py` (x2), `utils/gpu_detection.py`, and `web/sse.py`. CodeQL now recognises these as intentional (all are `asyncio.CancelledError` or file/parse failures during teardown).
+  - **py/catch-base-exception (10 alerts)**: Narrowed broad exception catches to specific types in `quality/metadata_codec.py` (`except (ValueError, TypeError, AttributeError):`), `web/sse.py` (`except Exception:`), `utils/system_detection.py` (`except Exception:`), `utils/startup_orchestrator.py` (`except BaseException` → `except Exception:`), `web/api/mcp.py` (`except (json.JSONDecodeError, ValueError):`), `server/environment.py` (x2, `except Exception:`), and `dependency_check.py` (`except Exception:`).
+
 ## [10.17.3] - 2026-02-21
 
 ### Fixed
