@@ -15,8 +15,7 @@
 """Semantic compression engine for memory cluster summarization."""
 
 import asyncio
-import numpy as np
-from typing import List, Dict, Any, Optional, Tuple, Set
+from typing import List, Dict, Any, Optional
 from datetime import datetime, timezone
 from dataclasses import dataclass
 from collections import Counter
