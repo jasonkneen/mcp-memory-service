@@ -259,16 +259,18 @@ Export memories from mcp-memory-service → Import to shodh-cloudflare → Sync 
 ---
 
 
-## 🆕 Latest Release: **v10.17.2** (February 21, 2026)
+## 🆕 Latest Release: **v10.17.3** (February 21, 2026)
 
-**CI Stability Fixes: uv CLI Test Timeout + Root Installer Test Skip**
+**Security + Code Quality: 21 CodeQL Scanning Alerts Resolved**
 
 **What's New:**
-- **uv CLI test timeout increased to 120s**: `test_memory_command_exists` and `test_memory_server_command_exists` now use 120-second timeouts (up from 60s) to prevent flaky failures on CI cold-cache runs where `uv run memory --help` must resolve the full dependency graph (#486).
-- **CI job timeout doubled to 20 minutes**: The `test-uvx-compatibility` workflow job timeout increased from 10 to 20 minutes to accommodate extended test timeouts on slow CI runners.
-- **Root `install.py` tests skip gracefully**: Tests patching `_pip_available` / `_install_python_packages` in the root redirector now skip with a clear message instead of raising `AttributeError` — the root `install.py` is a dispatcher and does not contain those helpers.
+- **Log injection prevention (CWE-117)**: Tag sanitization in `memory_service.py` now strips CRLF characters before logging, closing 2 ERROR-severity CodeQL alerts (#258, #259).
+- **HTTPClientStorage signature fix**: `retrieve()` now accepts the required `tags` parameter to match the `BaseStorage` interface, resolving 1 WARNING-severity alert (#261).
+- **Import-time print replaced with `warnings.warn`**: Three modules no longer execute `print()` at import time; use `warnings.warn()` instead, resolving 3 NOTE-severity alerts (#254, #255, #257).
+- **16 additional code quality alerts resolved**: Unnecessary `pass` statements, unused global cache variables, unused imports in consolidation modules, and `Ellipsis` literals in `StorageProtocol` all cleaned up (alerts #248-#253, #263-#270).
 
 **Previous Releases**:
+- **v10.17.2** - CI Stability Fixes: uv CLI test timeout 60s→120s, CI job timeout 10→20min, root install.py test skip guard
 - **v10.17.1** - Hook System Bug Fixes + Root Installer + Session-Start Reliability (session-end SyntaxError on Node.js v24, MCP_HTTP_PORT detection, exponential backoff retry)
 - **v10.17.0** - Default "untagged" Tag for All Tagless Memories + Cleanup Script (306 production memories retroactively fixed)
 - **v10.16.1** - Windows MCP Initialization Timeout Fix (`MCP_INIT_TIMEOUT` env override, 7 unit tests)
