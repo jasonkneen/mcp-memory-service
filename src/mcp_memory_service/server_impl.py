@@ -846,7 +846,6 @@ class MemoryServer:
                 pass
             except Exception as e:
                 logger.warning(f"Failed to load tag resources: {e}")
-                pass
             
             return resources
         

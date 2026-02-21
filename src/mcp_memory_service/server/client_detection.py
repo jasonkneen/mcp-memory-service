@@ -56,7 +56,6 @@ def detect_mcp_client():
                     return 'lm_studio'
             except (OSError, IndexError, AttributeError) as e:
                 logger.debug(f"Could not detect client from process: {e}")
-                pass
 
         # Fallback: check environment variables
         if os.getenv('CLAUDE_DESKTOP'):

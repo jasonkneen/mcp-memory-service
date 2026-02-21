@@ -96,8 +96,8 @@ async def handle_check_database_health(server, arguments: dict) -> List[types.Te
         if hasattr(storage, 'get_initialization_status') and callable(storage.get_initialization_status):
             try:
                 server_stats["storage_initialization"] = storage.get_initialization_status()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("get_initialization_status() raised an error: %s", e)
 
         # Add integrity monitor status if available
         integrity_status = {}

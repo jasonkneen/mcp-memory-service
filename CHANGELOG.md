@@ -10,6 +10,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [10.17.3] - 2026-02-21
+
+### Fixed
+- **Log injection prevention in tag sanitization (CWE-117, ERROR)**: `memory_service.py` tag sanitization now strips CRLF characters (`\r`, `\n`) before including user-supplied tag strings in log output. Forged log lines via crafted tag values are no longer possible. Resolves CodeQL alerts #258 and #259 (`py/log-injection`).
+- **`HTTPClientStorage.retrieve()` missing `tags` parameter (WARNING)**: The `retrieve()` method signature in `storage/http_client.py` did not include the `tags` keyword argument required by the `BaseStorage` interface, causing a CodeQL signature-mismatch alert. Parameter added and wired through to the HTTP query. Resolves CodeQL alert #261.
+- **Import-time `print()` replaced with `warnings.warn()` (NOTE)**: Three modules (`server/utils/response_limiter.py`, `server/handlers/utility.py`, and `server/client_detection.py`) executed `print()` at module import time. Replaced with `warnings.warn()` using `stacklevel=2` so callers see the correct source location. Resolves CodeQL alerts #254, #255, #257 (`py/print-during-import`).
+- **Unnecessary `pass` statements removed (WARNING)**: Two `pass` statements that appeared after `return` or `raise` statements (unreachable code) were removed from `consolidation/consolidator.py` and `consolidation/compression.py`. Resolves CodeQL alerts #252 and #253 (`py/unnecessary-pass`).
+- **Unused global cache variables wired up in `models/ontology.py` (NOTE)**: `_TYPE_HIERARCHY_CACHE` and `_VALIDATED_TYPES_CACHE` were declared as module-level globals but never read. Both caches are now populated on first access and returned on subsequent calls, eliminating the redundant per-call computation they were intended to prevent. Resolves CodeQL alerts #263, #264, #265.
+- **Unused imports removed from consolidation modules (NOTE)**: Removed five dead `import` statements across `consolidation/clustering.py`, `consolidation/compression.py`, `consolidation/consolidator.py`, `consolidation/forgetting.py`, and `server_impl.py`. No behaviour change. Resolves CodeQL alerts #266, #267, #268, #269, #270 (`py/unused-import`).
+- **`Ellipsis` (`...`) replaced with `pass` in `StorageProtocol` (NOTE)**: Four abstract-style method stubs in `services/memory_service.py` used `Ellipsis` literals as bodies, which CodeQL flags as ineffectual statements. Replaced with `pass` for idiomatic Python. Resolves CodeQL alerts #248, #249, #250, #251 (`py/ineffectual-statement`).
+
+### Added
+- **`tests/services/test_memory_service_log_injection.py`**: 5 new tests verifying that CRLF characters in tag values are sanitised before reaching log output (covers empty tags, single tag, multiple tags, embedded CRLF, and standalone CR/LF).
+- **`tests/storage/test_http_client_signature.py`**: 2 new tests confirming `HTTPClientStorage.retrieve()` accepts a `tags` keyword argument matching the `BaseStorage` interface.
+
 ## [10.17.2] - 2026-02-21
 
 ### Fixed

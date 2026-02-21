@@ -38,6 +38,15 @@ from ..quality.async_scorer import async_scorer
 
 logger = logging.getLogger(__name__)
 
+def _sanitize_log_value(value: str) -> str:
+    """Strip control characters from user-provided values before logging.
+
+    Prevents log injection via newlines, carriage returns, or other
+    control characters embedded in user input (CWE-117).
+    """
+    return value.replace("\n", "\\n").replace("\r", "\\r").replace("\x1b", "\\x1b")
+
+
 # Module-level constants for tag processing
 _MAX_JSON_LENGTH = 4096  # 4KB limit for tag JSON to prevent DoS
 _MAX_TAG_LENGTH = 100    # Maximum length for individual tags
@@ -108,11 +117,11 @@ def normalize_tags(tags: Union[str, List[str], None]) -> List[str]:
         # Replace commas with hyphens to preserve semantic meaning.
         if ',' in tag_stripped:
             tag_stripped = tag_stripped.replace(',', '-')
-            logger.debug(f"Removed comma from tag, replaced with hyphen: {tag_stripped}")
+            logger.debug(f"Removed comma from tag, replaced with hyphen: {_sanitize_log_value(tag_stripped)}")
 
         # Enforce maximum tag length to prevent abuse
         if len(tag_stripped) > _MAX_TAG_LENGTH:
-            logger.warning(f"Tag exceeds {_MAX_TAG_LENGTH} characters, truncating: {tag_stripped[:50]}...")
+            logger.warning(f"Tag exceeds {_MAX_TAG_LENGTH} characters, truncating: {_sanitize_log_value(tag_stripped[:50])}...")
             tag_stripped = tag_stripped[:_MAX_TAG_LENGTH]
 
         tag_lower = tag_stripped.lower()
