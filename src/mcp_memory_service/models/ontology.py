@@ -312,11 +312,11 @@ def get_base_types() -> set:
     global _BASE_TYPES_CACHE
 
     if _BASE_TYPES_CACHE is not None:
-        return _BASE_TYPES_CACHE
+        return _BASE_TYPES_CACHE.copy()
 
     taxonomy = _get_merged_taxonomy()
     _BASE_TYPES_CACHE = set(taxonomy.keys())
-    return _BASE_TYPES_CACHE
+    return _BASE_TYPES_CACHE.copy()
 
 
 def validate_memory_type(memory_type: str) -> bool:
