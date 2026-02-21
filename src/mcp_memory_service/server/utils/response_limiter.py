@@ -17,6 +17,7 @@ Example:
 
 import os
 import sys
+import warnings
 from typing import Any, Dict, List, Tuple
 
 # Default max response size (can be overridden by environment variable)
@@ -29,16 +30,18 @@ if raw_value:
         if value >= 0:
             DEFAULT_MAX_CHARS = value
         else:
-            print(
-                f"WARNING: Invalid MCP_MAX_RESPONSE_CHARS value: {value}. "
+            warnings.warn(
+                f"Invalid MCP_MAX_RESPONSE_CHARS value: {value}. "
                 "Must be non-negative. Using default 0 (unlimited).",
-                file=sys.stderr,
+                UserWarning,
+                stacklevel=2,
             )
     except ValueError:
-        print(
-            f"WARNING: Invalid MCP_MAX_RESPONSE_CHARS value: '{raw_value}'. "
+        warnings.warn(
+            f"Invalid MCP_MAX_RESPONSE_CHARS value: '{raw_value}'. "
             "Using default 0 (unlimited).",
-            file=sys.stderr,
+            UserWarning,
+            stacklevel=2,
         )
 
 # Estimated overhead per memory for metadata formatting.
