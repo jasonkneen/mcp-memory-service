@@ -10,6 +10,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [10.17.2] - 2026-02-21
+
+### Fixed
+- **Increased uv CLI test timeout from 60s to 120s** to prevent flaky CI failures (#486): `test_memory_command_exists` and `test_memory_server_command_exists` were timing out in CI on cold cache runs where `uv run memory --help` must resolve the full dependency graph before executing. Observed failure: `subprocess.TimeoutExpired: Command timed out after 60 seconds`. Both tests now use a 120-second timeout.
+- **Increased CI job timeout from 10 to 20 minutes** for the `test-uvx-compatibility` job in `.github/workflows/main.yml` to accommodate the extended test timeout and avoid false-positive job cancellations on slow CI runners.
+- **Skip root `install.py` tests when pip/uv helpers are absent** (`tests/unit/test_uv_no_pip_installer_fallback.py`): The root-level `install.py` is a redirector script (added in v10.17.1) that delegates to `scripts/installation/install.py`. It does not contain `_pip_available` or `_install_python_packages` helpers. Two tests that patched those helpers were raising `AttributeError` instead of being skipped. Added a `hasattr` guard in `_load_install_py_module()` so the tests skip cleanly when the helpers are absent — matching the existing skip for a missing `install.py`.
+
 ## [10.17.1] - 2026-02-20
 
 ### Fixed

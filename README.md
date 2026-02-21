@@ -259,18 +259,17 @@ Export memories from mcp-memory-service → Import to shodh-cloudflare → Sync 
 ---
 
 
-## 🆕 Latest Release: **v10.17.1** (February 20, 2026)
+## 🆕 Latest Release: **v10.17.2** (February 21, 2026)
 
-**Hook System Bug Fixes + Root Installer + Session-Start Reliability**
+**CI Stability Fixes: uv CLI Test Timeout + Root Installer Test Skip**
 
 **What's New:**
-- **`session-end.js` SyntaxError fix**: Duplicate `uniqueTags` declaration caused a SyntaxError on Node.js v24, preventing the session-end hook from running entirely. Fixed by removing the redundant declaration (#477).
-- **Hook installer now reads `MCP_HTTP_PORT` from MCP config**: `install_hooks.py` previously ignored `MCP_HTTP_PORT` from `~/.claude.json`, always generating port 8000. Now reads the value from the server's `env` block (#478).
-- **Session-start retry backoff**: `session-start.js` now retries the HTTP connection up to 4 times (2 s, 4 s, 8 s back-off) before falling back to MCP-tool mode, resolving the race condition with Claude Code's lazy MCP server startup (#479).
-- **Root-level `install.py` dispatcher**: Users following the wiki guide who run `python install.py` from the repo root now get an interactive menu rather than a `No such file or directory` error. Supports `--package` and `--hooks` flags (#476).
-- **GitNexus skill files** added to `.claude/skills/gitnexus/` for architecture exploration, debugging, impact analysis, and refactoring workflows.
+- **uv CLI test timeout increased to 120s**: `test_memory_command_exists` and `test_memory_server_command_exists` now use 120-second timeouts (up from 60s) to prevent flaky failures on CI cold-cache runs where `uv run memory --help` must resolve the full dependency graph (#486).
+- **CI job timeout doubled to 20 minutes**: The `test-uvx-compatibility` workflow job timeout increased from 10 to 20 minutes to accommodate extended test timeouts on slow CI runners.
+- **Root `install.py` tests skip gracefully**: Tests patching `_pip_available` / `_install_python_packages` in the root redirector now skip with a clear message instead of raising `AttributeError` — the root `install.py` is a dispatcher and does not contain those helpers.
 
 **Previous Releases**:
+- **v10.17.1** - Hook System Bug Fixes + Root Installer + Session-Start Reliability (session-end SyntaxError on Node.js v24, MCP_HTTP_PORT detection, exponential backoff retry)
 - **v10.17.0** - Default "untagged" Tag for All Tagless Memories + Cleanup Script (306 production memories retroactively fixed)
 - **v10.16.1** - Windows MCP Initialization Timeout Fix (`MCP_INIT_TIMEOUT` env override, 7 unit tests)
 - **v10.16.0** - Agentic AI Market Repositioning with REST API Integration Guides (LangGraph, CrewAI, AutoGen guides, X-Agent-ID header auto-tagging, agent: tag namespace)
