@@ -109,7 +109,7 @@ def create_access_token(client_id: str, scope: Optional[str] = None) -> tuple[st
     algorithm = get_jwt_algorithm()
     signing_key = get_jwt_signing_key()
 
-    logger.debug(f"Creating JWT token with algorithm: {algorithm}")
+    logger.debug("Creating JWT token")
     token = jwt.encode(payload, signing_key, algorithm=algorithm)
     return token, expires_in
 
@@ -138,17 +138,17 @@ async def validate_redirect_uri(client_id: str, redirect_uri: Optional[str]) -> 
             )
         return client.redirect_uris[0]
 
-    # Validate that the redirect_uri is registered
-    if redirect_uri not in client.redirect_uris:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "error": "invalid_redirect_uri",
-                "error_description": "redirect_uri not registered for this client"
-            }
-        )
-
-    return redirect_uri
+    # Validate that the redirect_uri is registered; return the stored (trusted) value
+    for registered_uri in client.redirect_uris:
+        if registered_uri == redirect_uri:
+            return registered_uri  # Return the stored value, not the user-supplied one
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail={
+            "error": "invalid_redirect_uri",
+            "error_description": "redirect_uri not registered for this client"
+        }
+    )
 
 
 @router.get("/authorize")
@@ -165,7 +165,7 @@ async def authorize(
     Implements the authorization code flow. For MVP, this auto-approves
     all requests without user interaction.
     """
-    logger.info("Authorization request: client_id=%s, response_type=%s", str(client_id).replace(chr(10), " ").replace(chr(13), " "), str(response_type).replace(chr(10), " ").replace(chr(13), " "))
+    logger.info("Authorization request received")
 
     # Validate redirect_uri against registered client BEFORE any redirect use.
     # Per OAuth 2.1 spec, only pre-registered URIs may be used as redirect targets.
@@ -217,7 +217,7 @@ async def authorize(
 
         redirect_url = f"{safe_redirect_uri}?{urlencode(redirect_params)}"
 
-        logger.info("Authorization granted for client_id=%s", str(client_id).replace(chr(10), " ").replace(chr(13), " "))
+        logger.info("Authorization granted")
         return RedirectResponse(url=redirect_url)
 
     except HTTPException:
@@ -318,7 +318,7 @@ async def _handle_authorization_code_grant(
         expires_in=expires_in
     )
 
-    logger.info("Access token issued for client_id=%s", str(final_client_id).replace(chr(10), " ").replace(chr(13), " "))
+    logger.info("Access token issued")
     return TokenResponse(
         access_token=access_token,
         token_type="Bearer",
@@ -361,7 +361,7 @@ async def _handle_client_credentials_grant(
         expires_in=expires_in
     )
 
-    logger.info("Client credentials token issued for client_id=%s", str(final_client_id).replace(chr(10), " ").replace(chr(13), " "))
+    logger.info("Client credentials token issued")
     return TokenResponse(
         access_token=access_token,
         token_type="Bearer",
@@ -394,7 +394,7 @@ async def token(
     final_client_secret = basic_client_secret or client_secret
 
     auth_method = "client_secret_basic" if basic_client_id else "client_secret_post"
-    logger.info("Token request: grant_type=%s, client_id=%s, auth_method=%s", str(grant_type).replace(chr(10), " ").replace(chr(13), " "), str(final_client_id).replace(chr(10), " ").replace(chr(13), " "), str(auth_method).replace(chr(10), " ").replace(chr(13), " "))
+    logger.info("Token request received")
 
     try:
         if grant_type == "authorization_code":

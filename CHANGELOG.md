@@ -10,6 +10,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [10.17.10] - 2026-02-22
+
+### Security
+- fix: resolve all remaining 30 CodeQL security alerts — zero open alerts
+  - **py/log-injection (19 alerts)**: Removed all user-controlled data from log messages in `web/api/documents.py`, `web/api/search.py`, `web/oauth/authorization.py`; replaced with static context strings
+  - **py/clear-text-logging-sensitive-data (5 alerts)**: Removed OAuth config values (issuer, algorithm, expiry, backend, paths) from all logger calls in `config.py` and `web/oauth/storage/__init__.py`
+  - **py/url-redirection (3 alerts)**: `validate_redirect_uri()` now returns the stored (trusted) URI from database instead of user-supplied value, eliminating taint flow into `RedirectResponse`
+  - **py/stack-trace-exposure (3 alerts)**: Removed exception details from error responses and log messages throughout API layer
+
 ## [10.17.9] - 2026-02-22
 
 ### Security

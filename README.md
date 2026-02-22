@@ -259,19 +259,20 @@ Export memories from mcp-memory-service → Import to shodh-cloudflare → Sync 
 ---
 
 
-## 🆕 Latest Release: **v10.17.9** (February 22, 2026)
+## 🆕 Latest Release: **v10.17.10** (February 22, 2026)
 
-**Security: 17 Remaining CodeQL Security Alerts Resolved**
+**Security: Final CodeQL Security Alerts Resolved (Zero Remaining)**
 
 **What's New:**
-- **17 CodeQL security alerts eliminated**: Resolved clear-text logging (5x), log injection (4x), stack-trace-exposure (3x), tarslip (1x), polynomial ReDoS (1x), and URL redirection (3x) alerts.
-- **OAuth config logging hardened**: Changed `logger.info` to `logger.debug` for all OAuth configuration values to prevent sensitive data appearing in production INFO logs.
-- **Log injection prevention**: Converted f-string logger calls with user-controlled data to `%`-style format strings across API endpoints.
-- **Tar extraction hardened**: Replaced `tar.extractall()` with member-by-member extraction after path traversal validation in ONNX model download.
-- **ReDoS mitigation**: Added `{0,50}` bound to `date_range` regex capture groups in time parser.
-- **OAuth redirect hardened**: Added `_sanitize_state()` helper to strip non-safe characters from OAuth state parameter before redirect.
+- **All CodeQL alerts eliminated**: Resolved final 30 open alerts - clear-text logging (5x), log injection (19x), stack-trace-exposure (3x), URL redirection (3x).
+- **Log injection fully eliminated**: Removed all user-controlled data from log messages across `web/api/documents.py`, `web/api/search.py`, `web/oauth/authorization.py` — replaced with static context strings.
+- **OAuth config logging hardened**: Removed OAuth configuration values (issuer URL, algorithm, expiry, backend type, paths) from all log statements in `config.py` and `oauth/storage/__init__.py`.
+- **URL redirection hardened**: `validate_redirect_uri()` now returns the stored (trusted) URI from the database instead of the user-supplied value, eliminating taint flow into `RedirectResponse`.
+- **Zero open CodeQL alerts**: Complete remediation of all GitHub code scanning findings.
 
 ---
+
+**Previous Release: v10.17.9** (February 22, 2026) - Security: 17 CodeQL Alerts Resolved
 
 **Previous Release: v10.17.6** (February 22, 2026) - Code Quality: 100 CodeQL Import Alerts Resolved Across 51 Files
 

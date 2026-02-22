@@ -160,7 +160,7 @@ async def semantic_search(
             # Take top N after reranking
             query_results = query_results[:request.n_results]
 
-            logger.debug("Quality-boosted search: reranked %d -> %d results for query: %s", fetch_limit, len(query_results), str(request.query).replace(chr(10), " ").replace(chr(13), " "))
+            logger.debug("Quality-boosted search: reranked %d -> %d results", fetch_limit, len(query_results))
 
         # Convert to search results
         search_results = []

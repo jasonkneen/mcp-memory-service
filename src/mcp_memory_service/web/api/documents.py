@@ -621,7 +621,7 @@ async def remove_document(upload_id: str, remove_from_memory: bool = True):
     Returns:
         Removal status with count of memories deleted
     """
-    logger.info("Remove document request for upload_id: %s, remove_from_memory: %s", str(upload_id).replace(chr(10), " ").replace(chr(13), " "), remove_from_memory)
+    logger.info("Remove document request received")
 
     # Get session info if available (may not exist after server restart)
     session = upload_sessions.get(upload_id)
@@ -635,13 +635,13 @@ async def remove_document(upload_id: str, remove_from_memory: bool = True):
 
             # Search by tag pattern: upload_id:{upload_id}
             upload_tag = f"upload_id:{upload_id}"
-            logger.info("Searching for memories with tag: %s", str(upload_tag).replace(chr(10), " ").replace(chr(13), " "))
+            logger.info("Searching for memories by upload tag")
 
             try:
                 # Delete all memories with this upload_id tag
                 count, _, _ = await storage.delete_by_tags([upload_tag])
                 memories_deleted = count
-                logger.info("Deleted %d memories with tag %s", memories_deleted, str(upload_tag).replace(chr(10), " ").replace(chr(13), " "))
+                logger.info("Deleted %d memories for upload", memories_deleted)
 
                 # If we deleted memories but don't have session info, try to get filename from first memory
                 if memories_deleted > 0 and not session:
@@ -649,13 +649,13 @@ async def remove_document(upload_id: str, remove_from_memory: bool = True):
                     # (we already deleted them, so we'll use a generic message)
                     filename = f"Document (upload_id: {upload_id[:8]}...)"
 
-            except Exception as e:
-                logger.warning(f"Could not delete memories by tag: {e}")
+            except Exception:
+                logger.warning("Could not delete memories by upload tag")
                 # If deletion fails and we don't know about this upload, return 404
                 if not session:
                     raise HTTPException(
                         status_code=404,
-                        detail=f"Upload ID not found and no memories with tag '{upload_tag}'"
+                        detail="Upload ID not found"
                     )
                 memories_deleted = 0
 
@@ -688,7 +688,7 @@ async def remove_documents_by_tags(tags: List[str]):
     Returns:
         Removal status with affected upload IDs and memory counts
     """
-    logger.info("Remove documents by tags request: %s", [str(t).replace(chr(10), " ").replace(chr(13), " ") for t in tags])
+    logger.info("Remove documents by tags request received")
 
     try:
         # Get storage
@@ -731,14 +731,14 @@ async def search_document_content(upload_id: str, limit: int = 1000):
     Returns:
         List of memories with their content and metadata
     """
-    logger.info("Search document content for upload_id: %s, limit: %d", str(upload_id).replace(chr(10), " ").replace(chr(13), " "), limit)
+    logger.info("Search document content request received")
 
     # Get session info if available (may not exist after server restart)
     session = upload_sessions.get(upload_id)
 
     # If no session, we'll still try to find memories by upload_id tag
     if not session:
-        logger.info("No upload session found for %s, searching by tag only", str(upload_id).replace(chr(10), " ").replace(chr(13), " "))
+        logger.info("No upload session found, searching by tag only")
 
     try:
         # Get storage
@@ -746,7 +746,7 @@ async def search_document_content(upload_id: str, limit: int = 1000):
 
         # Search for memories with upload_id tag
         upload_tag = f"upload_id:{upload_id}"
-        logger.info("Searching for memories with tag: %s", str(upload_tag).replace(chr(10), " ").replace(chr(13), " "))
+        logger.info("Searching for memories by upload tag")
 
         # Use tag search (search_by_tags doesn't support limit parameter)
         all_memories = await storage.search_by_tags([upload_tag])
