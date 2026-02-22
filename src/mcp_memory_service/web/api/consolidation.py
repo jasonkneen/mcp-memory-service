@@ -109,12 +109,12 @@ async def trigger_consolidation(request: ConsolidationRequest, user: Authenticat
         # Convert to dict for HTTP response
         return result._asdict()
 
-    except ValueError as e:
-        # Invalid time horizon
-        raise HTTPException(status_code=400, detail=str(e))
-    except RuntimeError as e:
-        # Consolidator not available
-        raise HTTPException(status_code=503, detail=str(e))
+    except ValueError:
+        # Invalid time horizon - use fixed message to avoid leaking exception details
+        raise HTTPException(status_code=400, detail="Invalid time horizon specified")
+    except RuntimeError:
+        # Consolidator not available - use fixed message to avoid leaking exception details
+        raise HTTPException(status_code=503, detail="Consolidator not available")
     except Exception:
         logger.error("Consolidation trigger failed")
         raise HTTPException(status_code=500, detail="Consolidation failed")
