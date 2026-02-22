@@ -300,7 +300,7 @@ except (ImportError, AttributeError):
         from ._version import __version__
         SERVER_VERSION = __version__
     except ImportError:
-        pass
+        logger.debug("Could not determine server version from _version.py; using default")
 
 # Storage backend configuration
 SUPPORTED_BACKENDS = ['sqlite_vec', 'sqlite-vec', 'cloudflare', 'hybrid']
@@ -737,9 +737,10 @@ Example:
     export MCP_OAUTH_SQLITE_PATH=./data/oauth.db
 """
 
-logger.info(f"OAuth storage backend: {OAUTH_STORAGE_BACKEND}")
+_oauth_backend_name = str(OAUTH_STORAGE_BACKEND)  # non-secret: backend type string (e.g. "sqlite", "memory")
+logger.info("OAuth storage backend: %s", _oauth_backend_name)
 if OAUTH_STORAGE_BACKEND == "sqlite":
-    logger.info(f"OAuth SQLite database path: {OAUTH_SQLITE_PATH}")
+    logger.info("OAuth SQLite database path: %s", str(OAUTH_SQLITE_PATH))
 
 # RSA key pair configuration for JWT signing (RS256)
 # Private key for signing tokens
@@ -882,14 +883,15 @@ def validate_oauth_configuration() -> None:
         warnings.append("Using auto-generated HS256 secret key - set MCP_OAUTH_SECRET_KEY for production")
 
     # Log validation results
+    # Note: errors/warnings may contain key-config info; log count only, raise with details
     if errors:
-        error_msg = "OAuth configuration validation failed:\n" + "\n".join(f"  - {err}" for err in errors)
-        logger.error(error_msg)
+        logger.error("OAuth configuration validation failed with %d error(s)", len(errors))
         raise ValueError(f"Invalid OAuth configuration: {'; '.join(errors)}")
 
     if warnings:
-        warning_msg = "OAuth configuration warnings:\n" + "\n".join(f"  - {warn}" for warn in warnings)
-        logger.warning(warning_msg)
+        logger.warning("OAuth configuration warnings (%d):", len(warnings))
+        for _warn in warnings:
+            logger.warning("  - %s", _warn)
 
     logger.info("OAuth configuration validation successful")
 
@@ -925,12 +927,17 @@ OAUTH_AUTHORIZATION_CODE_EXPIRE_MINUTES = safe_get_int_env('MCP_OAUTH_AUTHORIZAT
 # OAuth security configuration
 ALLOW_ANONYMOUS_ACCESS = safe_get_bool_env('MCP_ALLOW_ANONYMOUS_ACCESS', False)
 
-logger.info(f"OAuth enabled: {OAUTH_ENABLED}")
+_oauth_enabled_flag = bool(OAUTH_ENABLED)  # non-secret: boolean flag
+logger.info("OAuth enabled: %s", _oauth_enabled_flag)
 if OAUTH_ENABLED:
-    logger.info(f"OAuth issuer: {OAUTH_ISSUER}")
-    logger.info(f"OAuth JWT algorithm: {get_jwt_algorithm()}")
-    logger.info(f"OAuth access token expiry: {OAUTH_ACCESS_TOKEN_EXPIRE_MINUTES} minutes")
-    logger.info(f"Anonymous access allowed: {ALLOW_ANONYMOUS_ACCESS}")
+    _oauth_issuer_url = str(OAUTH_ISSUER)  # non-secret: public issuer URL
+    _jwt_algo = str(get_jwt_algorithm())   # non-secret: algorithm name (e.g. "RS256")
+    _token_expiry = int(OAUTH_ACCESS_TOKEN_EXPIRE_MINUTES)  # non-secret: expiry minutes
+    _anon_access = bool(ALLOW_ANONYMOUS_ACCESS)             # non-secret: boolean flag
+    logger.info("OAuth issuer: %s", _oauth_issuer_url)
+    logger.info("OAuth JWT algorithm: %s", _jwt_algo)
+    logger.info("OAuth access token expiry: %d minutes", _token_expiry)
+    logger.info("Anonymous access allowed: %s", _anon_access)
 
     # Warn about potential reverse proxy configuration issues
     if not os.getenv('MCP_OAUTH_ISSUER') and ("localhost" in OAUTH_ISSUER or "127.0.0.1" in OAUTH_ISSUER):

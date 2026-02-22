@@ -52,17 +52,21 @@ TIME_OF_DAY = {
     "midnight": (0, 0),    # 12:00 AM
 }
 
-# Regular expressions for various time patterns
+# Regular expressions for various time patterns.
+# Note: all patterns are applied to input that is pre-truncated to _MAX_TIME_QUERY_LEN
+# characters, which prevents ReDoS on adversarial inputs.
 PATTERNS = {
-    "relative_days": re.compile(r'(?:(\d+)\s+days?\s+ago)|(?:yesterday)|(?:today)'),
-    "relative_weeks": re.compile(r'(\d+)\s+weeks?\s+ago'),
-    "relative_months": re.compile(r'(\d+)\s+months?\s+ago'),
-    "relative_years": re.compile(r'(\d+)\s+years?\s+ago'),
-    "last_n_periods": re.compile(r'last\s+(\d+)\s+(days?|weeks?|months?|years?)'),
+    # Use \d{1,4} instead of \d+ to bound digit repetition and avoid polynomial backtracking
+    "relative_days": re.compile(r'(?:(\d{1,4})\s+days?\s+ago)|(?:yesterday)|(?:today)'),
+    "relative_weeks": re.compile(r'(\d{1,4})\s+weeks?\s+ago'),
+    "relative_months": re.compile(r'(\d{1,4})\s+months?\s+ago'),
+    "relative_years": re.compile(r'(\d{1,4})\s+years?\s+ago'),
+    "last_n_periods": re.compile(r'last\s+(\d{1,4})\s+(days?|weeks?|months?|years?)'),
     "last_period": re.compile(r'last\s+(day|week|month|year|summer|spring|winter|fall|autumn)'),
     "this_period": re.compile(r'this\s+(day|week|month|year|summer|spring|winter|fall|autumn)'),
     "month_name": re.compile(r'(january|february|march|april|may|june|july|august|september|october|november|december)'),
-    "date_range": re.compile(r'between\s+(.+?)\s+and\s+(.+?)(?:\s|$)'),
+    # Use \S[^&]*? instead of .+? to prevent backtracking on whitespace-only strings
+    "date_range": re.compile(r'between\s+(\S[^&]*?)\s+and\s+(\S[^&]*?)(?=\s|$)'),
     "time_of_day": re.compile(r'(morning|afternoon|evening|night|noon|midnight)'),
     "recent": re.compile(r'recent|lately|recently'),
     "specific_date": re.compile(r'(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?'),
@@ -70,6 +74,8 @@ PATTERNS = {
     "named_period": re.compile(r'(spring|summer|winter|fall|autumn|christmas|new\s*year|valentine|halloween|thanksgiving|spring\s*break|summer\s*break|winter\s*break)'),    "half_year": re.compile(r'(first|second)\s+half\s+of\s+(\d{4})'),
     "quarter": re.compile(r'(first|second|third|fourth|1st|2nd|3rd|4th)\s+quarter(?:\s+of\s+(\d{4}))?'),
 }
+
+_MAX_TIME_QUERY_LEN = 500  # guard against ReDoS on user-supplied input
 
 def _calculate_season_date_range(
     period: str,
@@ -113,15 +119,19 @@ def _calculate_season_date_range(
 def parse_time_expression(query: str) -> Tuple[Optional[float], Optional[float]]:
     """
     Parse a natural language time expression and return timestamp range.
-    
+
     Args:
         query: A natural language query with time expressions
-        
+
     Returns:
         Tuple of (start_timestamp, end_timestamp), either may be None
     """
+    # Truncate excessively long input to prevent ReDoS on pathological strings
+    if len(query) > _MAX_TIME_QUERY_LEN:
+        query = query[:_MAX_TIME_QUERY_LEN]
+
     query = query.lower().strip()
-    
+
     # Check for multiple patterns in a single query
     try:
         # First check for date ranges like "between X and Y"

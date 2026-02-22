@@ -160,6 +160,17 @@ async def authorize(
     """
     logger.info(f"Authorization request: client_id={_sanitize_log_value(client_id)}, response_type={_sanitize_log_value(response_type)}")
 
+    # Validate redirect_uri against registered client BEFORE any redirect use.
+    # Per OAuth 2.1 spec, only pre-registered URIs may be used as redirect targets.
+    # If validation fails here, raise an error without redirecting (to avoid open redirect).
+    validated_redirect_uri: Optional[str] = None
+    if redirect_uri:
+        try:
+            validated_redirect_uri = await validate_redirect_uri(client_id, redirect_uri)
+        except HTTPException:
+            # Invalid client or redirect_uri - respond without redirecting
+            raise
+
     try:
         # Validate response_type
         if response_type != "code":
@@ -170,15 +181,15 @@ async def authorize(
             if state:
                 error_params["state"] = state
 
-            # If we have a redirect_uri, redirect with error
-            if redirect_uri:
-                error_url = f"{redirect_uri}?{urlencode(error_params)}"
+            # Only redirect to a validated URI; otherwise return HTTP error
+            if validated_redirect_uri:
+                error_url = f"{validated_redirect_uri}?{urlencode(error_params)}"
                 return RedirectResponse(url=error_url)
             else:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_params)
 
-        # Validate client and redirect_uri
-        validated_redirect_uri = await validate_redirect_uri(client_id, redirect_uri)
+        # Validate client and redirect_uri (also handles the case where redirect_uri was None)
+        safe_redirect_uri = validated_redirect_uri or await validate_redirect_uri(client_id, redirect_uri)
 
         # Generate authorization code
         auth_code = get_oauth_storage().generate_authorization_code()
@@ -187,7 +198,7 @@ async def authorize(
         await get_oauth_storage().store_authorization_code(
             code=auth_code,
             client_id=client_id,
-            redirect_uri=validated_redirect_uri,
+            redirect_uri=safe_redirect_uri,
             scope=scope,
             expires_in=OAUTH_AUTHORIZATION_CODE_EXPIRE_MINUTES * 60
         )
@@ -197,7 +208,7 @@ async def authorize(
         if state:
             redirect_params["state"] = state
 
-        redirect_url = f"{validated_redirect_uri}?{urlencode(redirect_params)}"
+        redirect_url = f"{safe_redirect_uri}?{urlencode(redirect_params)}"
 
         logger.info(f"Authorization granted for client_id={_sanitize_log_value(client_id)}")
         return RedirectResponse(url=redirect_url)
@@ -215,8 +226,9 @@ async def authorize(
         if state:
             error_params["state"] = state
 
-        if redirect_uri:
-            error_url = f"{redirect_uri}?{urlencode(error_params)}"
+        # Only redirect to a pre-validated URI; otherwise return HTTP error
+        if validated_redirect_uri:
+            error_url = f"{validated_redirect_uri}?{urlencode(error_params)}"
             return RedirectResponse(url=error_url)
         else:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=error_params)
