@@ -232,5 +232,5 @@ async def get_recommendations(time_horizon: str, user: AuthenticationResult = De
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to get recommendations: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get recommendations: {e}")
+        logger.error("Failed to get recommendations: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to get consolidation recommendations")

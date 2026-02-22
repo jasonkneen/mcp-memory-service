@@ -9,7 +9,7 @@ all memory operations, eliminating the DRY violation and ensuring consistent beh
 import json
 import logging
 import sys
-from typing import Dict, List, Optional, Any, Union, Tuple
+from typing import Dict, List, Optional, Any, Union
 
 # Pydantic v2.12 requires typing_extensions.TypedDict on Python < 3.12
 # See: https://errors.pydantic.dev/2.12/u/typed-dict-version

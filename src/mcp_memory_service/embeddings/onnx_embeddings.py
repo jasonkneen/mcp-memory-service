@@ -6,7 +6,6 @@ Based on ONNXMiniLM_L6_V2 implementation.
 
 import hashlib
 import logging
-import math
 import os
 import tarfile
 from pathlib import Path

@@ -264,8 +264,8 @@ async def evaluate_memory_quality(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error evaluating memory {content_hash}: {e}")
-        raise HTTPException(status_code=500, detail=f"Error evaluating memory quality: {str(e)}")
+        logger.error("Error evaluating memory %s: %s", _sanitize_log_value(content_hash), e)
+        raise HTTPException(status_code=500, detail="Error evaluating memory quality")
 
 
 @router.get("/memories/{content_hash}", response_model=QualityMetricsResponse)
