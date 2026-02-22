@@ -10,6 +10,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [10.17.8] - 2026-02-22
+
+### Security
+
+- fix: resolve final 27 CodeQL security alerts (clear-text logging, log injection, stack-trace-exposure, URL redirection, polynomial ReDoS, empty-except, unused imports)
+  - **py/clear-text-logging-sensitive-data (7 alerts)**: Masked sensitive values in log output in `config.py` and `web/oauth/storage/__init__.py`
+  - **py/log-injection (1 alert)**: Added log value sanitization in `web/api/quality.py`
+  - **py/stack-trace-exposure (1 alert)**: Replaced raw exception details with generic error response in `web/api/consolidation.py`
+  - **py/url-redirection (3 alerts)**: Validated and restricted redirect targets in `web/oauth/authorization.py`
+  - **py/polynomial-redos (5 alerts)**: Replaced vulnerable regex patterns with safe alternatives in `utils/time_parser.py`
+  - **py/empty-except (1 alert)**: Added explicit exception handling in `config.py`
+  - **py/unused-import (2 alerts)**: Removed unused imports from `embeddings/onnx_embeddings.py` and `memory_service.py`
+
 ## [10.17.7] - 2026-02-22
 
 ### Security
