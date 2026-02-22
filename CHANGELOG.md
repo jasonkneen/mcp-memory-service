@@ -10,6 +10,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [10.17.6] - 2026-02-22
+
+### Fixed
+
+- **Resolve 100 CodeQL import alerts across 51 files**: Eliminated all open `py/unused-import`, `py/repeated-import`, and `py/cyclic-import` CodeQL code scanning alerts with no functional changes.
+  - **py/unused-import (92 alerts)**: Removed unused imports from `typing`, stdlib (`os`, `sys`, `re`, `time`, `json`, `datetime`, etc.), and internal modules across 51 files in `storage/`, `server/`, `web/`, `consolidation/`, `quality/`, `ingestion/`, `utils/`, and `models/` packages.
+  - **py/repeated-import (6 alerts)**: Removed local duplicate imports (same module imported twice within a file) in `server_impl.py`, `consolidation/scheduler.py`, and related modules.
+  - **py/cyclic-import (2 alerts)**: Resolved circular import dependency in `utils/startup_orchestrator.py` by guarding type-only imports under `TYPE_CHECKING` block.
+
 ## [10.17.5] - 2026-02-22
 
 ### Security

@@ -259,17 +259,19 @@ Export memories from mcp-memory-service → Import to shodh-cloudflare → Sync 
 ---
 
 
-## 🆕 Latest Release: **v10.17.3** (February 21, 2026)
+## 🆕 Latest Release: **v10.17.6** (February 22, 2026)
 
-**Security + Code Quality: 21 CodeQL Scanning Alerts Resolved**
+**Code Quality: 100 CodeQL Import Alerts Resolved Across 51 Files**
 
 **What's New:**
-- **Log injection prevention (CWE-117)**: Tag sanitization in `memory_service.py` now strips CRLF characters before logging, closing 2 ERROR-severity CodeQL alerts (#258, #259).
-- **HTTPClientStorage signature fix**: `retrieve()` now accepts the required `tags` parameter to match the `BaseStorage` interface, resolving 1 WARNING-severity alert (#261).
-- **Import-time print replaced with `warnings.warn`**: Three modules no longer execute `print()` at import time; use `warnings.warn()` instead, resolving 3 NOTE-severity alerts (#254, #255, #257).
-- **16 additional code quality alerts resolved**: Unnecessary `pass` statements, unused global cache variables, unused imports in consolidation modules, and `Ellipsis` literals in `StorageProtocol` all cleaned up (alerts #248-#253, #263-#270).
+- **100 CodeQL alerts eliminated**: All open `py/unused-import`, `py/repeated-import`, and `py/cyclic-import` alerts resolved across 51 files with no functional changes.
+- **92 unused imports removed**: Cleaned up unused `typing`, stdlib, and internal module imports across `storage/`, `server/`, `web/`, `consolidation/`, `quality/`, `ingestion/`, `utils/`, and `models/` packages.
+- **6 repeated imports fixed**: Removed local duplicate imports within files in `server_impl.py`, `consolidation/scheduler.py`, and related modules.
+- **2 cyclic imports resolved**: Fixed circular import dependency in `utils/startup_orchestrator.py` using `TYPE_CHECKING` guard.
 
 **Previous Releases**:
+- **v10.17.5** - Security Patch: upgrade 15 vulnerable dependencies (38 Dependabot alerts - h11, aiohttp, starlette, cryptography, pillow, protobuf, and more)
+- **v10.17.3** - Security + Code Quality: 21 CodeQL Scanning Alerts Resolved (log injection CWE-117, HTTPClientStorage signature, import-time prints)
 - **v10.17.2** - CI Stability Fixes: uv CLI test timeout 60s→120s, CI job timeout 10→20min, root install.py test skip guard
 - **v10.17.1** - Hook System Bug Fixes + Root Installer + Session-Start Reliability (session-end SyntaxError on Node.js v24, MCP_HTTP_PORT detection, exponential backoff retry)
 - **v10.17.0** - Default "untagged" Tag for All Tagless Memories + Cleanup Script (306 production memories retroactively fixed)
