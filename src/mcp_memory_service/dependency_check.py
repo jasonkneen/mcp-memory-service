@@ -4,7 +4,6 @@ This prevents runtime downloads during server initialization that cause timeouts
 """
 
 import sys
-import subprocess
 import platform
 import logging
 import os

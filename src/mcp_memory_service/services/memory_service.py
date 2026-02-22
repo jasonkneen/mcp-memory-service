@@ -24,7 +24,6 @@ else:
 from datetime import datetime
 
 from ..config import (
-    INCLUDE_HOSTNAME,
     CONTENT_PRESERVE_BOUNDARIES,
     CONTENT_SPLIT_OVERLAP,
     ENABLE_AUTO_SPLIT,

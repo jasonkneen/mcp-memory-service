@@ -5,11 +5,10 @@ This module provides MCP protocol endpoints that allow Claude Code clients
 to directly access memory operations using the MCP standard.
 """
 
-import asyncio
 import json
 import logging
-from typing import Dict, List, Any, Optional, Union, TYPE_CHECKING
-from fastapi import APIRouter, HTTPException, Request, Depends
+from typing import Dict, Any, Optional, Union
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
 
@@ -18,7 +17,7 @@ from ...utils.hashing import generate_content_hash
 # OAuth config no longer needed - auth is always enabled
 
 # Import OAuth dependencies only when needed
-from ..oauth.middleware import require_read_access, require_write_access, AuthenticationResult
+from ..oauth.middleware import require_read_access, AuthenticationResult
 
 logger = logging.getLogger(__name__)
 

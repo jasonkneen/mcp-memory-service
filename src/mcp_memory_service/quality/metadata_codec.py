@@ -19,7 +19,7 @@ Reduces metadata size by 60% compared to JSON while maintaining readability.
 Used for Cloudflare sync to stay under 10KB D1 metadata limit.
 """
 
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any
 import logging
 
 logger = logging.getLogger(__name__)

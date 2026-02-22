@@ -14,8 +14,7 @@
 
 """Main dream-inspired consolidation orchestrator."""
 
-import asyncio
-from typing import List, Dict, Any, Optional, Protocol, Tuple
+from typing import List, Dict, Any, Protocol, Tuple
 from datetime import datetime, timedelta, timezone
 import logging
 import time

@@ -19,8 +19,7 @@ Provides semantic search, tag-based search, and time-based recall functionality.
 """
 
 import logging
-from typing import List, Optional, Dict, Any, TYPE_CHECKING
-from datetime import datetime, timedelta, timezone
+from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel, Field

@@ -19,7 +19,7 @@ Provides memory maintenance, bulk operations, and system management tools.
 """
 
 import logging
-from typing import List, Optional, Dict, Any, TYPE_CHECKING
+from typing import List, Optional
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Depends, Query
@@ -28,7 +28,6 @@ from pydantic import BaseModel, Field
 from ...storage.base import MemoryStorage
 # OAuth config no longer needed - auth is always enabled
 from ..dependencies import get_storage
-from .memories import MemoryResponse, memory_to_response
 
 # OAuth authentication imports
 from ..oauth.middleware import require_write_access, AuthenticationResult

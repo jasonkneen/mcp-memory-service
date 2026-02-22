@@ -6,7 +6,6 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 

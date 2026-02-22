@@ -579,7 +579,6 @@ class CloudflareStorage(MemoryStorage):
         }
         
         # Convert to NDJSON format as required by the HTTP API
-        import json
         ndjson_content = json.dumps(vector_data) + "\n"
         
         try:

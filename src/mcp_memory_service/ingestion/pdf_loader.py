@@ -18,7 +18,7 @@ PDF document loader for extracting text content from PDF files.
 
 import logging
 from pathlib import Path
-from typing import AsyncGenerator, Dict, Any, Optional
+from typing import AsyncGenerator, Optional
 import asyncio
 
 from .base import DocumentLoader, DocumentChunk

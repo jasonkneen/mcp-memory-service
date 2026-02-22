@@ -5,9 +5,7 @@ Based on ONNXMiniLM_L6_V2 implementation.
 """
 
 import hashlib
-import json
 import logging
-import os
 import tarfile
 from pathlib import Path
 from typing import List, Optional, Union
