@@ -8,7 +8,7 @@ installation and verification scripts. Supports CUDA, ROCm, MPS, and DirectML.
 
 import os
 import subprocess
-from typing import Dict, Any, Tuple, Optional, Callable, List, Union
+from typing import Dict, Any, Tuple, Optional
 
 
 # Single source of truth for GPU platform detection configuration

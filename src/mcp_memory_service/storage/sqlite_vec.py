@@ -61,12 +61,9 @@ except ImportError:
 from .base import MemoryStorage
 from .migration_runner import MigrationRunner
 from ..models.memory import Memory, MemoryQueryResult
-from ..utils.hashing import generate_content_hash
 from ..utils.system_detection import (
     get_system_info,
-    get_optimal_embedding_settings,
     get_torch_device,
-    AcceleratorType
 )
 from ..config import SQLITEVEC_MAX_CONTENT_LENGTH
 

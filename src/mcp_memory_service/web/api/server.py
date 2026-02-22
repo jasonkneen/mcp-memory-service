@@ -25,7 +25,7 @@ import asyncio
 import logging
 import platform
 import subprocess
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, List, Tuple
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks

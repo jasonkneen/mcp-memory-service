@@ -10,6 +10,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [10.17.6] - 2026-02-22
+
+### Fixed
+
+- **Resolve 100 CodeQL import alerts across 51 files**: Eliminated all open `py/unused-import`, `py/repeated-import`, and `py/cyclic-import` CodeQL code scanning alerts with no functional changes.
+  - **py/unused-import (92 alerts)**: Removed unused imports from `typing`, stdlib (`os`, `sys`, `re`, `time`, `json`, `datetime`, etc.), and internal modules across 51 files in `storage/`, `server/`, `web/`, `consolidation/`, `quality/`, `ingestion/`, `utils/`, and `models/` packages.
+  - **py/repeated-import (6 alerts)**: Removed local duplicate imports (same module imported twice within a file) in `server_impl.py`, `consolidation/scheduler.py`, and related modules.
+  - **py/cyclic-import (2 alerts)**: Resolved circular import dependency in `utils/startup_orchestrator.py` by guarding type-only imports under `TYPE_CHECKING` block.
+
+## [10.17.5] - 2026-02-22
+
+### Security
+
+- **Upgrade vulnerable dependencies (38 Dependabot security alerts)**: Bumped minimum version constraints in `pyproject.toml` and regenerated `uv.lock` to address all open Dependabot alerts.
+  - **CRITICAL**: h11 0.14.0 → 0.16.0 (malformed chunked-encoding bypass)
+  - **HIGH**: pillow 11.0.0 → 12.1.1 (OOB write in image processing)
+  - **HIGH**: cryptography 46.0.1 → 46.0.5 (subgroup attack on DSA/DH)
+  - **HIGH**: protobuf 5.29.2 → 6.33.5 (JSON recursion DoS)
+  - **HIGH**: python-multipart 0.0.20 → 0.0.22 (arbitrary file write)
+  - **HIGH**: pyasn1 0.6.1 → 0.6.2 (DoS in DER/BER decoder)
+  - **HIGH**: urllib3 2.3.0 → 2.6.3 (decompression bomb DoS)
+  - **HIGH**: aiohttp 3.12.14 → 3.13.3 (CRLF injection, path traversal, multiple CVEs)
+  - **HIGH**: starlette 0.41.3 → 0.52.1 (DoS via Range header)
+  - **HIGH**: authlib 1.6.4 → 1.6.8 (DoS + account takeover via JWT)
+  - **HIGH**: setuptools 75.6.0 → 82.0.0 (path traversal via crafted wheel)
+  - **HIGH**: fastapi 0.115.6 → 0.129.2 (upgraded to resolve starlette constraint)
+  - **MEDIUM**: filelock 3.16.1 → 3.24.3 (TOCTOU symlink attack)
+  - **MEDIUM**: requests 2.32.3 → 2.32.5 (.netrc credential leak)
+  - **MEDIUM**: jinja2 3.1.5 → 3.1.6 (sandbox breakout)
+  - Note: `ecdsa` and `PyPDF2` have no fix available and were skipped.
+
 ## [10.17.4] - 2026-02-21
 
 ### Fixed

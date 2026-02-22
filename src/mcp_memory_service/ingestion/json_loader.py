@@ -19,7 +19,7 @@ JSON document loader for structured data files.
 import json
 import logging
 from pathlib import Path
-from typing import AsyncGenerator, Dict, Any, Union, List
+from typing import AsyncGenerator, Any
 import asyncio
 
 from .base import DocumentLoader, DocumentChunk

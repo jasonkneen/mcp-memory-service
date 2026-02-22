@@ -14,11 +14,9 @@ This enables rich knowledge graphs with meaningful relationship types beyond "re
 import re
 import logging
 from typing import Tuple, Optional, List
-from datetime import datetime
 
 from ..models.ontology import (
     get_parent_type,
-    validate_memory_type,
     validate_relationship,
 )
 

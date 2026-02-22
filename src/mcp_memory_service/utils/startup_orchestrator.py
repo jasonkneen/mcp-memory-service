@@ -27,10 +27,7 @@ import sys
 import asyncio
 import logging
 import traceback
-from typing import Any, TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from ..server_impl import MemoryServer
+from typing import Any
 
 # Import necessary functions and constants
 from ..server.client_detection import MCP_CLIENT

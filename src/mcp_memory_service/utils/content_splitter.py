@@ -21,7 +21,7 @@ like sentences, paragraphs, and code blocks to maintain readability.
 
 import re
 import math
-from typing import List, Optional
+from typing import List
 import logging
 
 logger = logging.getLogger(__name__)

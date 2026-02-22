@@ -18,7 +18,6 @@ Sync management endpoints for hybrid backend.
 Provides status monitoring and manual sync triggering for hybrid storage mode.
 """
 
-from typing import Dict, Any, TYPE_CHECKING
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Depends

@@ -21,7 +21,6 @@ including manual triggers and scheduler status queries.
 
 import logging
 from typing import Dict, Any, Optional
-from datetime import datetime
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 

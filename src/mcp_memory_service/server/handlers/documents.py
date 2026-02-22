@@ -20,7 +20,6 @@ Extracted from server_impl.py Phase 2.4 refactoring.
 """
 
 import logging
-import traceback
 from typing import List
 
 from mcp import types
