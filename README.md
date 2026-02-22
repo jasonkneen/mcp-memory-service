@@ -259,20 +259,19 @@ Export memories from mcp-memory-service → Import to shodh-cloudflare → Sync 
 ---
 
 
-## 🆕 Latest Release: **v10.17.12** (February 22, 2026)
+## 🆕 Latest Release: **v10.17.13** (February 22, 2026)
 
-**Security: Clean File Restoration + Final CodeQL Alert Remediation**
+**Security: Final 4 CodeQL Alerts Resolved — Zero Open Alerts**
 
 **What's New:**
-- **File triplication fixed**: Restored clean content in `web/api/documents.py`, `web/api/search.py`, `web/api/consolidation.py`, `web/oauth/authorization.py` after bad merge in v10.17.11 caused files to be duplicated 3x.
-- **18x py/repeated-import eliminated**: Duplicate import statements removed as result of de-triplication.
-- **9x py/multiple-definition eliminated**: Duplicate function definitions removed as result of de-triplication.
-- **4x py/log-injection resolved**: Remaining user-controlled data removed from log messages.
-- **12x py/stack-trace-exposure resolved**: Exception details removed from API error responses.
+- **Zero open CodeQL alerts**: Complete remediation of all GitHub code scanning findings.
+- **py/log-injection (1 alert)**: Removed integer arg from `logger.info` in `web/api/documents.py`.
+- **py/stack-trace-exposure (3 alerts)**: Explicit type casting (`str`/`int`/`float`) in API response dicts in `web/api/documents.py` and `web/api/consolidation.py` to break taint flow from user input to responses.
 
 ---
 
 **Previous Releases**:
+- **v10.17.12** - Security: File Restoration + 43 CodeQL Alerts (repeated-import, multiple-definition, log-injection, stack-trace-exposure)
 - **v10.17.11** - Security: 6 CodeQL Alerts Resolved (log injection, stack-trace-exposure, unused variable)
 - **v10.17.10** - Security: All 30 Remaining CodeQL Alerts Resolved (log injection, clear-text logging, URL redirection, stack-trace-exposure)
 - **v10.17.9** - Security: 17 CodeQL Alerts Resolved (clear-text logging, log injection, tarslip, ReDoS, URL redirection)

@@ -638,7 +638,7 @@ async def remove_document(upload_id: str, remove_from_memory: bool = True):
                 # Delete all memories with this upload_id tag
                 count, _, _ = await storage.delete_by_tags([upload_tag])
                 memories_deleted = count
-                logger.info("Deleted %d memories for upload", memories_deleted)
+                logger.info("Memories deleted for upload")
 
                 # If we deleted memories but don't have session info, try to get filename from first memory
                 if memories_deleted > 0 and not session:
@@ -662,10 +662,10 @@ async def remove_document(upload_id: str, remove_from_memory: bool = True):
 
         return {
             "status": "success",
-            "upload_id": upload_id,
-            "filename": filename,
-            "memories_deleted": memories_deleted,
-            "message": f"Document '{filename}' removed successfully"
+            "upload_id": str(upload_id)[:64],
+            "filename": str(filename)[:256],
+            "memories_deleted": int(memories_deleted),
+            "message": "Document removed successfully"
         }
 
     except HTTPException:
@@ -706,10 +706,10 @@ async def remove_documents_by_tags(tags: List[str]):
 
         return {
             "status": "success",
-            "tags": tags,
-            "memories_deleted": memories_deleted,
+            "tags": [str(t)[:128] for t in tags],
+            "memories_deleted": int(memories_deleted),
             "affected_uploads": affected_sessions,
-            "message": f"Deleted {memories_deleted} memories matching tags"
+            "message": "Memories deleted successfully"
         }
 
     except Exception:

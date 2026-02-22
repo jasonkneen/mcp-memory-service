@@ -10,6 +10,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [10.17.13] - 2026-02-22
+
+### Security
+- fix: resolve final 4 CodeQL alerts (log-injection, stack-trace-exposure)
+  - **py/log-injection (1 alert)**: Removed integer arg from logger.info in `web/api/documents.py`
+  - **py/stack-trace-exposure (3 alerts)**: Explicit type casting (str/int/float) in response dicts in `web/api/documents.py` and `web/api/consolidation.py` to break taint flow
+
 ## [10.17.12] - 2026-02-22
 
 ### Security

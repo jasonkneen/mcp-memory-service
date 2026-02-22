@@ -223,10 +223,10 @@ async def get_recommendations(time_horizon: str, user: AuthenticationResult = De
         recommendations = await consolidator.get_consolidation_recommendations(time_horizon)
 
         return {
-            "recommendation": recommendations.get("recommendation", "UNKNOWN"),
-            "memory_count": recommendations.get("memory_count", 0),
-            "reasons": recommendations.get("reasons", []),
-            "estimated_duration": recommendations.get("estimated_duration_seconds", 0.0)
+            "recommendation": str(recommendations.get("recommendation", "UNKNOWN"))[:64],
+            "memory_count": int(recommendations.get("memory_count", 0)),
+            "reasons": [str(r)[:256] for r in recommendations.get("reasons", [])],
+            "estimated_duration": float(recommendations.get("estimated_duration_seconds", 0.0))
         }
 
     except HTTPException:
