@@ -673,7 +673,7 @@ CONSOLIDATION_CONFIG = {
     'associations_enabled': os.getenv('MCP_ASSOCIATIONS_ENABLED', 'true').lower() == 'true',
     'min_similarity': float(os.getenv('MCP_ASSOCIATION_MIN_SIMILARITY', '0.3')),
     'max_similarity': float(os.getenv('MCP_ASSOCIATION_MAX_SIMILARITY', '0.7')),
-    'max_pairs_per_run': int(os.getenv('MCP_ASSOCIATION_MAX_PAIRS', '100')),
+    'max_pairs_per_run': int(os.getenv('MCP_ASSOCIATION_MAX_PAIRS', '1000')),
     
     # Clustering settings
     'clustering_enabled': os.getenv('MCP_CLUSTERING_ENABLED', 'true').lower() == 'true',
