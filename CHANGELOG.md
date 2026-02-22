@@ -10,6 +10,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [10.17.9] - 2026-02-22
+
+### Security
+- fix: resolve 17 remaining CodeQL security alerts (clear-text logging of OAuth config, log injection in API endpoints, tarslip path traversal, polynomial ReDoS, URL redirection)
+  - **py/clear-text-logging-sensitive-data (5 alerts)**: Changed `logger.info` to `logger.debug` for OAuth configuration values in `config.py` and `web/oauth/storage/__init__.py`
+  - **py/log-injection (4 alerts)**: Converted f-string logger calls to `%`-style format with inline sanitization in `web/api/search.py`, `web/api/documents.py`, `web/oauth/authorization.py`
+  - **py/stack-trace-exposure (3 alerts)**: Removed exception variable from `logger.error` in `web/api/consolidation.py`; documents.py endpoints already use generic error messages
+  - **py/tarslip (1 alert)**: Replaced `tar.extractall()` with member-by-member extraction after path traversal validation in `embeddings/onnx_embeddings.py`
+  - **py/polynomial-redos (1 alert)**: Added `{0,50}` bound to `date_range` regex capture groups in `utils/time_parser.py`
+  - **py/url-redirection (3 alerts)**: Added `_sanitize_state()` helper to strip non-safe characters from OAuth state parameter before inclusion in redirect URLs in `web/oauth/authorization.py`
+
+
 ## [10.17.8] - 2026-02-22
 
 ### Security

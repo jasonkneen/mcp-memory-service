@@ -259,9 +259,21 @@ Export memories from mcp-memory-service → Import to shodh-cloudflare → Sync 
 ---
 
 
-## 🆕 Latest Release: **v10.17.6** (February 22, 2026)
+## 🆕 Latest Release: **v10.17.9** (February 22, 2026)
 
-**Code Quality: 100 CodeQL Import Alerts Resolved Across 51 Files**
+**Security: 17 Remaining CodeQL Security Alerts Resolved**
+
+**What's New:**
+- **17 CodeQL security alerts eliminated**: Resolved clear-text logging (5x), log injection (4x), stack-trace-exposure (3x), tarslip (1x), polynomial ReDoS (1x), and URL redirection (3x) alerts.
+- **OAuth config logging hardened**: Changed `logger.info` to `logger.debug` for all OAuth configuration values to prevent sensitive data appearing in production INFO logs.
+- **Log injection prevention**: Converted f-string logger calls with user-controlled data to `%`-style format strings across API endpoints.
+- **Tar extraction hardened**: Replaced `tar.extractall()` with member-by-member extraction after path traversal validation in ONNX model download.
+- **ReDoS mitigation**: Added `{0,50}` bound to `date_range` regex capture groups in time parser.
+- **OAuth redirect hardened**: Added `_sanitize_state()` helper to strip non-safe characters from OAuth state parameter before redirect.
+
+---
+
+**Previous Release: v10.17.6** (February 22, 2026) - Code Quality: 100 CodeQL Import Alerts Resolved Across 51 Files
 
 **What's New:**
 - **100 CodeQL alerts eliminated**: All open `py/unused-import`, `py/repeated-import`, and `py/cyclic-import` alerts resolved across 51 files with no functional changes.
