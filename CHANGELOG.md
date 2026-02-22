@@ -10,6 +10,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [10.17.7] - 2026-02-22
+
+### Security
+
+- **Resolve 100 CodeQL security and code quality alerts across 40 files**: Comprehensive remediation of all remaining CodeQL alerts.
+  - **py/log-injection (34 alerts)**: Added `_sanitize_log_value()` helper in 15 files (`sqlite_vec.py`, `cloudflare.py`, `http_client.py`, `documents.py`, `manage.py`, `quality.py`, `search.py`, `sync.py`, `app.py`, `authorization.py`, `registration.py`, `oauth/storage/sqlite.py`, `api/operations.py`, `mcp_server.py`). All user-provided values are stripped of `\n`, `\r`, and `\x1b` before inclusion in log messages, preventing log forging attacks.
+  - **py/tarslip (1 alert)**: Added `_safe_tar_extract()` in `embeddings/onnx_embeddings.py` that validates each tar member's resolved path stays within the target directory before extraction, preventing path traversal attacks (CWE-22).
+  - **py/stack-trace-exposure (2 alerts)**: HTTP 500 responses in `web/api/documents.py` no longer include internal exception details (`str(e)`). Generic "Internal server error" messages returned to clients; full tracebacks are logged internally via `logger.exception()`.
+
+### Fixed
+
+- **py/unused-import (22 alerts)**: Removed unused imports (`List`, `Optional`, `Tuple`, `field`, `Queue`, `threading`, `warnings`, `generate_content_hash`, `Field`, `TYPE_CHECKING`, `datetime`, `timezone`) across 15 files.
+- **py/unused-local-variable (22 alerts)**: Removed or discarded dead assignments in 13 files including `server_impl.py`, `compression.py`, `implicit_signals.py`, `csv_loader.py`, `server/__main__.py`, `sync.py`, `quality.py`, `manage.py`, `discovery/client.py`.
+- **py/call/wrong-named-argument (7 alerts)**: Fixed `_DummyFastMCP.tool()` in `mcp_server.py` to accept `*args, **kwargs` instead of a fixed `name` parameter.
+- **py/mixed-returns (3 alerts)**: Added explicit return values in `lm_studio_compat.py` (bare `return` → `return None`), `utils/db_utils.py` (added `else: return True, "..."` branch), and `web/api/documents.py` (added `return None` in except block).
+- **py/mixed-tuple-returns (1 alert)**: Made all `sync_single_memory()` return tuples in `storage/hybrid.py` consistently 3-element by adding `None` as third element to previously 2-element returns.
+- **py/inheritance/signature-mismatch (2 alerts)**: Updated `ConsolidationBase.process()` abstract method signature to include `*args` so subclasses (`compression.py`, `forgetting.py`) no longer mismatched the base signature.
+- **py/multiple-definition (2 alerts)**: Removed duplicate `get_all_memories()` definition in `storage/sqlite_vec.py` (kept the feature-complete version with `limit`, `offset`, `memory_type`, `tags` parameters); removed dead `loop = asyncio.get_running_loop()` assignment in `api/client.py`.
+- **py/comparison-of-identical-expressions (1 alert)**: Replaced `not (x != x)` NaN check with `not math.isnan(x)` in `storage/sqlite_vec.py`.
+- **py/undefined-export (1 alert)**: Removed `"oauth_storage"` from `__all__` in `web/oauth/storage/__init__.py` (it is provided via `__getattr__` lazy loading, not a direct module-level definition).
+- **py/unused-global-variable (1 alert)**: Removed module-level `consolidator: Optional[...]` declaration from `web/app.py`; the variable is now used only as a local within the lifespan context manager.
+- **py/uninitialized-local-variable (1 alert)**: Added `score = 0.5` initialization before the conditional scoring block in `quality/onnx_ranker.py` to ensure the variable is always defined.
+
 ## [10.17.6] - 2026-02-22
 
 ### Fixed
