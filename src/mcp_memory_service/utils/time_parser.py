@@ -66,7 +66,7 @@ PATTERNS = {
     "this_period": re.compile(r'this\s+(day|week|month|year|summer|spring|winter|fall|autumn)'),
     "month_name": re.compile(r'(january|february|march|april|may|june|july|august|september|october|november|december)'),
     # Use \S[^&]*? instead of .+? to prevent backtracking on whitespace-only strings
-    "date_range": re.compile(r'between\s+(\S[^&]*?)\s+and\s+(\S[^&]*?)(?=\s|$)'),
+    "date_range": re.compile(r'between\s+(\S[^&]{0,50}?)\s+and\s+(\S[^&]{0,50}?)(?=\s|$)'),
     "time_of_day": re.compile(r'(morning|afternoon|evening|night|noon|midnight)'),
     "recent": re.compile(r'recent|lately|recently'),
     "specific_date": re.compile(r'(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?'),

@@ -47,6 +47,13 @@ def _sanitize_log_value(value: object) -> str:
     return str(value).replace("\n", "\\n").replace("\r", "\\r").replace("\x1b", "\\x1b")
 
 
+def _sanitize_state(state: str) -> str:
+    """Sanitize the OAuth state parameter to prevent log injection and open redirect abuse."""
+    # Allow only alphanumeric, hyphen, underscore, and dot characters (RFC 6749 opaque value)
+    import re as _re
+    return _re.sub(r'[^A-Za-z0-9\-_.]', '', state)[:128]
+
+
 def parse_basic_auth(authorization_header: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
     """
     Parse HTTP Basic authentication header.
@@ -158,7 +165,7 @@ async def authorize(
     Implements the authorization code flow. For MVP, this auto-approves
     all requests without user interaction.
     """
-    logger.info(f"Authorization request: client_id={_sanitize_log_value(client_id)}, response_type={_sanitize_log_value(response_type)}")
+    logger.info("Authorization request: client_id=%s, response_type=%s", str(client_id).replace(chr(10), " ").replace(chr(13), " "), str(response_type).replace(chr(10), " ").replace(chr(13), " "))
 
     # Validate redirect_uri against registered client BEFORE any redirect use.
     # Per OAuth 2.1 spec, only pre-registered URIs may be used as redirect targets.
@@ -179,7 +186,7 @@ async def authorize(
                 "error_description": "Only 'code' response type is supported"
             }
             if state:
-                error_params["state"] = state
+                error_params["state"] = _sanitize_state(state)
 
             # Only redirect to a validated URI; otherwise return HTTP error
             if validated_redirect_uri:
@@ -206,25 +213,25 @@ async def authorize(
         # Build redirect URL with authorization code
         redirect_params = {"code": auth_code}
         if state:
-            redirect_params["state"] = state
+            redirect_params["state"] = _sanitize_state(state)
 
         redirect_url = f"{safe_redirect_uri}?{urlencode(redirect_params)}"
 
-        logger.info(f"Authorization granted for client_id={_sanitize_log_value(client_id)}")
+        logger.info("Authorization granted for client_id=%s", str(client_id).replace(chr(10), " ").replace(chr(13), " "))
         return RedirectResponse(url=redirect_url)
 
     except HTTPException:
         # Re-raise HTTP exceptions
         raise
     except Exception as e:
-        logger.error(f"Authorization error: {e}")
+        logger.error("Authorization error occurred")
 
         error_params = {
             "error": "server_error",
             "error_description": "Internal server error"
         }
         if state:
-            error_params["state"] = state
+            error_params["state"] = _sanitize_state(state)
 
         # Only redirect to a pre-validated URI; otherwise return HTTP error
         if validated_redirect_uri:
@@ -311,7 +318,7 @@ async def _handle_authorization_code_grant(
         expires_in=expires_in
     )
 
-    logger.info(f"Access token issued for client_id={_sanitize_log_value(final_client_id)}")
+    logger.info("Access token issued for client_id=%s", str(final_client_id).replace(chr(10), " ").replace(chr(13), " "))
     return TokenResponse(
         access_token=access_token,
         token_type="Bearer",
@@ -354,7 +361,7 @@ async def _handle_client_credentials_grant(
         expires_in=expires_in
     )
 
-    logger.info(f"Client credentials token issued for client_id={_sanitize_log_value(final_client_id)}")
+    logger.info("Client credentials token issued for client_id=%s", str(final_client_id).replace(chr(10), " ").replace(chr(13), " "))
     return TokenResponse(
         access_token=access_token,
         token_type="Bearer",
@@ -387,7 +394,7 @@ async def token(
     final_client_secret = basic_client_secret or client_secret
 
     auth_method = "client_secret_basic" if basic_client_id else "client_secret_post"
-    logger.info(f"Token request: grant_type={_sanitize_log_value(grant_type)}, client_id={_sanitize_log_value(final_client_id)}, auth_method={_sanitize_log_value(auth_method)}")
+    logger.info("Token request: grant_type=%s, client_id=%s, auth_method=%s", str(grant_type).replace(chr(10), " ").replace(chr(13), " "), str(final_client_id).replace(chr(10), " ").replace(chr(13), " "), str(auth_method).replace(chr(10), " ").replace(chr(13), " "))
 
     try:
         if grant_type == "authorization_code":

@@ -738,9 +738,9 @@ Example:
 """
 
 _oauth_backend_name = str(OAUTH_STORAGE_BACKEND)  # non-secret: backend type string (e.g. "sqlite", "memory")
-logger.info("OAuth storage backend: %s", _oauth_backend_name)
+logger.debug("OAuth storage backend: %s", _oauth_backend_name)
 if OAUTH_STORAGE_BACKEND == "sqlite":
-    logger.info("OAuth SQLite database path: %s", str(OAUTH_SQLITE_PATH))
+    logger.debug("OAuth SQLite database path: %s", str(OAUTH_SQLITE_PATH))
 
 # RSA key pair configuration for JWT signing (RS256)
 # Private key for signing tokens
@@ -893,7 +893,7 @@ def validate_oauth_configuration() -> None:
         for _warn in warnings:
             logger.warning("  - %s", _warn)
 
-    logger.info("OAuth configuration validation successful")
+    logger.debug("OAuth configuration validation successful")
 
 # OAuth server configuration
 def get_oauth_issuer() -> str:
@@ -928,16 +928,16 @@ OAUTH_AUTHORIZATION_CODE_EXPIRE_MINUTES = safe_get_int_env('MCP_OAUTH_AUTHORIZAT
 ALLOW_ANONYMOUS_ACCESS = safe_get_bool_env('MCP_ALLOW_ANONYMOUS_ACCESS', False)
 
 _oauth_enabled_flag = bool(OAUTH_ENABLED)  # non-secret: boolean flag
-logger.info("OAuth enabled: %s", _oauth_enabled_flag)
+logger.debug("OAuth enabled: %s", _oauth_enabled_flag)
 if OAUTH_ENABLED:
     _oauth_issuer_url = str(OAUTH_ISSUER)  # non-secret: public issuer URL
     _jwt_algo = str(get_jwt_algorithm())   # non-secret: algorithm name (e.g. "RS256")
     _token_expiry = int(OAUTH_ACCESS_TOKEN_EXPIRE_MINUTES)  # non-secret: expiry minutes
     _anon_access = bool(ALLOW_ANONYMOUS_ACCESS)             # non-secret: boolean flag
-    logger.info("OAuth issuer: %s", _oauth_issuer_url)
-    logger.info("OAuth JWT algorithm: %s", _jwt_algo)
-    logger.info("OAuth access token expiry: %d minutes", _token_expiry)
-    logger.info("Anonymous access allowed: %s", _anon_access)
+    logger.debug("OAuth issuer: %s", _oauth_issuer_url)
+    logger.debug("OAuth JWT algorithm: %s", _jwt_algo)
+    logger.debug("OAuth access token expiry: %d minutes", _token_expiry)
+    logger.debug("Anonymous access allowed: %s", _anon_access)
 
     # Warn about potential reverse proxy configuration issues
     if not os.getenv('MCP_OAUTH_ISSUER') and ("localhost" in OAUTH_ISSUER or "127.0.0.1" in OAUTH_ISSUER):

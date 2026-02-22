@@ -43,11 +43,14 @@ def _verify_sha256(fname: str, expected_sha256: str) -> bool:
 def _safe_tar_extract(tar: tarfile.TarFile, path) -> None:
     """Safely extract a tar archive, preventing path traversal attacks."""
     abs_path = os.path.realpath(str(path))
-    for member in tar.getmembers():
+    members = tar.getmembers()
+    for member in members:
         member_path = os.path.realpath(os.path.join(abs_path, member.name))
         if not member_path.startswith(abs_path + os.sep) and member_path != abs_path:
             raise ValueError(f"Attempted path traversal in tar file: {member.name}")
-    tar.extractall(path)
+    # Extract each member individually after validation to avoid tarslip
+    for member in members:
+        tar.extract(member, path, set_attrs=False)
 
 
 class ONNXEmbeddingModel:

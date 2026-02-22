@@ -621,7 +621,7 @@ async def remove_document(upload_id: str, remove_from_memory: bool = True):
     Returns:
         Removal status with count of memories deleted
     """
-    logger.info(f"Remove document request for upload_id: {_sanitize_log_value(upload_id)}, remove_from_memory: {remove_from_memory}")
+    logger.info("Remove document request for upload_id: %s, remove_from_memory: %s", str(upload_id).replace(chr(10), " ").replace(chr(13), " "), remove_from_memory)
 
     # Get session info if available (may not exist after server restart)
     session = upload_sessions.get(upload_id)
@@ -635,13 +635,13 @@ async def remove_document(upload_id: str, remove_from_memory: bool = True):
 
             # Search by tag pattern: upload_id:{upload_id}
             upload_tag = f"upload_id:{upload_id}"
-            logger.info(f"Searching for memories with tag: {_sanitize_log_value(upload_tag)}")
+            logger.info("Searching for memories with tag: %s", str(upload_tag).replace(chr(10), " ").replace(chr(13), " "))
 
             try:
                 # Delete all memories with this upload_id tag
                 count, _, _ = await storage.delete_by_tags([upload_tag])
                 memories_deleted = count
-                logger.info(f"Deleted {memories_deleted} memories with tag {_sanitize_log_value(upload_tag)}")
+                logger.info("Deleted %d memories with tag %s", memories_deleted, str(upload_tag).replace(chr(10), " ").replace(chr(13), " "))
 
                 # If we deleted memories but don't have session info, try to get filename from first memory
                 if memories_deleted > 0 and not session:
@@ -688,7 +688,7 @@ async def remove_documents_by_tags(tags: List[str]):
     Returns:
         Removal status with affected upload IDs and memory counts
     """
-    logger.info(f"Remove documents by tags request: {[_sanitize_log_value(t) for t in tags]}")
+    logger.info("Remove documents by tags request: %s", [str(t).replace(chr(10), " ").replace(chr(13), " ") for t in tags])
 
     try:
         # Get storage
@@ -731,14 +731,14 @@ async def search_document_content(upload_id: str, limit: int = 1000):
     Returns:
         List of memories with their content and metadata
     """
-    logger.info(f"Search document content for upload_id: {_sanitize_log_value(upload_id)}, limit: {limit}")
+    logger.info("Search document content for upload_id: %s, limit: %d", str(upload_id).replace(chr(10), " ").replace(chr(13), " "), limit)
 
     # Get session info if available (may not exist after server restart)
     session = upload_sessions.get(upload_id)
 
     # If no session, we'll still try to find memories by upload_id tag
     if not session:
-        logger.info(f"No upload session found for {_sanitize_log_value(upload_id)}, searching by tag only")
+        logger.info("No upload session found for %s, searching by tag only", str(upload_id).replace(chr(10), " ").replace(chr(13), " "))
 
     try:
         # Get storage
@@ -746,7 +746,7 @@ async def search_document_content(upload_id: str, limit: int = 1000):
 
         # Search for memories with upload_id tag
         upload_tag = f"upload_id:{upload_id}"
-        logger.info(f"Searching for memories with tag: {_sanitize_log_value(upload_tag)}")
+        logger.info("Searching for memories with tag: %s", str(upload_tag).replace(chr(10), " ").replace(chr(13), " "))
 
         # Use tag search (search_by_tags doesn't support limit parameter)
         all_memories = await storage.search_by_tags([upload_tag])
