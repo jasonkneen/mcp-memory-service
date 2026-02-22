@@ -259,20 +259,22 @@ Export memories from mcp-memory-service → Import to shodh-cloudflare → Sync 
 ---
 
 
-## 🆕 Latest Release: **v10.17.10** (February 22, 2026)
+## 🆕 Latest Release: **v10.17.12** (February 22, 2026)
 
-**Security: Final CodeQL Security Alerts Resolved (Zero Remaining)**
+**Security: Clean File Restoration + Final CodeQL Alert Remediation**
 
 **What's New:**
-- **All CodeQL alerts eliminated**: Resolved final 30 open alerts - clear-text logging (5x), log injection (19x), stack-trace-exposure (3x), URL redirection (3x).
-- **Log injection fully eliminated**: Removed all user-controlled data from log messages across `web/api/documents.py`, `web/api/search.py`, `web/oauth/authorization.py` — replaced with static context strings.
-- **OAuth config logging hardened**: Removed OAuth configuration values (issuer URL, algorithm, expiry, backend type, paths) from all log statements in `config.py` and `oauth/storage/__init__.py`.
-- **URL redirection hardened**: `validate_redirect_uri()` now returns the stored (trusted) URI from the database instead of the user-supplied value, eliminating taint flow into `RedirectResponse`.
-- **Zero open CodeQL alerts**: Complete remediation of all GitHub code scanning findings.
+- **File triplication fixed**: Restored clean content in `web/api/documents.py`, `web/api/search.py`, `web/api/consolidation.py`, `web/oauth/authorization.py` after bad merge in v10.17.11 caused files to be duplicated 3x.
+- **18x py/repeated-import eliminated**: Duplicate import statements removed as result of de-triplication.
+- **9x py/multiple-definition eliminated**: Duplicate function definitions removed as result of de-triplication.
+- **4x py/log-injection resolved**: Remaining user-controlled data removed from log messages.
+- **12x py/stack-trace-exposure resolved**: Exception details removed from API error responses.
 
 ---
 
 **Previous Releases**:
+- **v10.17.11** - Security: 6 CodeQL Alerts Resolved (log injection, stack-trace-exposure, unused variable)
+- **v10.17.10** - Security: All 30 Remaining CodeQL Alerts Resolved (log injection, clear-text logging, URL redirection, stack-trace-exposure)
 - **v10.17.9** - Security: 17 CodeQL Alerts Resolved (clear-text logging, log injection, tarslip, ReDoS, URL redirection)
 - **v10.17.8** - Security: 27 CodeQL Alerts Resolved (clear-text logging, log injection, stack-trace-exposure, URL redirection, polynomial ReDoS, empty-except, unused imports)
 - **v10.17.7** - Security: 100 CodeQL Alerts Resolved (security + code quality)

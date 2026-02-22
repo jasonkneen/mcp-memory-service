@@ -10,6 +10,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [10.17.12] - 2026-02-22
+
+### Security
+- fix: restore clean file content and resolve remaining CodeQL alerts (repeated-import, multiple-definition, log-injection, stack-trace-exposure)
+  - **py/repeated-import (18 alerts)**: Removed triplicated file content caused by bad merge in v10.17.11 across `web/api/documents.py`, `web/api/search.py`, `web/api/consolidation.py`, `web/oauth/authorization.py`
+  - **py/multiple-definition (9 alerts)**: Eliminated duplicate function definitions resulting from file triplication
+  - **py/log-injection (4 alerts)**: Removed remaining user-controlled data from log messages
+  - **py/stack-trace-exposure (12 alerts)**: Removed exception details from error responses in API layer
+
 ## [10.17.11] - 2026-02-22
 
 ### Security
