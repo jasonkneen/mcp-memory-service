@@ -21,10 +21,7 @@ and performance optimizations for the MCP server.
 
 import sys
 import os
-import logging
-import subprocess
 from importlib.metadata import version as pkg_version
-from importlib.util import find_spec
 
 from .logging_config import logger
 

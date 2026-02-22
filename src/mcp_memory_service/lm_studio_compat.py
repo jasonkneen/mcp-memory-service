@@ -8,8 +8,7 @@ This module provides a monkey patch to handle LM Studio's non-standard
 import logging
 import sys
 import platform
-from typing import Any, Dict, Union
-from pydantic import BaseModel, Field
+from typing import Any, Union
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +43,8 @@ def add_windows_timeout_handling():
 
 def create_cancelled_notification_class():
     """Create a proper CancelledNotification class if it doesn't exist."""
-    from pydantic import BaseModel
-    
+    from pydantic import BaseModel, Field
+
     class CancelledNotificationParams(BaseModel):
         """Parameters for cancelled notification."""
         requestId: Any = Field(default=None, alias="requestId")

@@ -14,10 +14,9 @@
 
 """APScheduler integration for autonomous consolidation operations."""
 
-import asyncio
 import logging
-from typing import Dict, Any, Optional, Callable, Awaitable
-from datetime import datetime, timedelta
+from typing import Dict, Any, Optional
+from datetime import datetime
 
 try:
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -31,7 +30,6 @@ except ImportError:
     APSCHEDULER_AVAILABLE = False
 
 from .consolidator import DreamInspiredConsolidator
-from .base import ConsolidationConfig
 
 class ConsolidationScheduler:
     """

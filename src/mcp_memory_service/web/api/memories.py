@@ -18,8 +18,7 @@ Memory CRUD endpoints for the HTTP interface.
 
 import logging
 import socket
-from typing import List, Optional, Dict, Any, TYPE_CHECKING
-from datetime import datetime
+from typing import List, Optional, Dict, Any
 
 from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from pydantic import BaseModel, Field
@@ -27,7 +26,6 @@ from pydantic import BaseModel, Field
 from ...storage.base import MemoryStorage
 from ...models.memory import Memory
 from ...services.memory_service import MemoryService
-from ...utils.hashing import generate_content_hash
 from ...config import INCLUDE_HOSTNAME
 # OAuth config no longer needed - auth is always enabled
 from ..dependencies import get_storage, get_memory_service

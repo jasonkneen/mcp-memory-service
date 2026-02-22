@@ -20,7 +20,7 @@ import time
 import platform
 import psutil
 from datetime import datetime, timezone
-from typing import Dict, Any, TYPE_CHECKING
+from typing import Dict, Any
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel

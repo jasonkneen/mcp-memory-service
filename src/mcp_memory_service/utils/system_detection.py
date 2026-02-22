@@ -22,7 +22,7 @@ import sys
 import platform
 import logging
 import subprocess
-from typing import Dict, Any, Tuple, Optional, List
+from typing import Dict, Any
 import json
 
 logger = logging.getLogger(__name__)

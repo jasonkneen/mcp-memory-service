@@ -4,11 +4,10 @@ Server-Sent Events endpoints for real-time updates.
 
 from fastapi import APIRouter, Request, Depends
 from pydantic import BaseModel
-from typing import Dict, Any, List, TYPE_CHECKING
+from typing import List
 
 # OAuth config no longer needed - auth is always enabled
 from ..sse import create_event_stream, sse_manager
-from ..dependencies import get_storage
 
 # OAuth authentication imports
 from ..oauth.middleware import require_read_access, AuthenticationResult

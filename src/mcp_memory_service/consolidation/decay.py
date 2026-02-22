@@ -15,7 +15,7 @@
 """Exponential decay scoring for memory relevance calculation."""
 
 import math
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from datetime import datetime, timezone
 from dataclasses import dataclass
 

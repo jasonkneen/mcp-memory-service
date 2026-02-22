@@ -21,7 +21,7 @@ for retrieving memories based on when they were stored.
 import re
 import logging
 from datetime import datetime, timedelta, date, time
-from typing import Tuple, Optional, Dict, Any, List
+from typing import Tuple, Optional, Dict
 
 logger = logging.getLogger(__name__)
 

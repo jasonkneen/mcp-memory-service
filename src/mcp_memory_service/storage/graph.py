@@ -28,9 +28,8 @@ import sqlite3
 import json
 import logging
 import asyncio
-from typing import List, Dict, Any, Tuple, Optional, Set
+from typing import List, Dict, Any, Tuple, Optional
 from datetime import datetime, timezone
-import os
 
 from mcp_memory_service.models.ontology import is_symmetric_relationship, validate_relationship
 

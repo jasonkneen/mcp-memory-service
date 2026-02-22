@@ -19,7 +19,6 @@ Database health checks, cache statistics, and monitoring utilities.
 Extracted from server_impl.py Phase 2.3 refactoring.
 """
 
-import os
 import json
 import logging
 import traceback

@@ -22,7 +22,6 @@ without changing application code.
 
 import logging
 import os
-from typing import Optional
 from .base import OAuthStorage
 from .memory import MemoryOAuthStorage
 from .sqlite import SQLiteOAuthStorage

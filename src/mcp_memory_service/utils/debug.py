@@ -15,7 +15,6 @@
 """Debug utilities for memory service."""
 from typing import Dict, Any, List
 import logging
-import numpy as np
 from ..models.memory import Memory, MemoryQueryResult
 
 logger = logging.getLogger(__name__)

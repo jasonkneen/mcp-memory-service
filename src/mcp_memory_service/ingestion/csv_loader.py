@@ -19,7 +19,7 @@ CSV document loader for tabular data files.
 import csv
 import logging
 from pathlib import Path
-from typing import AsyncGenerator, Dict, Any, List, Optional
+from typing import AsyncGenerator, List, Optional
 import asyncio
 import io
 

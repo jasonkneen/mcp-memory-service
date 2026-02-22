@@ -5,7 +5,6 @@ Uses ms-marco-MiniLM-L-6-v2 model for relevance scoring.
 Exports the model from transformers to ONNX format on first use.
 """
 
-import json
 import logging
 import os
 import threading
