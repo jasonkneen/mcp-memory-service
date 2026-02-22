@@ -25,7 +25,7 @@ from typing import Optional, Tuple
 from urllib.parse import urlencode
 from fastapi import APIRouter, HTTPException, status, Form, Query, Request
 from fastapi.responses import RedirectResponse
-from jose import jwt
+import jwt
 
 from ...config import (
     OAUTH_ISSUER,
