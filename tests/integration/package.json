@@ -12,6 +12,9 @@
     "sinon": "^17.0.0"
   },
   "devDependencies": {},
+  "overrides": {
+    "minimatch": "^10.2.1"
+  },
   "keywords": ["mcp", "bridge", "integration", "testing"],
   "author": "",
   "license": "Apache-2.0"
