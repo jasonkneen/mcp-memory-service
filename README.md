@@ -259,19 +259,18 @@ Export memories from mcp-memory-service → Import to shodh-cloudflare → Sync 
 ---
 
 
-## 🆕 Latest Release: **v10.17.15** (February 23, 2026)
+## 🆕 Latest Release: **v10.17.16** (February 23, 2026)
 
-**Permission-Request Hook Made Opt-In — No More Silent Global Hook Installation**
+**Security: Fix minimatch ReDoS and Replace Abandoned PyPDF2 with pypdf**
 
 **What's New:**
-- **Permission hook is now opt-in** (#503): `permission-request.js` is no longer silently installed alongside other hooks — users are prompted with a clear explanation of its global scope.
-- **Global-effect warning**: Hook applies to ALL MCP servers on the system, not just mcp-memory-service — now clearly documented.
-- **CLI flags added**: `--permission-hook` / `--no-permission-hook` for non-interactive scripted installs.
-- **Config default fixed**: `permissionRequest.enabled` now defaults to `false` in `config.template.json`.
+- **minimatch ReDoS fixed** (Dependabot #3, #6 — High severity): Pinned `minimatch` to `^10.2.1` in npm test packages, eliminating a ReDoS attack vector.
+- **PyPDF2 replaced with pypdf** (Dependabot moderate — Infinite Loop): Migrated from the unmaintained `PyPDF2` to its official successor `pypdf`; no functional change to PDF ingestion.
 
 ---
 
 **Previous Releases**:
+- **v10.17.15** - Permission-Request Hook Made Opt-In (no silent global hook installation, CLI flags added)
 - **v10.17.14** - Security + Performance: CVE-2024-23342 (ecdsa Minerva attack) eliminated via PyJWT migration, CWE-209 fixed, MCP_ASSOCIATION_MAX_PAIRS raised 100→1000
 - **v10.17.13** - Security: Final 4 CodeQL Alerts Resolved (log-injection, stack-trace-exposure) — Zero Open Alerts
 - **v10.17.12** - Security: File Restoration + 43 CodeQL Alerts (repeated-import, multiple-definition, log-injection, stack-trace-exposure)

@@ -10,6 +10,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [10.17.16] - 2026-02-23
+
+### Security
+- **Fix minimatch ReDoS vulnerability** (Dependabot #3, #6 — High severity): Pin `minimatch` to `^10.2.1` via npm overrides in `tests/bridge/package.json` and `tests/integration/package.json`, eliminating the ReDoS attack vector present in older versions.
+- **Replace abandoned PyPDF2 with maintained `pypdf`** (Dependabot moderate alert — Infinite Loop): `PyPDF2` is no longer maintained and has a known infinite-loop vulnerability; replaced with its official successor `pypdf` in `pyproject.toml`. Updated all import and API usage in `src/mcp_memory_service/ingestion/pdf_loader.py`.
+
 ## [10.17.15] - 2026-02-23
 
 ### Changed
