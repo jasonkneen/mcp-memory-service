@@ -722,8 +722,7 @@ class HookInstaller:
                 "session-start.js",
                 "session-end.js",
                 "memory-retrieval.js",
-                "topic-change.js",
-                "permission-request.js"
+                "topic-change.js"
             ]
 
             for file in core_files:
@@ -789,6 +788,24 @@ class HookInstaller:
 
         except Exception as e:
             self.error(f"Failed to install basic hooks: {e}")
+            return False
+
+    def install_permission_hook(self) -> bool:
+        """Copy permission-request.js to the hooks directory (opt-in, issue #503)."""
+        self.info("Installing permission-request hook...")
+        try:
+            (self.claude_hooks_dir / "core").mkdir(parents=True, exist_ok=True)
+            src = self.script_dir / "core" / "permission-request.js"
+            dst = self.claude_hooks_dir / "core" / "permission-request.js"
+            if src.exists():
+                shutil.copy2(src, dst)
+                self.success("permission-request.js installed")
+                return True
+            else:
+                self.error("permission-request.js not found in source directory")
+                return False
+        except Exception as e:
+            self.error(f"Failed to install permission hook: {e}")
             return False
 
     def install_auto_capture(self) -> bool:
@@ -969,7 +986,7 @@ class HookInstaller:
             self.error(f"Failed to install configuration: {e}")
             return False
 
-    def configure_claude_settings(self, install_mid_conversation: bool = False, install_auto_capture: bool = False) -> bool:
+    def configure_claude_settings(self, install_mid_conversation: bool = False, install_auto_capture: bool = False, install_permission_hook: bool = False) -> bool:
         """Configure Claude Code settings.json for hook integration."""
         self.info("Configuring Claude Code settings...")
 
@@ -1026,22 +1043,30 @@ class HookInstaller:
                         }
                     ]
 
-            # Add PreToolUse hook for MCP permission auto-approval (v8.73.0+)
-            permission_request_script = self.claude_hooks_dir / 'core' / 'permission-request.js'
-            if permission_request_script.exists():
-                hook_config["hooks"]["PreToolUse"] = [
-                    {
-                        "matcher": "mcp__",
-                        "hooks": [
-                            {
-                                "type": "command",
-                                "command": f'node "{self.claude_hooks_dir}/core/permission-request.js"',
-                                "timeout": 5
-                            }
-                        ]
-                    }
-                ]
-                self.success("Added PreToolUse hook for MCP permission auto-approval")
+            # Add PreToolUse hook for MCP permission auto-approval (opt-in only, issue #503)
+            if install_permission_hook:
+                permission_request_script = self.claude_hooks_dir / 'core' / 'permission-request.js'
+                if permission_request_script.exists():
+                    hook_config["hooks"]["PreToolUse"] = [
+                        {
+                            "matcher": "mcp__",
+                            "hooks": [
+                                {
+                                    "type": "command",
+                                    "command": f'node "{self.claude_hooks_dir}/core/permission-request.js"',
+                                    "timeout": 5
+                                }
+                            ]
+                        }
+                    ]
+                    self.success("Added PreToolUse hook for MCP permission auto-approval")
+                else:
+                    self.warn("permission-request.js not found, skipping PreToolUse hook")
+            else:
+                # Explicitly remove PreToolUse hook if user opted out (handles upgrades from v10.17.14)
+                if "PreToolUse" in hook_config.get("hooks", {}):
+                    del hook_config["hooks"]["PreToolUse"]
+                    self.info("Removed PreToolUse hook (permission-request not opted in)")
 
             # Add mid-conversation hook if Natural Memory Triggers are installed
             if install_mid_conversation:
@@ -1145,6 +1170,12 @@ class HookInstaller:
                         # No conflicts, safe to update memory awareness hooks
                         existing_settings['hooks'].update(hook_config['hooks'])
                         self.info("Updated memory awareness hooks without conflicts")
+
+                    # Upgrade path: remove PreToolUse from existing settings when user opted out
+                    # (handles upgrades from v10.17.14 where the hook was auto-installed)
+                    if not install_permission_hook and "PreToolUse" in existing_settings.get("hooks", {}):
+                        del existing_settings["hooks"]["PreToolUse"]
+                        self.info("Removed PreToolUse hook from existing settings (permission-request not opted in)")
 
                     final_config = existing_settings
                     self.success("Settings merged intelligently, preserving existing configuration")
@@ -1367,6 +1398,8 @@ Examples:
   python install_hooks.py --auto-capture     # Smart Auto-Capture only
   python install_hooks.py --test             # Run tests only
   python install_hooks.py --uninstall        # Remove hooks
+  python install_hooks.py --permission-hook      # Include permission hook (opt-in)
+  python install_hooks.py --no-permission-hook   # Skip permission hook
 
 Features:
   Basic: Session-start and session-end hooks for memory awareness
@@ -1391,6 +1424,12 @@ Features:
                         help='Remove installed hooks')
     parser.add_argument('--force', action='store_true',
                         help='Force installation even if prerequisites fail')
+    parser.add_argument('--permission-hook', action='store_true', default=None,
+                        dest='permission_hook',
+                        help='Install the permission-request hook (opt-in, global effect on ALL MCP servers)')
+    parser.add_argument('--no-permission-hook', action='store_false',
+                        dest='permission_hook',
+                        help='Skip the permission-request hook installation')
     parser.add_argument('--dry-run', action='store_true',
                         help='Show what would be installed without making changes')
 
@@ -1463,6 +1502,44 @@ Features:
     install_natural_triggers = args.natural_triggers or install_all
     install_auto_capture = args.auto_capture or install_all
 
+    # Permission hook: explicit opt-in required (issue #503)
+    if args.permission_hook is True:
+        install_permission_hook = True
+        installer.info("Permission hook: enabled via --permission-hook flag")
+    elif args.permission_hook is False:
+        install_permission_hook = False
+        installer.info("Permission hook: skipped via --no-permission-hook flag")
+    else:
+        # Interactive prompt - default is NO (skip during dry-run)
+        if args.dry_run:
+            install_permission_hook = False
+        else:
+            installer.header("Optional: Permission Request Hook")
+            installer.info("")
+            installer.info("This hook auto-approves safe MCP tool calls (read-only operations like")
+            installer.info("get, list, retrieve, search) and prompts for destructive ones")
+            installer.info("(delete, write, update, etc.), reducing repetitive confirmation dialogs.")
+            installer.info("")
+            installer.warn("GLOBAL EFFECT: This hook applies to ALL MCP servers on your system,")
+            installer.warn("not just the memory service. It will affect every MCP server you use")
+            installer.warn("(browser automation, code-context, Context7, and any future servers).")
+            installer.info("")
+            installer.info("Why it ships with mcp-memory-service:")
+            installer.info("  Memory operations are frequent and repetitive by design. This hook")
+            installer.info("  was developed alongside the memory service and is tested against its")
+            installer.info("  tool naming conventions. A standalone Gist version is also available:")
+            installer.info("  https://gist.github.com/doobidoo/fa84d31c0819a9faace345ca227b268f")
+            installer.info("")
+            try:
+                answer = input("  Install permission-request hook? [y/N]: ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                answer = ""
+            install_permission_hook = answer in ("y", "yes")
+            if install_permission_hook:
+                installer.success("Permission hook will be installed")
+            else:
+                installer.info("Permission hook skipped (install later with --permission-hook)")
+
     installer.info(f"Installation plan:")
     installer.info(f"  Basic hooks: {'Yes' if install_basic else 'No'}")
     installer.info(f"  Natural Memory Triggers: {'Yes' if install_natural_triggers else 'No'}")
@@ -1483,6 +1560,10 @@ Features:
             installer.info("  - Smart Auto-Capture hooks")
             installer.info("  - Pattern detection for Decision/Error/Learning/Implementation")
             installer.info("  - PostToolUse hook (Edit, Write, Bash)")
+        if install_permission_hook:
+            installer.info("  - Permission Request Hook (global: affects ALL MCP servers)")
+        else:
+            installer.info("  - Permission Request Hook: SKIPPED (opt-in, use --permission-hook)")
         return
 
     # Create backup
@@ -1504,6 +1585,11 @@ Features:
         if not installer.install_auto_capture():
             overall_success = False
 
+    if install_permission_hook:
+        if not installer.install_permission_hook():
+            overall_success = False
+            install_permission_hook = False  # prevent configure_claude_settings from registering a missing hook
+
     # Install configuration (always needed) with MCP awareness
     if not installer.install_configuration(install_natural_triggers=install_natural_triggers,
                                          detected_mcp=detected_mcp if use_existing_mcp else None,
@@ -1512,7 +1598,8 @@ Features:
 
     # Configure Claude Code settings
     if not installer.configure_claude_settings(install_mid_conversation=install_natural_triggers,
-                                              install_auto_capture=install_auto_capture):
+                                              install_auto_capture=install_auto_capture,
+                                              install_permission_hook=install_permission_hook):
         overall_success = False
 
     # Run tests to verify installation
@@ -1529,6 +1616,10 @@ Features:
                 installer.info("  ✅ Mid-conversation memory injection")
                 installer.info("  ✅ Smart Auto-Capture (PostToolUse for Edit/Write/Bash)")
                 installer.info("  ✅ Performance optimization and CLI management")
+                if install_permission_hook:
+                    installer.info("  ✅ Permission Request Hook (auto-approves safe MCP operations)")
+                else:
+                    installer.info("  ℹ  Permission Request Hook not installed (run with --permission-hook to add)")
                 installer.info("")
                 installer.info("CLI Management:")
                 installer.info(f"  node {installer.claude_hooks_dir}/memory-mode-controller.js status")
