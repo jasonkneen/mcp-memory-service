@@ -10,6 +10,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [10.18.0] - 2026-02-24
+
+### Added
+- **SSE transport mode for long-lived server deployments** (#506): Add `--sse` CLI flag to run the MCP server with SSE (Server-Sent Events) transport over HTTP instead of the default stdio transport.
+  - New environment variables: `MCP_SSE_HOST` (default `127.0.0.1`) and `MCP_SSE_PORT` (default `8765`).
+  - New `ServerRunManager.is_sse_mode()` and `run_sse()` methods enable persistent deployments under systemd, launchd, or any process supervisor.
+  - Eliminates cold-start latency, redundant memory usage, and race conditions inherent to the stdio model.
+  - Module-level SSE startup log and an unreachable return statement addressed following Gemini reviewer feedback.
+
+### Fixed
+- **Entry point, hook installer, and setup documentation** (#507, closes #505):
+  - `mcp-memory-server` entrypoint now emits a warning directing users to `memory server` for stdio mode.
+  - Documented `UV_PYTHON_PREFERENCE=only-managed` requirement for `uvx` installs on systems managed by pyenv.
+  - Hook installer now uses the `uvx` command when running from a temp directory, preventing stale `serverWorkingDir` references.
+  - Hook installer `connectionTimeout` increased from 5,000 ms to 30,000 ms; `toolCallTimeout` increased to 60,000 ms to accommodate slow cold starts.
+  - Hook installer merges into existing hooks configuration instead of overwriting it, preserving user customisations.
+
 ## [10.17.16] - 2026-02-23
 
 ### Security
