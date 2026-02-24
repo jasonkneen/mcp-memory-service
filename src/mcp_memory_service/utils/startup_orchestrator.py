@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 
 # Import necessary functions and constants
 from ..server.client_detection import MCP_CLIENT
-from ..config import SERVER_NAME, SERVER_VERSION
+from ..config import SERVER_NAME, SERVER_VERSION, MCP_SSE_HOST, MCP_SSE_PORT
 from ..lm_studio_compat import patch_mcp_for_lm_studio, add_windows_timeout_handling
 from ..dependency_check import run_dependency_check
 from ..server.environment import check_uv_environment, check_version_consistency
@@ -143,6 +143,11 @@ class ServerRunManager:
         self.logger = logging.getLogger(__name__)
 
     @staticmethod
+    def is_sse_mode() -> bool:
+        """Check if running in SSE transport mode."""
+        return os.environ.get('MCP_SSE_MODE', '').lower() == '1'
+
+    @staticmethod
     def is_standalone_mode() -> bool:
         """Check if running in standalone mode."""
         standalone_mode = os.environ.get('MCP_STANDALONE_MODE', '').lower() == '1'
@@ -206,6 +211,67 @@ class ServerRunManager:
                 self._handle_server_exception(e)
             finally:
                 self.logger.info("Server run completed")
+
+    async def run_sse(self) -> None:
+        """Run server with SSE (Server-Sent Events) transport over HTTP."""
+        from mcp.server.sse import SseServerTransport
+        from starlette.responses import Response
+        import uvicorn
+
+        init_options = InitializationOptions(
+            server_name=SERVER_NAME,
+            server_version=SERVER_VERSION,
+            protocol_version="2024-11-05",
+            capabilities=self.server.server.get_capabilities(
+                notification_options=NotificationOptions(),
+                experimental_capabilities={
+                    "hardware_info": {
+                        "architecture": self.system_info.architecture,
+                        "accelerator": self.system_info.accelerator,
+                        "memory_gb": self.system_info.memory_gb,
+                        "cpu_count": self.system_info.cpu_count
+                    }
+                },
+            ),
+        )
+
+        sse = SseServerTransport("/messages/")
+        server_instance = self.server.server
+
+        async def app(scope, receive, send):
+            if scope["type"] == "lifespan":
+                while True:
+                    message = await receive()
+                    if message["type"] == "lifespan.startup":
+                        await send({"type": "lifespan.startup.complete"})
+                    elif message["type"] == "lifespan.shutdown":
+                        await send({"type": "lifespan.shutdown.complete"})
+                        return
+                return
+
+            path = scope.get("path", "")
+            if path == "/sse":
+                async with sse.connect_sse(scope, receive, send) as streams:
+                    await server_instance.run(
+                        streams[0],
+                        streams[1],
+                        init_options,
+                    )
+            elif path.startswith("/messages/"):
+                await sse.handle_post_message(scope, receive, send)
+            else:
+                response = Response("Not Found", status_code=404)
+                await response(scope, receive, send)
+
+        self.logger.info(f"Starting SSE transport on {MCP_SSE_HOST}:{MCP_SSE_PORT}")
+        config = uvicorn.Config(
+            app,
+            host=MCP_SSE_HOST,
+            port=MCP_SSE_PORT,
+            log_level="info",
+        )
+        uvi_server = uvicorn.Server(config)
+        await uvi_server.serve()
 
     def _handle_server_exception(self, e: BaseException) -> None:
         """Handle exceptions during server run."""
