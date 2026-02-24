@@ -9,7 +9,7 @@ all memory operations, eliminating the DRY violation and ensuring consistent beh
 import json
 import logging
 import sys
-from typing import Dict, List, Optional, Any, Union, Tuple
+from typing import Dict, List, Optional, Any, Union
 
 # Pydantic v2.12 requires typing_extensions.TypedDict on Python < 3.12
 # See: https://errors.pydantic.dev/2.12/u/typed-dict-version
@@ -24,7 +24,6 @@ else:
 from datetime import datetime
 
 from ..config import (
-    INCLUDE_HOSTNAME,
     CONTENT_PRESERVE_BOUNDARIES,
     CONTENT_SPLIT_OVERLAP,
     ENABLE_AUTO_SPLIT,
@@ -37,6 +36,15 @@ from ..utils.hashing import generate_content_hash
 from ..quality.async_scorer import async_scorer
 
 logger = logging.getLogger(__name__)
+
+def _sanitize_log_value(value: str) -> str:
+    """Strip control characters from user-provided values before logging.
+
+    Prevents log injection via newlines, carriage returns, or other
+    control characters embedded in user input (CWE-117).
+    """
+    return value.replace("\n", "\\n").replace("\r", "\\r").replace("\x1b", "\\x1b")
+
 
 # Module-level constants for tag processing
 _MAX_JSON_LENGTH = 4096  # 4KB limit for tag JSON to prevent DoS
@@ -108,11 +116,11 @@ def normalize_tags(tags: Union[str, List[str], None]) -> List[str]:
         # Replace commas with hyphens to preserve semantic meaning.
         if ',' in tag_stripped:
             tag_stripped = tag_stripped.replace(',', '-')
-            logger.debug(f"Removed comma from tag, replaced with hyphen: {tag_stripped}")
+            logger.debug(f"Removed comma from tag, replaced with hyphen: {_sanitize_log_value(tag_stripped)}")
 
         # Enforce maximum tag length to prevent abuse
         if len(tag_stripped) > _MAX_TAG_LENGTH:
-            logger.warning(f"Tag exceeds {_MAX_TAG_LENGTH} characters, truncating: {tag_stripped[:50]}...")
+            logger.warning(f"Tag exceeds {_MAX_TAG_LENGTH} characters, truncating: {_sanitize_log_value(tag_stripped[:50])}...")
             tag_stripped = tag_stripped[:_MAX_TAG_LENGTH]
 
         tag_lower = tag_stripped.lower()
@@ -329,7 +337,8 @@ class MemoryService:
         tags: Union[str, List[str], None] = None,
         memory_type: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
-        client_hostname: Optional[str] = None
+        client_hostname: Optional[str] = None,
+        conversation_id: Optional[str] = None
     ) -> Union[StoreMemorySingleSuccess, StoreMemoryChunkedSuccess, StoreMemoryFailure]:
         """
         Store a new memory with validation and content processing.
@@ -346,6 +355,9 @@ class MemoryService:
             memory_type: Optional memory type classification
             metadata: Optional additional metadata (can also contain tags)
             client_hostname: Optional client hostname for source tagging
+            conversation_id: Optional conversation identifier. When supplied, semantic
+                deduplication is skipped so all turns of the same conversation
+                can be saved independently. Exact hash dedup is always preserved.
 
         Returns:
             Dictionary with operation result
@@ -372,6 +384,11 @@ class MemoryService:
                 if source_tag not in final_tags:
                     final_tags.append(source_tag)
                 final_metadata["hostname"] = client_hostname
+
+            # Store conversation_id in metadata for future grouping/retrieval
+            skip_dedup = bool(conversation_id)
+            if skip_dedup:
+                final_metadata["conversation_id"] = conversation_id
 
             # Generate content hash for deduplication
             content_hash = generate_content_hash(content)
@@ -404,7 +421,7 @@ class MemoryService:
                         metadata=chunk_metadata
                     )
 
-                    success, message = await self.storage.store(memory)
+                    success, message = await self.storage.store(memory, skip_semantic_dedup=skip_dedup)
                     if success:
                         stored_memories.append(self._format_memory_response(memory))
                         # Queue chunk for AI quality scoring if enabled
@@ -442,7 +459,7 @@ class MemoryService:
                     metadata=final_metadata
                 )
 
-                success, message = await self.storage.store(memory)
+                success, message = await self.storage.store(memory, skip_semantic_dedup=skip_dedup)
 
                 if success:
                     # Queue for AI quality scoring if enabled

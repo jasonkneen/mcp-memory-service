@@ -65,13 +65,11 @@ def get_oauth_storage() -> OAuthStorage:
     if _oauth_storage is None:
         from ....config import OAUTH_STORAGE_BACKEND, OAUTH_SQLITE_PATH
 
-        logger.info(f"Initializing OAuth storage backend: {OAUTH_STORAGE_BACKEND}")
-
         if OAUTH_STORAGE_BACKEND == "sqlite":
-            logger.info(f"Using SQLite OAuth storage at: {OAUTH_SQLITE_PATH}")
+            logger.debug("Initializing SQLite OAuth storage")
             _oauth_storage = create_oauth_storage("sqlite", db_path=OAUTH_SQLITE_PATH)
         else:
-            logger.info("Using in-memory OAuth storage (not persistent)")
+            logger.debug("Initializing in-memory OAuth storage")
             _oauth_storage = create_oauth_storage("memory")
 
     return _oauth_storage
@@ -91,5 +89,4 @@ __all__ = [
     "MemoryOAuthStorage",
     "SQLiteOAuthStorage",
     "get_oauth_storage",
-    "oauth_storage",
 ]

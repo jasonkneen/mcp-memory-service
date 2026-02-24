@@ -4,7 +4,6 @@ This prevents runtime downloads during server initialization that cause timeouts
 """
 
 import sys
-import subprocess
 import platform
 import logging
 import os
@@ -34,7 +33,7 @@ def detect_mcp_client_simple():
         
         # Default to Claude Desktop for strict mode
         return 'claude_desktop'
-    except:
+    except Exception:
         return 'claude_desktop'
 
 def check_torch_installed() -> Tuple[bool, Optional[str]]:
@@ -219,24 +218,39 @@ def is_first_run() -> bool:
 def get_recommended_timeout() -> float:
     """
     Get the recommended timeout based on system and dependencies.
+
+    Can be overridden via MCP_INIT_TIMEOUT environment variable.
+    Useful for Windows systems where ONNX model initialization takes longer.
     """
+    # Allow explicit override via environment variable
+    env_timeout = os.getenv('MCP_INIT_TIMEOUT')
+    if env_timeout:
+        try:
+            override = float(env_timeout)
+            if override > 0:
+                logger.info(f"Using MCP_INIT_TIMEOUT override: {override}s")
+                return override
+            logger.warning(f"MCP_INIT_TIMEOUT must be a positive number, got '{env_timeout}'. Using automatic detection.")
+        except ValueError:
+            logger.warning(f"Invalid MCP_INIT_TIMEOUT value '{env_timeout}', using automatic detection")
+
     # Check if dependencies are missing
     all_installed, missing = check_critical_dependencies()
-    
+
     # Check if it's first run (models need downloading)
     first_run = is_first_run()
-    
+
     # Base timeout
     timeout = 30.0 if platform.system() == "Windows" else 15.0
-    
+
     # Extend timeout if dependencies are missing
     if not all_installed:
         timeout *= 2  # Double the timeout
         logger.warning(f"Dependencies missing, extending timeout to {timeout}s")
-    
+
     # Extend timeout if it's first run
     if first_run:
         timeout *= 2  # Double the timeout
         logger.warning(f"First run detected, extending timeout to {timeout}s")
-    
+
     return timeout

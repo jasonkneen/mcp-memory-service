@@ -23,8 +23,8 @@ import secrets
 from typing import Optional, Dict, Any
 from fastapi import HTTPException, status, Depends, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from jose import JWTError, jwt, ExpiredSignatureError
-from jose.jwt import JWTClaimsError
+import jwt
+from jwt.exceptions import PyJWTError as JWTError, ExpiredSignatureError, InvalidTokenError as JWTClaimsError
 
 from ...config import (
     OAUTH_ISSUER,

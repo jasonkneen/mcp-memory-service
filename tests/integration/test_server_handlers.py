@@ -5,6 +5,7 @@ These tests verify that the MCP handlers correctly transform MemoryService
 responses to MCP TextContent format, particularly after the fix for issue #198.
 """
 
+import re
 import pytest
 from mcp import types
 from mcp_memory_service.server import MemoryServer
@@ -35,7 +36,7 @@ class TestHandleStoreMemory:
         text = result[0].text
         assert "successfully" in text.lower()
         assert "hash:" in text.lower()
-        assert "..." in text  # Hash should be truncated
+        assert re.search(r'[0-9a-f]{64}', text)  # Full content hash shown
 
     @pytest.mark.asyncio
     async def test_store_memory_chunked(self, unique_content):
@@ -128,6 +129,30 @@ class TestHandleStoreMemory:
         assert len(result) == 1
         text = result[0].text
         assert "successfully" in text.lower()
+
+
+    @pytest.mark.asyncio
+    async def test_store_memory_with_conversation_id(self, unique_content):
+        """Storing with conversation_id allows semantically similar saves."""
+        server = MemoryServer()
+        await server._ensure_storage_initialized()
+        server.storage.semantic_dedup_enabled = True
+
+        content1 = unique_content("Claude Code is a powerful CLI tool for software engineering.")
+        result1 = await server.handle_store_memory({
+            "content": content1,
+            "conversation_id": "test-conv-001",
+            "metadata": {"tags": ["test"], "type": "note"}
+        })
+        assert "successfully" in result1[0].text.lower()
+
+        content2 = unique_content("The Claude Code CLI is an excellent software development tool.")
+        result2 = await server.handle_store_memory({
+            "content": content2,
+            "conversation_id": "test-conv-001",
+            "metadata": {"tags": ["test"], "type": "note"}
+        })
+        assert "successfully" in result2[0].text.lower(), f"Expected success, got: {result2[0].text}"
 
 
 class TestHandleRetrieveMemory:

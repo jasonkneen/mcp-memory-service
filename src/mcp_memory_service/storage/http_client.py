@@ -31,6 +31,11 @@ from ..config import HTTP_HOST, HTTP_PORT
 logger = logging.getLogger(__name__)
 
 
+def _sanitize_log_value(value: object) -> str:
+    """Sanitize a user-provided value for safe inclusion in log messages."""
+    return str(value).replace("\n", "\\n").replace("\r", "\\r").replace("\x1b", "\\x1b")
+
+
 class HTTPClientStorage(MemoryStorage):
     """
     HTTP client storage implementation.
@@ -138,18 +143,20 @@ class HTTPClientStorage(MemoryStorage):
         except Exception as e:
             return self._handle_http_error(e, "store")
     
-    async def retrieve(self, query: str, n_results: int = 5) -> List[MemoryQueryResult]:
+    async def retrieve(self, query: str, n_results: int = 5, tags: Optional[List[str]] = None) -> List[MemoryQueryResult]:
         """Retrieve memories using semantic search via HTTP API."""
         if not self._initialized or not self.session:
             logger.error("HTTP client not initialized")
             return []
-        
+
         try:
             search_url = f"{self.base_url}/api/search/semantic"
             payload = {
                 "query": query,
                 "n_results": n_results
             }
+            if tags:
+                payload["tags"] = tags
             
             async with self.session.post(search_url, json=payload) as response:
                 if response.status == 200:
@@ -177,7 +184,7 @@ class HTTPClientStorage(MemoryStorage):
                         )
                         results.append(result)
                     
-                    logger.info(f"Retrieved {len(results)} memories via HTTP for query: {query}")
+                    logger.info(f"Retrieved {len(results)} memories via HTTP for query: {_sanitize_log_value(query)}")
                     return results
                 else:
                     logger.error(f"HTTP retrieve error: {response.status}")
@@ -262,7 +269,7 @@ class HTTPClientStorage(MemoryStorage):
                     logger.info(
                         "Found %d memories via HTTP with tags %s (match_all=%s)",
                         len(results),
-                        tags,
+                        [_sanitize_log_value(t) for t in tags],
                         match_all
                     )
                     return results

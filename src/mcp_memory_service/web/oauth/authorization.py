@@ -25,7 +25,7 @@ from typing import Optional, Tuple
 from urllib.parse import urlencode
 from fastapi import APIRouter, HTTPException, status, Form, Query, Request
 from fastapi.responses import RedirectResponse
-from jose import jwt
+import jwt
 
 from ...config import (
     OAUTH_ISSUER,
@@ -40,6 +40,18 @@ from .storage import get_oauth_storage
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _sanitize_log_value(value: object) -> str:
+    """Sanitize a user-provided value for safe inclusion in log messages."""
+    return str(value).replace("\n", "\\n").replace("\r", "\\r").replace("\x1b", "\\x1b")
+
+
+def _sanitize_state(state: str) -> str:
+    """Sanitize the OAuth state parameter to prevent log injection and open redirect abuse."""
+    # Allow only alphanumeric, hyphen, underscore, and dot characters (RFC 6749 opaque value)
+    import re as _re
+    return _re.sub(r'[^A-Za-z0-9\-_.]', '', state)[:128]
 
 
 def parse_basic_auth(authorization_header: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
@@ -68,8 +80,8 @@ def parse_basic_auth(authorization_header: Optional[str]) -> Tuple[Optional[str]
         client_id, client_secret = decoded_credentials.split(':', 1)
         return client_id, client_secret
 
-    except Exception as e:
-        logger.debug(f"Failed to parse Basic auth header: {e}")
+    except Exception:
+        logger.debug("Failed to parse Basic auth header")
         return None, None
 
 
@@ -97,7 +109,7 @@ def create_access_token(client_id: str, scope: Optional[str] = None) -> tuple[st
     algorithm = get_jwt_algorithm()
     signing_key = get_jwt_signing_key()
 
-    logger.debug(f"Creating JWT token with algorithm: {algorithm}")
+    logger.debug("Creating JWT token")
     token = jwt.encode(payload, signing_key, algorithm=algorithm)
     return token, expires_in
 
@@ -126,17 +138,17 @@ async def validate_redirect_uri(client_id: str, redirect_uri: Optional[str]) -> 
             )
         return client.redirect_uris[0]
 
-    # Validate that the redirect_uri is registered
-    if redirect_uri not in client.redirect_uris:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "error": "invalid_redirect_uri",
-                "error_description": "redirect_uri not registered for this client"
-            }
-        )
-
-    return redirect_uri
+    # Validate that the redirect_uri is registered; return the stored (trusted) value
+    for registered_uri in client.redirect_uris:
+        if registered_uri == redirect_uri:
+            return registered_uri  # Return the stored value, not the user-supplied one
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail={
+            "error": "invalid_redirect_uri",
+            "error_description": "redirect_uri not registered for this client"
+        }
+    )
 
 
 @router.get("/authorize")
@@ -153,7 +165,18 @@ async def authorize(
     Implements the authorization code flow. For MVP, this auto-approves
     all requests without user interaction.
     """
-    logger.info(f"Authorization request: client_id={client_id}, response_type={response_type}")
+    logger.info("Authorization request received")
+
+    # Validate redirect_uri against registered client BEFORE any redirect use.
+    # Per OAuth 2.1 spec, only pre-registered URIs may be used as redirect targets.
+    # If validation fails here, raise an error without redirecting (to avoid open redirect).
+    validated_redirect_uri: Optional[str] = None
+    if redirect_uri:
+        try:
+            validated_redirect_uri = await validate_redirect_uri(client_id, redirect_uri)
+        except HTTPException:
+            # Invalid client or redirect_uri - respond without redirecting
+            raise
 
     try:
         # Validate response_type
@@ -163,17 +186,17 @@ async def authorize(
                 "error_description": "Only 'code' response type is supported"
             }
             if state:
-                error_params["state"] = state
+                error_params["state"] = _sanitize_state(state)
 
-            # If we have a redirect_uri, redirect with error
-            if redirect_uri:
-                error_url = f"{redirect_uri}?{urlencode(error_params)}"
+            # Only redirect to a validated URI; otherwise return HTTP error
+            if validated_redirect_uri:
+                error_url = f"{validated_redirect_uri}?{urlencode(error_params)}"
                 return RedirectResponse(url=error_url)
             else:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_params)
 
-        # Validate client and redirect_uri
-        validated_redirect_uri = await validate_redirect_uri(client_id, redirect_uri)
+        # Validate client and redirect_uri (also handles the case where redirect_uri was None)
+        safe_redirect_uri = validated_redirect_uri or await validate_redirect_uri(client_id, redirect_uri)
 
         # Generate authorization code
         auth_code = get_oauth_storage().generate_authorization_code()
@@ -182,7 +205,7 @@ async def authorize(
         await get_oauth_storage().store_authorization_code(
             code=auth_code,
             client_id=client_id,
-            redirect_uri=validated_redirect_uri,
+            redirect_uri=safe_redirect_uri,
             scope=scope,
             expires_in=OAUTH_AUTHORIZATION_CODE_EXPIRE_MINUTES * 60
         )
@@ -190,28 +213,29 @@ async def authorize(
         # Build redirect URL with authorization code
         redirect_params = {"code": auth_code}
         if state:
-            redirect_params["state"] = state
+            redirect_params["state"] = _sanitize_state(state)
 
-        redirect_url = f"{validated_redirect_uri}?{urlencode(redirect_params)}"
+        redirect_url = f"{safe_redirect_uri}?{urlencode(redirect_params)}"
 
-        logger.info(f"Authorization granted for client_id={client_id}")
+        logger.info("Authorization granted")
         return RedirectResponse(url=redirect_url)
 
     except HTTPException:
         # Re-raise HTTP exceptions
         raise
-    except Exception as e:
-        logger.error(f"Authorization error: {e}")
+    except Exception:
+        logger.error("Authorization error occurred")
 
         error_params = {
             "error": "server_error",
             "error_description": "Internal server error"
         }
         if state:
-            error_params["state"] = state
+            error_params["state"] = _sanitize_state(state)
 
-        if redirect_uri:
-            error_url = f"{redirect_uri}?{urlencode(error_params)}"
+        # Only redirect to a pre-validated URI; otherwise return HTTP error
+        if validated_redirect_uri:
+            error_url = f"{validated_redirect_uri}?{urlencode(error_params)}"
             return RedirectResponse(url=error_url)
         else:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=error_params)
@@ -294,7 +318,7 @@ async def _handle_authorization_code_grant(
         expires_in=expires_in
     )
 
-    logger.info(f"Access token issued for client_id={final_client_id}")
+    logger.info("Access token issued")
     return TokenResponse(
         access_token=access_token,
         token_type="Bearer",
@@ -337,7 +361,7 @@ async def _handle_client_credentials_grant(
         expires_in=expires_in
     )
 
-    logger.info(f"Client credentials token issued for client_id={final_client_id}")
+    logger.info("Client credentials token issued")
     return TokenResponse(
         access_token=access_token,
         token_type="Bearer",
@@ -369,8 +393,7 @@ async def token(
     final_client_id = basic_client_id or client_id
     final_client_secret = basic_client_secret or client_secret
 
-    auth_method = "client_secret_basic" if basic_client_id else "client_secret_post"
-    logger.info(f"Token request: grant_type={grant_type}, client_id={final_client_id}, auth_method={auth_method}")
+    logger.info("Token request received")
 
     try:
         if grant_type == "authorization_code":
@@ -394,8 +417,8 @@ async def token(
     except HTTPException:
         # Re-raise HTTP exceptions
         raise
-    except Exception as e:
-        logger.error(f"Token endpoint error: {e}")
+    except Exception:
+        logger.error("Token endpoint error")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={

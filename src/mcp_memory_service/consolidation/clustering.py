@@ -16,15 +16,14 @@
 
 import uuid
 import numpy as np
-from typing import List, Dict, Any, Optional, Tuple
-from datetime import datetime
+from typing import List, Dict
+from datetime import datetime, timezone
 from collections import Counter
 import re
 
 try:
     from sklearn.cluster import DBSCAN
     from sklearn.cluster import AgglomerativeClustering
-    from sklearn.metrics import silhouette_score
     SKLEARN_AVAILABLE = True
 except ImportError:
     SKLEARN_AVAILABLE = False
@@ -266,16 +265,19 @@ class SemanticClusteringEngine(ConsolidationBase):
     
     def _calculate_average_age(self, memories: List[Memory]) -> float:
         """Calculate average age of memories in days."""
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         ages = []
         
         for memory in memories:
             if memory.created_at:
-                created_dt = datetime.utcfromtimestamp(memory.created_at)
+                created_dt = datetime.fromtimestamp(memory.created_at, tz=timezone.utc)
                 age_days = (now - created_dt).days
                 ages.append(age_days)
             elif memory.timestamp:
-                age_days = (now - memory.timestamp).days
+                ts = memory.timestamp
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                age_days = (now - ts).days
                 ages.append(age_days)
         
         return sum(ages) / len(ages) if ages else 0.0

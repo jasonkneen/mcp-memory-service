@@ -290,14 +290,17 @@ except Exception as e:
 SERVER_NAME = "memory"
 
 # Import version with fallback for circular import scenarios
+SERVER_VERSION = "0.0.0.dev0"
 try:
-    from . import __version__ as SERVER_VERSION
+    from . import __version__
+    SERVER_VERSION = __version__
 except (ImportError, AttributeError):
     # Fallback if __init__.py isn't fully loaded yet (circular import)
     try:
-        from ._version import __version__ as SERVER_VERSION
+        from ._version import __version__
+        SERVER_VERSION = __version__
     except ImportError:
-        SERVER_VERSION = "0.0.0.dev0"
+        logger.debug("Could not determine server version from _version.py; using default")
 
 # Storage backend configuration
 SUPPORTED_BACKENDS = ['sqlite_vec', 'sqlite-vec', 'cloudflare', 'hybrid']
@@ -452,11 +455,11 @@ else:
 # Hybrid backend specific configuration
 if STORAGE_BACKEND == 'hybrid':
     # Sync service configuration
-    HYBRID_SYNC_INTERVAL = int(os.getenv('MCP_HYBRID_SYNC_INTERVAL', '300'))  # 5 minutes default
-    HYBRID_BATCH_SIZE = int(os.getenv('MCP_HYBRID_BATCH_SIZE', '100'))  # Increased from 50 for bulk operations
-    HYBRID_QUEUE_SIZE = int(os.getenv('MCP_HYBRID_QUEUE_SIZE', '2000'))  # Increased from 1000 for bulk operations
-    HYBRID_MAX_QUEUE_SIZE = int(os.getenv('MCP_HYBRID_MAX_QUEUE_SIZE', '1000'))  # Legacy - use HYBRID_QUEUE_SIZE
-    HYBRID_MAX_RETRIES = int(os.getenv('MCP_HYBRID_MAX_RETRIES', '3'))
+    HYBRID_SYNC_INTERVAL = safe_get_int_env('MCP_HYBRID_SYNC_INTERVAL', 300, min_value=10)  # 5 minutes default
+    HYBRID_BATCH_SIZE = safe_get_int_env('MCP_HYBRID_BATCH_SIZE', 100, min_value=1, max_value=10000)  # Increased from 50 for bulk operations
+    HYBRID_QUEUE_SIZE = safe_get_int_env('MCP_HYBRID_QUEUE_SIZE', 2000, min_value=10)  # Increased from 1000 for bulk operations
+    HYBRID_MAX_QUEUE_SIZE = safe_get_int_env('MCP_HYBRID_MAX_QUEUE_SIZE', 1000, min_value=10)  # Legacy - use HYBRID_QUEUE_SIZE
+    HYBRID_MAX_RETRIES = safe_get_int_env('MCP_HYBRID_MAX_RETRIES', 3, min_value=0, max_value=10)
 
     # Sync ownership control (v8.27.0+) - Prevents duplicate sync queues
     # Values: "http" (HTTP server only), "mcp" (MCP server only), "both" (both servers sync)
@@ -464,22 +467,22 @@ if STORAGE_BACKEND == 'hybrid':
     HYBRID_SYNC_OWNER = os.getenv('MCP_HYBRID_SYNC_OWNER', 'both').lower()
 
     # Performance tuning
-    HYBRID_ENABLE_HEALTH_CHECKS = os.getenv('MCP_HYBRID_ENABLE_HEALTH_CHECKS', 'true').lower() == 'true'
-    HYBRID_HEALTH_CHECK_INTERVAL = int(os.getenv('MCP_HYBRID_HEALTH_CHECK_INTERVAL', '60'))  # 1 minute
-    HYBRID_SYNC_ON_STARTUP = os.getenv('MCP_HYBRID_SYNC_ON_STARTUP', 'true').lower() == 'true'
+    HYBRID_ENABLE_HEALTH_CHECKS = safe_get_bool_env('MCP_HYBRID_ENABLE_HEALTH_CHECKS', True)
+    HYBRID_HEALTH_CHECK_INTERVAL = safe_get_int_env('MCP_HYBRID_HEALTH_CHECK_INTERVAL', 60, min_value=10)  # 1 minute
+    HYBRID_SYNC_ON_STARTUP = safe_get_bool_env('MCP_HYBRID_SYNC_ON_STARTUP', True)
 
     # Drift detection and metadata sync (v8.25.0+)
-    HYBRID_SYNC_UPDATES = os.getenv('MCP_HYBRID_SYNC_UPDATES', 'true').lower() == 'true'
-    HYBRID_DRIFT_CHECK_INTERVAL = int(os.getenv('MCP_HYBRID_DRIFT_CHECK_INTERVAL', '3600'))  # 1 hour default
-    HYBRID_DRIFT_BATCH_SIZE = int(os.getenv('MCP_HYBRID_DRIFT_BATCH_SIZE', '100'))
+    HYBRID_SYNC_UPDATES = safe_get_bool_env('MCP_HYBRID_SYNC_UPDATES', True)
+    HYBRID_DRIFT_CHECK_INTERVAL = safe_get_int_env('MCP_HYBRID_DRIFT_CHECK_INTERVAL', 3600, min_value=60)  # 1 hour default
+    HYBRID_DRIFT_BATCH_SIZE = safe_get_int_env('MCP_HYBRID_DRIFT_BATCH_SIZE', 100, min_value=1)
 
     # Initial sync behavior tuning (v7.5.4+)
     HYBRID_MAX_EMPTY_BATCHES = safe_get_int_env('MCP_HYBRID_MAX_EMPTY_BATCHES', 20, min_value=1)  # Stop after N batches without new syncs
     HYBRID_MIN_CHECK_COUNT = safe_get_int_env('MCP_HYBRID_MIN_CHECK_COUNT', 1000, min_value=1)  # Minimum memories to check before early stop
 
     # Fallback behavior
-    HYBRID_FALLBACK_TO_PRIMARY = os.getenv('MCP_HYBRID_FALLBACK_TO_PRIMARY', 'true').lower() == 'true'
-    HYBRID_WARN_ON_SECONDARY_FAILURE = os.getenv('MCP_HYBRID_WARN_ON_SECONDARY_FAILURE', 'true').lower() == 'true'
+    HYBRID_FALLBACK_TO_PRIMARY = safe_get_bool_env('MCP_HYBRID_FALLBACK_TO_PRIMARY', True)
+    HYBRID_WARN_ON_SECONDARY_FAILURE = safe_get_bool_env('MCP_HYBRID_WARN_ON_SECONDARY_FAILURE', True)
 
     logger.info(f"Hybrid storage configuration: sync_interval={HYBRID_SYNC_INTERVAL}s, batch_size={HYBRID_BATCH_SIZE}")
 
@@ -559,7 +562,7 @@ SSL_KEY_FILE = os.getenv('MCP_SSL_KEY_FILE', None)
 MDNS_ENABLED = os.getenv('MCP_MDNS_ENABLED', 'true').lower() == 'true'
 MDNS_SERVICE_NAME = os.getenv('MCP_MDNS_SERVICE_NAME', 'MCP Memory Service')
 MDNS_SERVICE_TYPE = os.getenv('MCP_MDNS_SERVICE_TYPE', '_mcp-memory._tcp.local.')
-MDNS_DISCOVERY_TIMEOUT = int(os.getenv('MCP_MDNS_DISCOVERY_TIMEOUT', '5'))
+MDNS_DISCOVERY_TIMEOUT = safe_get_int_env('MCP_MDNS_DISCOVERY_TIMEOUT', 5, min_value=1, max_value=60)
 
 # Database path for HTTP interface (use SQLite-vec by default)
 if (STORAGE_BACKEND in ['sqlite_vec', 'hybrid']) and SQLITE_VEC_PATH:
@@ -666,17 +669,17 @@ CONSOLIDATION_CONFIG = {
     # Decay settings
     'decay_enabled': os.getenv('MCP_DECAY_ENABLED', 'true').lower() == 'true',
     'retention_periods': {
-        'critical': int(os.getenv('MCP_RETENTION_CRITICAL', '365')),
-        'reference': int(os.getenv('MCP_RETENTION_REFERENCE', '180')),
-        'standard': int(os.getenv('MCP_RETENTION_STANDARD', '30')),
-        'temporary': int(os.getenv('MCP_RETENTION_TEMPORARY', '7'))
+        'critical': safe_get_int_env('MCP_RETENTION_CRITICAL', 365, min_value=1, max_value=3650),
+        'reference': safe_get_int_env('MCP_RETENTION_REFERENCE', 180, min_value=1, max_value=3650),
+        'standard': safe_get_int_env('MCP_RETENTION_STANDARD', 30, min_value=1, max_value=3650),
+        'temporary': safe_get_int_env('MCP_RETENTION_TEMPORARY', 7, min_value=1, max_value=365)
     },
     
     # Association settings
     'associations_enabled': os.getenv('MCP_ASSOCIATIONS_ENABLED', 'true').lower() == 'true',
     'min_similarity': float(os.getenv('MCP_ASSOCIATION_MIN_SIMILARITY', '0.3')),
     'max_similarity': float(os.getenv('MCP_ASSOCIATION_MAX_SIMILARITY', '0.7')),
-    'max_pairs_per_run': int(os.getenv('MCP_ASSOCIATION_MAX_PAIRS', '100')),
+    'max_pairs_per_run': int(os.getenv('MCP_ASSOCIATION_MAX_PAIRS', '1000')),
     
     # Clustering settings
     'clustering_enabled': os.getenv('MCP_CLUSTERING_ENABLED', 'true').lower() == 'true',
@@ -740,9 +743,8 @@ Example:
     export MCP_OAUTH_SQLITE_PATH=./data/oauth.db
 """
 
-logger.info(f"OAuth storage backend: {OAUTH_STORAGE_BACKEND}")
 if OAUTH_STORAGE_BACKEND == "sqlite":
-    logger.info(f"OAuth SQLite database path: {OAUTH_SQLITE_PATH}")
+    pass  # SQLite OAuth storage configured
 
 # RSA key pair configuration for JWT signing (RS256)
 # Private key for signing tokens
@@ -840,7 +842,7 @@ def validate_oauth_configuration() -> None:
 
         # Test key access
         signing_key = get_jwt_signing_key()
-        verification_key = get_jwt_verification_key()
+        get_jwt_verification_key()
 
         if algorithm == "RS256":
             if not OAUTH_PRIVATE_KEY or not OAUTH_PUBLIC_KEY:
@@ -885,16 +887,15 @@ def validate_oauth_configuration() -> None:
         warnings.append("Using auto-generated HS256 secret key - set MCP_OAUTH_SECRET_KEY for production")
 
     # Log validation results
+    # Note: errors/warnings may contain key-config info; log count only, raise with details
     if errors:
-        error_msg = "OAuth configuration validation failed:\n" + "\n".join(f"  - {err}" for err in errors)
-        logger.error(error_msg)
+        logger.error("OAuth configuration validation failed with %d error(s)", len(errors))
         raise ValueError(f"Invalid OAuth configuration: {'; '.join(errors)}")
 
     if warnings:
-        warning_msg = "OAuth configuration warnings:\n" + "\n".join(f"  - {warn}" for warn in warnings)
-        logger.warning(warning_msg)
+        logger.warning("OAuth configuration has %d warning(s)", len(warnings))
 
-    logger.info("OAuth configuration validation successful")
+    logger.debug("OAuth configuration validation successful")
 
 # OAuth server configuration
 def get_oauth_issuer() -> str:
@@ -928,12 +929,8 @@ OAUTH_AUTHORIZATION_CODE_EXPIRE_MINUTES = safe_get_int_env('MCP_OAUTH_AUTHORIZAT
 # OAuth security configuration
 ALLOW_ANONYMOUS_ACCESS = safe_get_bool_env('MCP_ALLOW_ANONYMOUS_ACCESS', False)
 
-logger.info(f"OAuth enabled: {OAUTH_ENABLED}")
 if OAUTH_ENABLED:
-    logger.info(f"OAuth issuer: {OAUTH_ISSUER}")
-    logger.info(f"OAuth JWT algorithm: {get_jwt_algorithm()}")
-    logger.info(f"OAuth access token expiry: {OAUTH_ACCESS_TOKEN_EXPIRE_MINUTES} minutes")
-    logger.info(f"Anonymous access allowed: {ALLOW_ANONYMOUS_ACCESS}")
+    logger.debug("OAuth is enabled")
 
     # Warn about potential reverse proxy configuration issues
     if not os.getenv('MCP_OAUTH_ISSUER') and ("localhost" in OAUTH_ISSUER or "127.0.0.1" in OAUTH_ISSUER):
@@ -1107,4 +1104,63 @@ else:
 
 # =============================================================================
 # End Memory Type Ontology Configuration
+
+# =============================================================================
+# Configuration Validation
+# =============================================================================
+
+def validate_config() -> list:
+    """
+    Validate cross-field configuration constraints.
+
+    Returns a list of warning/error message strings. Empty list means config is valid.
+    Does not raise — callers decide how to handle issues (warn vs. fatal).
+
+    Call at server startup after config module is loaded::
+
+        warnings = validate_config()
+        if warnings:
+            for w in warnings:
+                logger.warning(w)
+    """
+    import os as _os
+    issues = []
+
+    # HTTPS: cert and key files required when HTTPS is enabled
+    if HTTPS_ENABLED:
+        if not SSL_CERT_FILE:
+            issues.append(
+                "MCP_HTTPS_ENABLED=true but MCP_SSL_CERT_FILE is not set. "
+                "Provide a valid SSL certificate file path."
+            )
+        elif not _os.path.isfile(SSL_CERT_FILE):
+            issues.append(
+                f"MCP_SSL_CERT_FILE='{SSL_CERT_FILE}' does not exist or is not a file."
+            )
+        if not SSL_KEY_FILE:
+            issues.append(
+                "MCP_HTTPS_ENABLED=true but MCP_SSL_KEY_FILE is not set. "
+                "Provide a valid SSL private key file path."
+            )
+        elif not _os.path.isfile(SSL_KEY_FILE):
+            issues.append(
+                f"MCP_SSL_KEY_FILE='{SSL_KEY_FILE}' does not exist or is not a file."
+            )
+
+    # Hybrid search weights: warn if original env vars didn't sum to ~1.0
+    # (config auto-normalizes, but user should know their config needed correction)
+    try:
+        raw_keyword = float(_os.getenv('MCP_HYBRID_KEYWORD_WEIGHT', '0.3'))
+        raw_semantic = float(_os.getenv('MCP_HYBRID_SEMANTIC_WEIGHT', '0.7'))
+        raw_sum = raw_keyword + raw_semantic
+        if abs(raw_sum - 1.0) > 0.01:
+            issues.append(
+                f"MCP_HYBRID_KEYWORD_WEIGHT ({raw_keyword}) + "
+                f"MCP_HYBRID_SEMANTIC_WEIGHT ({raw_semantic}) = {raw_sum:.3f}, "
+                f"expected 1.0 (±0.01). Weights were auto-normalized at startup."
+            )
+    except (TypeError, ValueError):
+        pass  # Invalid floats already handled by module-level validation
+
+    return issues
 # =============================================================================

@@ -17,7 +17,6 @@ Features:
 import asyncio
 import logging
 import os
-import socket
 import sys
 import time
 from collections.abc import AsyncIterator
@@ -52,7 +51,7 @@ except ImportError:
     
     # Create dummy objects for graceful degradation
     class _DummyFastMCP:
-        def tool(self):
+        def tool(self, *args, **kwargs):
             """Dummy decorator that does nothing."""
             def decorator(func):
                 return func
@@ -61,19 +60,13 @@ except ImportError:
     FastMCP = _DummyFastMCP  # type: ignore
     Context = None  # type: ignore
 
-from mcp.types import TextContent, ToolAnnotations
+from mcp.types import ToolAnnotations
 
 # Import existing memory service components
 from .config import (
     STORAGE_BACKEND,
-    CONSOLIDATION_ENABLED, EMBEDDING_MODEL_NAME, INCLUDE_HOSTNAME,
+    EMBEDDING_MODEL_NAME,
     SQLITE_VEC_PATH,
-    CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_VECTORIZE_INDEX,
-    CLOUDFLARE_D1_DATABASE_ID, CLOUDFLARE_R2_BUCKET, CLOUDFLARE_EMBEDDING_MODEL,
-    CLOUDFLARE_LARGE_CONTENT_THRESHOLD, CLOUDFLARE_MAX_RETRIES, CLOUDFLARE_BASE_DELAY,
-    HYBRID_SYNC_INTERVAL, HYBRID_BATCH_SIZE, HYBRID_MAX_QUEUE_SIZE,
-    HYBRID_SYNC_ON_STARTUP, HYBRID_FALLBACK_TO_PRIMARY,
-    CONTENT_PRESERVE_BOUNDARIES, CONTENT_SPLIT_OVERLAP, ENABLE_AUTO_SPLIT
 )
 from .storage.base import MemoryStorage
 from .services.memory_service import MemoryService

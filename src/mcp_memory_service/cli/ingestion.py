@@ -21,13 +21,11 @@ import logging
 import sys
 import time
 from pathlib import Path
-from typing import List, Optional
-
 import click
 
 from ..ingestion import get_loader_for_file, is_supported_file, SUPPORTED_FORMATS
 from ..models.memory import Memory
-from ..utils import create_memory_from_chunk, _process_and_store_chunk
+from ..utils import _process_and_store_chunk
 
 logger = logging.getLogger(__name__)
 

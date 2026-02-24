@@ -14,8 +14,7 @@
 
 """Main dream-inspired consolidation orchestrator."""
 
-import asyncio
-from typing import List, Dict, Any, Optional, Protocol, Tuple
+from typing import List, Dict, Any, Protocol, Tuple
 from datetime import datetime, timedelta, timezone
 import logging
 import time
@@ -37,15 +36,15 @@ logger = logging.getLogger(__name__)
 
 # Protocol for storage backend interface
 class StorageProtocol(Protocol):
-    async def get_all_memories(self) -> List[Memory]: ...
+    async def get_all_memories(self) -> List[Memory]: pass
     async def get_memories_by_time_range(
         self, start_time: float, end_time: float
-    ) -> List[Memory]: ...
-    async def store(self, memory: Memory) -> Tuple[bool, str]: ...
-    async def update_memory(self, memory: Memory) -> bool: ...
-    async def delete_memory(self, content_hash: str) -> bool: ...
-    async def get_memory_connections(self) -> Dict[str, int]: ...
-    async def get_access_patterns(self) -> Dict[str, datetime]: ...
+    ) -> List[Memory]: pass
+    async def store(self, memory: Memory) -> Tuple[bool, str]: pass
+    async def update_memory(self, memory: Memory) -> bool: pass
+    async def delete_memory(self, content_hash: str) -> bool: pass
+    async def get_memory_connections(self) -> Dict[str, int]: pass
+    async def get_access_patterns(self) -> Dict[str, datetime]: pass
 
 
 class SyncPauseContext:
@@ -117,7 +116,7 @@ def filter_memories_by_age(
     return [
         m
         for m in memories
-        if m.created_at and datetime.utcfromtimestamp(m.created_at) < cutoff_date
+        if m.created_at and datetime.fromtimestamp(m.created_at, tz=timezone.utc) < cutoff_date
     ]
 
 
@@ -875,7 +874,7 @@ class DreamInspiredConsolidator:
             memory_types = {}
             total_size = 0
             old_memories = 0
-            now = datetime.now()
+            now = datetime.now(timezone.utc)
 
             for memory in memories:
                 memory_type = memory.memory_type or "standard"
@@ -883,7 +882,7 @@ class DreamInspiredConsolidator:
                 total_size += len(memory.content)
 
                 if memory.created_at:
-                    age_days = (now - datetime.utcfromtimestamp(memory.created_at)).days
+                    age_days = (now - datetime.fromtimestamp(memory.created_at, tz=timezone.utc)).days
                     if age_days > 30:
                         old_memories += 1
 

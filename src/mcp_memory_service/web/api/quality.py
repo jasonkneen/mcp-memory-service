@@ -16,7 +16,6 @@
 import logging
 import time
 from typing import Optional, Dict, Any, List
-from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
@@ -28,6 +27,11 @@ from ..oauth.middleware import require_read_access, require_write_access, Authen
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _sanitize_log_value(value: object) -> str:
+    """Sanitize a user-provided value for safe inclusion in log messages."""
+    return str(value).replace("\n", "\\n").replace("\r", "\\r").replace("\x1b", "\\x1b")
 
 
 # Pydantic models for request/response
@@ -162,7 +166,7 @@ async def rate_memory(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error rating memory {content_hash}: {e}")
+        logger.error(f"Error rating memory {_sanitize_log_value(content_hash)}: {e}")
         raise HTTPException(status_code=500, detail=f"Error rating memory: {str(e)}")
 
 
@@ -228,7 +232,7 @@ async def evaluate_memory_quality(
         if 'quality_components' in memory.metadata:
             updates['quality_components'] = memory.metadata['quality_components']
 
-        logger.info(f"Persisting quality metadata for {content_hash[:8]}...: {updates}")
+        logger.info(f"Persisting quality metadata for {_sanitize_log_value(content_hash[:8])}...: {updates}")
 
         # Persist updated metadata to storage
         success, message = await storage.update_memory_metadata(
@@ -238,13 +242,13 @@ async def evaluate_memory_quality(
         )
 
         if not success:
-            logger.error(f"Failed to persist quality metadata: {message}")
+            logger.error(f"Failed to persist quality metadata: {_sanitize_log_value(message)}")
         else:
-            logger.info(f"Successfully persisted quality metadata for {content_hash[:8]}...")
+            logger.info(f"Successfully persisted quality metadata for {_sanitize_log_value(content_hash[:8])}...")
 
         evaluation_time_ms = (time.time() - start_time) * 1000
 
-        logger.info(f"Evaluated memory {content_hash[:8]}... score: {quality_score:.3f} ({quality_provider}) in {evaluation_time_ms:.1f}ms")
+        logger.info(f"Evaluated memory {_sanitize_log_value(content_hash[:8])}... score: {quality_score:.3f} ({_sanitize_log_value(quality_provider)}) in {evaluation_time_ms:.1f}ms")
 
         return EvaluateResponse(
             success=True,
@@ -260,9 +264,8 @@ async def evaluate_memory_quality(
     except HTTPException:
         raise
     except Exception as e:
-        evaluation_time_ms = (time.time() - start_time) * 1000
-        logger.error(f"Error evaluating memory {content_hash}: {e}")
-        raise HTTPException(status_code=500, detail=f"Error evaluating memory quality: {str(e)}")
+        logger.error("Error evaluating memory %s: %s", _sanitize_log_value(content_hash), e)
+        raise HTTPException(status_code=500, detail="Error evaluating memory quality")
 
 
 @router.get("/memories/{content_hash}", response_model=QualityMetricsResponse)
@@ -306,7 +309,7 @@ async def get_memory_quality(content_hash: str, storage=Depends(get_storage), us
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting memory quality {content_hash}: {e}")
+        logger.error(f"Error getting memory quality {_sanitize_log_value(content_hash)}: {e}")
         raise HTTPException(status_code=500, detail=f"Error getting memory quality: {str(e)}")
 
 

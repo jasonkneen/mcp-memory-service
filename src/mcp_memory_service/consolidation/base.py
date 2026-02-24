@@ -15,9 +15,9 @@
 """Base classes and interfaces for memory consolidation components."""
 
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 
 from ..models.memory import Memory
@@ -114,7 +114,7 @@ class ConsolidationBase(ABC):
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
     
     @abstractmethod
-    async def process(self, memories: List[Memory], **kwargs) -> Any:
+    async def process(self, memories: List[Memory], *args, **kwargs) -> Any:
         """Process the given memories and return results."""
         pass
     
@@ -133,13 +133,18 @@ class ConsolidationBase(ABC):
     
     def _get_memory_age_days(self, memory: Memory, reference_time: Optional[datetime] = None) -> int:
         """Get the age of a memory in days."""
-        ref_time = reference_time or datetime.now()
+        ref_time = reference_time or datetime.now(timezone.utc)
+        if ref_time.tzinfo is None:
+            ref_time = ref_time.replace(tzinfo=timezone.utc)
         
         if memory.created_at:
-            created_dt = datetime.utcfromtimestamp(memory.created_at)
+            created_dt = datetime.fromtimestamp(memory.created_at, tz=timezone.utc)
             return (ref_time - created_dt).days
         elif memory.timestamp:
-            return (ref_time - memory.timestamp).days
+            ts = memory.timestamp
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            return (ref_time - ts).days
         else:
             self.logger.warning(f"Memory {memory.content_hash} has no timestamp")
             return 0

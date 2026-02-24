@@ -23,10 +23,9 @@ import asyncio
 import json
 import time
 import uuid
-from typing import Dict, List, Any, Optional, Set
+from typing import Dict, Any, Optional, Set
 from datetime import datetime, timezone
-from dataclasses import dataclass, asdict
-from contextlib import asynccontextmanager
+from dataclasses import dataclass
 
 from fastapi import Request
 from sse_starlette import EventSourceResponse
@@ -81,8 +80,8 @@ class SSEManager:
             try:
                 await self._heartbeat_task
             except asyncio.CancelledError:
-                pass
-        
+                pass  # Expected when heartbeat task is cancelled during shutdown
+
         # Close all connections
         for connection_id in list(self.connections.keys()):
             await self._remove_connection(connection_id)
@@ -130,8 +129,8 @@ class SSEManager:
                     data={"connection_id": connection_id, "duration_seconds": duration}
                 )
                 await connection_info['queue'].put(close_event)
-            except:
-                pass  # Queue might be closed
+            except Exception:
+                pass  # Queue might be closed during connection teardown
             
             del self.connections[connection_id]
             logger.info(f"SSE connection removed: {connection_id} (duration: {duration:.1f}s)")

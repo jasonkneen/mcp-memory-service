@@ -288,11 +288,8 @@ function storeSessionMemory(endpoint, apiKey, content, projectContext, analysis)
         .filter(Boolean) // Remove any null/undefined values
         .map(tag => String(tag).toLowerCase()); // Normalize all to lowercase strings
 
-        // Deduplicate tags
+        // Deduplicate tags case-insensitively
         const uniqueTags = [...new Set(tags)];
-
-        // Deduplicate case-insensitively
-        const uniqueTags = [...new Set(tags.map(t => t.toLowerCase()))];
 
         const postData = JSON.stringify({
             content: content,

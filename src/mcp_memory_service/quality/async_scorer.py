@@ -10,8 +10,6 @@ import asyncio
 import logging
 import os
 from typing import List, Optional
-from queue import Queue
-import threading
 
 from ..models.memory import Memory
 from .ai_evaluator import QualityEvaluator
@@ -89,7 +87,7 @@ class AsyncQualityScorer:
                     try:
                         await self._worker_task
                     except asyncio.CancelledError:
-                        pass
+                        pass  # Expected when task is cancelled during shutdown
 
             self._worker_task = None
             logger.info("Async quality scorer stopped")

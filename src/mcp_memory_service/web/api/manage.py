@@ -19,7 +19,7 @@ Provides memory maintenance, bulk operations, and system management tools.
 """
 
 import logging
-from typing import List, Optional, Dict, Any, TYPE_CHECKING
+from typing import List, Optional
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Depends, Query
@@ -28,13 +28,17 @@ from pydantic import BaseModel, Field
 from ...storage.base import MemoryStorage
 # OAuth config no longer needed - auth is always enabled
 from ..dependencies import get_storage
-from .memories import MemoryResponse, memory_to_response
 
 # OAuth authentication imports
 from ..oauth.middleware import require_write_access, AuthenticationResult
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def _sanitize_log_value(value: object) -> str:
+    """Sanitize a user-provided value for safe inclusion in log messages."""
+    return str(value).replace("\n", "\\n").replace("\r", "\\r").replace("\x1b", "\\x1b")
 
 
 # Request/Response Models
@@ -118,8 +122,7 @@ async def bulk_delete_memories(
         elif request.before_date:
             # Count memories before date
             try:
-                before_dt = datetime.fromisoformat(request.before_date)
-                before_ts = before_dt.timestamp()
+                datetime.fromisoformat(request.before_date)
                 # This would need a method to count by date range
                 # For now, we'll estimate or implement a simple approach
                 affected_count = 0  # Placeholder
@@ -434,5 +437,5 @@ async def perform_system_operation(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"System operation {operation} failed: {str(e)}")
+        logger.error(f"System operation {_sanitize_log_value(operation)} failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"System operation failed: {str(e)}")

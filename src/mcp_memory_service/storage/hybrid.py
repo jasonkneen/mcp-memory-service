@@ -28,7 +28,7 @@ import time
 from typing import List, Dict, Any, Tuple, Optional
 from collections import deque
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 
 from .base import MemoryStorage
 from .sqlite_vec import SqliteVecMemoryStorage
@@ -250,7 +250,7 @@ class BackgroundSyncService:
             try:
                 await self.sync_task
             except asyncio.CancelledError:
-                pass
+                pass  # Expected when task is cancelled during shutdown
 
         logger.info("Background sync service stopped")
 
@@ -287,7 +287,6 @@ class BackgroundSyncService:
                 cloudflare_available = True
             except Exception as e:
                 logger.warning(f"Cloudflare not available during force sync: {e}")
-                cloudflare_available = False
                 self.sync_stats['cloudflare_available'] = False
                 return {
                     'status': 'partial',
@@ -1084,7 +1083,7 @@ class HybridMemoryStorage(MemoryStorage):
                                         cf_deleted_at = cf_memory.metadata.get('deleted_at')
                                     if cf_deleted_at is not None:
                                         logger.debug(f"Memory {cf_memory.content_hash[:8]} is soft-deleted in Cloudflare, skipping")
-                                        return ('skipped_deleted', cf_memory.content_hash)
+                                        return ('skipped_deleted', cf_memory.content_hash, None)
 
                                     # Check if memory was soft-deleted locally (tombstone check)
                                     # This prevents re-syncing memories that were intentionally deleted
@@ -1094,7 +1093,7 @@ class HybridMemoryStorage(MemoryStorage):
                                         if self.sync_service:
                                             operation = SyncOperation(operation='delete', content_hash=cf_memory.content_hash)
                                             await self.sync_service.enqueue_operation(operation)
-                                        return ('tombstone', cf_memory.content_hash)
+                                        return ('tombstone', cf_memory.content_hash, None)
 
                                     batch_missing += 1
                                     # Memory doesn't exist locally, sync it
@@ -1122,7 +1121,7 @@ class HybridMemoryStorage(MemoryStorage):
                                                 except Exception as e:
                                                     logger.debug(f"Failed to broadcast SSE progress: {e}")
 
-                                        return ('synced', cf_memory.content_hash)
+                                        return ('synced', cf_memory.content_hash, None)
                                     else:
                                         logger.warning(f"Failed to sync memory {cf_memory.content_hash}: {message}")
                                         return ('failed', cf_memory.content_hash, message)
@@ -1153,8 +1152,8 @@ class HybridMemoryStorage(MemoryStorage):
                                                 batch_synced += 1
                                                 synced_count += 1
                                                 logger.debug(f"Synced metadata for: {cf_memory.content_hash[:8]}")
-                                                return ('drift_synced', cf_memory.content_hash)
-                                return ('skipped', cf_memory.content_hash)
+                                                return ('drift_synced', cf_memory.content_hash, None)
+                                return ('skipped', cf_memory.content_hash, None)
                             except Exception as e:
                                 logger.warning(f"Error syncing memory {cf_memory.content_hash}: {e}")
                                 return ('error', cf_memory.content_hash, str(e))
@@ -1301,10 +1300,16 @@ class HybridMemoryStorage(MemoryStorage):
             "progress_percentage": round((self.initial_sync_completed / max(self.initial_sync_total, 1)) * 100, 1) if self.initial_sync_total > 0 else 0
         }
 
-    async def store(self, memory: Memory) -> Tuple[bool, str]:
-        """Store a memory in primary storage and queue for secondary sync."""
+    async def store(self, memory: Memory, skip_semantic_dedup: bool = False) -> Tuple[bool, str]:
+        """Store a memory in primary storage and queue for secondary sync.
+
+        Args:
+            memory: The Memory object to store.
+            skip_semantic_dedup: If True, bypass semantic similarity check on primary storage.
+                Exact hash deduplication is always enforced.
+        """
         # Always store in primary first for immediate availability
-        success, message = await self.primary.store(memory)
+        success, message = await self.primary.store(memory, skip_semantic_dedup=skip_semantic_dedup)
 
         if success and self.sync_service:
             # Queue for background sync to secondary
@@ -1859,6 +1864,34 @@ class HybridMemoryStorage(MemoryStorage):
             f"Failed: {final_failed - initial_failed}, "
             f"Remaining in queue: {queue_size}"
         )
+
+    # ── Consolidation Protocol Proxy Methods ──────────────────────────
+    # These methods are required by the DreamInspiredConsolidator's
+    # StorageProtocol but were missing from HybridMemoryStorage,
+    # causing consolidation forgetting/archival to fail silently.
+    # See the project issue tracker for related consolidation bug details.
+
+    async def delete_memory(self, content_hash: str) -> bool:
+        """Delete a memory by content hash (consolidation protocol).
+
+        Delegates to delete() to avoid duplicating sync logic.
+        """
+        success, _ = await self.delete(content_hash)
+        return success
+
+    async def get_memory_connections(self) -> Dict[str, int]:
+        """Get memory connection statistics (consolidation protocol).
+
+        Proxies to primary storage.
+        """
+        return await self.primary.get_memory_connections()
+
+    async def get_access_patterns(self) -> Dict[str, datetime]:
+        """Get memory access pattern statistics (consolidation protocol).
+
+        Proxies to primary storage.
+        """
+        return await self.primary.get_access_patterns()
 
     def sanitized(self, tags):
         """Sanitize and normalize tags to a JSON string.

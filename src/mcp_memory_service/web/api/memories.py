@@ -18,8 +18,7 @@ Memory CRUD endpoints for the HTTP interface.
 
 import logging
 import socket
-from typing import List, Optional, Dict, Any, TYPE_CHECKING
-from datetime import datetime
+from typing import List, Optional, Dict, Any
 
 from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from pydantic import BaseModel, Field
@@ -27,7 +26,6 @@ from pydantic import BaseModel, Field
 from ...storage.base import MemoryStorage
 from ...models.memory import Memory
 from ...services.memory_service import MemoryService
-from ...utils.hashing import generate_content_hash
 from ...config import INCLUDE_HOSTNAME
 # OAuth config no longer needed - auth is always enabled
 from ..dependencies import get_storage, get_memory_service
@@ -48,6 +46,7 @@ class MemoryCreateRequest(BaseModel):
     memory_type: Optional[str] = Field(None, description="Type of memory (e.g., 'note', 'reminder', 'fact')")
     metadata: Dict[str, Any] = Field(default={}, description="Additional metadata for the memory")
     client_hostname: Optional[str] = Field(None, description="Client machine hostname for source tracking")
+    conversation_id: Optional[str] = Field(None, description="Optional conversation identifier. When provided, semantic deduplication is skipped, allowing multiple incremental memories from the same conversation to be stored even if their content is topically similar.")
 
 
 class MemoryUpdateRequest(BaseModel):
@@ -156,13 +155,22 @@ async def store_memory(
             else:
                 client_hostname = socket.gethostname()
 
+        # Auto-tag with agent identity if provided via header
+        tags = list(request.tags)
+        agent_id = http_request.headers.get('X-Agent-ID')
+        if agent_id:
+            agent_tag = f"agent:{agent_id}"
+            if agent_tag not in tags:
+                tags.append(agent_tag)
+
         # Use injected MemoryService for consistent business logic (hostname tagging handled internally)
         result = await memory_service.store_memory(
             content=request.content,
-        tags=request.tags,
-        memory_type=request.memory_type,
-        metadata=request.metadata,
-        client_hostname=client_hostname
+            tags=tags,
+            memory_type=request.memory_type,
+            metadata=request.metadata,
+            client_hostname=client_hostname,
+            conversation_id=request.conversation_id,
         )
 
         if result["success"]:

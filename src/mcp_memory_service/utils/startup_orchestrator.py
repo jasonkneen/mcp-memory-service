@@ -27,10 +27,7 @@ import sys
 import asyncio
 import logging
 import traceback
-from typing import Any, TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from ..server_impl import MemoryServer
+from typing import Any
 
 # Import necessary functions and constants
 from ..server.client_detection import MCP_CLIENT
@@ -207,7 +204,7 @@ class ServerRunManager:
             except asyncio.CancelledError:
                 self.logger.info("Server run cancelled")
                 raise
-            except BaseException as e:
+            except Exception as e:
                 self._handle_server_exception(e)
             finally:
                 self.logger.info("Server run completed")

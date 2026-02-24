@@ -4,15 +4,17 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mcp-memory-service"
-version = "10.13.1"
-description = "Universal MCP memory service with semantic search, multi-client support, and autonomous consolidation for Claude Desktop, VS Code, and 13+ AI applications"
+version = "10.17.16"
+description = "Open-source persistent memory for AI agent pipelines and Claude. REST API + semantic search + knowledge graph + autonomous consolidation. Self-host, zero cloud cost."
 readme = "README.md"
 requires-python = ">=3.10"
 keywords = [
-    "mcp", "model-context-protocol", "claude-desktop", "semantic-memory", 
-    "vector-database", "ai-assistant", "sqlite-vec", "multi-client",
-    "semantic-search", "memory-consolidation", "ai-productivity", "vs-code",
-    "cursor", "continue", "fastapi", "developer-tools", "cross-platform"
+    "mcp", "model-context-protocol", "semantic-memory", "agent-memory",
+    "multi-agent", "langgraph", "crewai", "autogen", "agentic-ai",
+    "knowledge-graph", "vector-database", "ai-agents", "rag",
+    "long-term-memory", "semantic-search", "memory-consolidation",
+    "fastapi", "rest-api", "sqlite-vec", "cloudflare", "open-source",
+    "privacy-first", "self-hosted", "claude-desktop", "ai-assistant"
 ]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
@@ -40,21 +42,21 @@ dependencies = [
     "sqlite-vec>=0.1.0",
     "aiosqlite>=0.20.0",
     "build>=0.10.0",
-    "aiohttp>=3.8.0",
-    "fastapi>=0.115.0",
+    "aiohttp>=3.13.3",
+    "fastapi>=0.115.5",
     "uvicorn>=0.30.0",
-    "python-multipart>=0.0.9",
+    "python-multipart>=0.0.22",
     "sse-starlette>=2.1.0",
     "aiofiles>=23.2.1",
     "psutil>=5.9.0",
     "zeroconf>=0.130.0",
-    "pypdf2>=3.0.0",
+    "pypdf>=3.0.0",
     "chardet>=5.0.0",
     "click>=8.0.0",
     "httpx>=0.24.0",
-    "authlib>=1.2.0",
-    "python-jose[cryptography]>=3.3.0",
-    "requests>=2.31.0",
+    "authlib>=1.6.5",
+    "PyJWT[crypto]>=2.8.0",
+    "requests>=2.32.4",
     "sentence-transformers>=2.2.2",
     "torch>=2.0.0",
     "typing-extensions>=4.0.0; python_version < '3.11'",

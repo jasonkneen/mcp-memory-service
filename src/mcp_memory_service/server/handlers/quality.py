@@ -200,7 +200,6 @@ async def handle_get_memory_quality(server, arguments: dict) -> List[types.TextC
             return [types.TextContent(type="text", text=f"Error retrieving memory: {str(e)}")]
 
         # Extract quality metrics
-        import json
         from datetime import datetime
 
         quality_data = {

@@ -15,7 +15,7 @@
 """Exponential decay scoring for memory relevance calculation."""
 
 import math
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from datetime import datetime, timezone
 from dataclasses import dataclass
 
@@ -224,7 +224,7 @@ class ExponentialDecayCalculator(ConsolidationBase):
         if not last_accessed:
             # Check memory's own updated_at timestamp
             if memory.updated_at:
-                last_accessed = datetime.utcfromtimestamp(memory.updated_at)
+                last_accessed = datetime.fromtimestamp(memory.updated_at, tz=timezone.utc)
             else:
                 return 1.0  # No access data available
 

@@ -14,7 +14,6 @@
 
 """Health monitoring and error handling for consolidation system."""
 
-import asyncio
 import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta

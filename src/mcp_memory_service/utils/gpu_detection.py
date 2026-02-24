@@ -8,7 +8,7 @@ installation and verification scripts. Supports CUDA, ROCm, MPS, and DirectML.
 
 import os
 import subprocess
-from typing import Dict, Any, Tuple, Optional, Callable, List, Union
+from typing import Dict, Any, Tuple, Optional
 
 
 # Single source of truth for GPU platform detection configuration
@@ -205,7 +205,7 @@ def _detect_mps(config: Dict[str, Any], system_info: Dict[str, Any]) -> Tuple[bo
         if config['check_pattern'] in result.stdout:
             return True, None  # MPS doesn't have a version string
     except (subprocess.SubprocessError, FileNotFoundError, OSError):
-        pass
+        pass  # MPS check command not available; assume MPS not present
 
     return False, None
 

@@ -22,7 +22,7 @@ import sys
 import platform
 import logging
 import subprocess
-from typing import Dict, Any, Tuple, Optional, List
+from typing import Dict, Any
 import json
 
 logger = logging.getLogger(__name__)
@@ -232,7 +232,7 @@ class SystemInfo:
                     return 16
                 else:
                     return 8
-            except:
+            except Exception:
                 return 8  # Default for CUDA
         elif self.accelerator == AcceleratorType.MPS:
             return 8  # Conservative for Apple Silicon

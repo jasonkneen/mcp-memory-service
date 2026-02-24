@@ -15,9 +15,8 @@
 """Semantic compression engine for memory cluster summarization."""
 
 import asyncio
-import numpy as np
-from typing import List, Dict, Any, Optional, Tuple, Set
-from datetime import datetime
+from typing import List, Dict, Any, Optional
+from datetime import datetime, timezone
 from dataclasses import dataclass
 from collections import Counter
 import re
@@ -228,8 +227,6 @@ class SemanticCompressionEngine(ConsolidationBase):
     async def _generate_thematic_summary(self, memories: List[Memory], key_concepts: List[str]) -> str:
         """Generate a thematic summary of the memory cluster."""
         # Analyze the memories to identify common themes and patterns
-        all_content = [m.content for m in memories]
-        
         # Extract representative sentences that contain key concepts
         representative_sentences = []
         concept_coverage = set()
@@ -357,8 +354,8 @@ class SemanticCompressionEngine(ConsolidationBase):
             'end_time': end_time,
             'span_days': span_days,
             'span_description': span_description,
-            'start_iso': datetime.utcfromtimestamp(start_time).isoformat() + 'Z',
-            'end_iso': datetime.utcfromtimestamp(end_time).isoformat() + 'Z'
+            'start_iso': datetime.fromtimestamp(start_time, tz=timezone.utc).isoformat().replace('+00:00', 'Z'),
+            'end_iso': datetime.fromtimestamp(end_time, tz=timezone.utc).isoformat().replace('+00:00', 'Z')
         }
     
     def _aggregate_tags(self, memories: List[Memory]) -> List[str]:

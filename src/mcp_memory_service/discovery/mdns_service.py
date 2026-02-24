@@ -22,9 +22,9 @@ network using mDNS (Multicast DNS) and discover other MCP Memory Service instanc
 import asyncio
 import logging
 import socket
-from typing import Dict, List, Optional, Callable, Any
+from typing import Dict, List, Optional, Callable
 from dataclasses import dataclass
-from zeroconf import Zeroconf, ServiceInfo, ServiceBrowser, ServiceListener
+from zeroconf import Zeroconf, ServiceInfo, ServiceListener
 from zeroconf.asyncio import AsyncZeroconf, AsyncServiceBrowser
 
 from ..config import (

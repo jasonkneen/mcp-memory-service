@@ -20,7 +20,7 @@ import logging
 import re
 import chardet
 from pathlib import Path
-from typing import AsyncGenerator, Dict, Any, Optional
+from typing import AsyncGenerator, Optional
 import asyncio
 
 from .base import DocumentLoader, DocumentChunk

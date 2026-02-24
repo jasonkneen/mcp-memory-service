@@ -27,27 +27,18 @@ import json
 import platform
 import logging
 from collections import deque
-from typing import List, Dict, Any, Optional, Tuple
-from datetime import datetime, timedelta
+from typing import List, Dict, Any, Optional
+from datetime import datetime
 
 # Import from server package modules
 from .server import (
     # Client Detection
     MCP_CLIENT,
-    detect_mcp_client,
     # Logging
-    DualStreamHandler,
     logger,
-    # Environment
-    setup_python_paths,
-    check_uv_environment,
-    check_version_consistency,
-    configure_environment,
-    configure_performance_environment,
     # Cache
     _STORAGE_CACHE,
     _MEMORY_SERVICE_CACHE,
-    _CACHE_LOCK,
     _CACHE_STATS,
     _get_cache_lock,
     _get_or_create_memory_service,
@@ -55,11 +46,9 @@ from .server import (
 )
 
 # MCP protocol imports
-from mcp.server.models import InitializationOptions
 import mcp.types as types
 from mcp.server import NotificationOptions, Server
-import mcp.server.stdio
-from mcp.types import Resource, Prompt
+from mcp.types import Resource
 
 # Version import with fallback for testing scenarios
 try:
@@ -72,20 +61,17 @@ except (ImportError, AttributeError):
         __version__ = "0.0.0-dev"
 
 # Package imports
-from .lm_studio_compat import patch_mcp_for_lm_studio, add_windows_timeout_handling
-from .dependency_check import run_dependency_check, get_recommended_timeout
+from .dependency_check import get_recommended_timeout
 from .compat import is_deprecated, transform_deprecated_call
 from .config import (
     BACKUPS_PATH,
     SERVER_NAME,
-    SERVER_VERSION,
     STORAGE_BACKEND,
     EMBEDDING_MODEL_NAME,
     SQLITE_VEC_PATH,
     CONSOLIDATION_ENABLED,
     CONSOLIDATION_CONFIG,
     CONSOLIDATION_SCHEDULE,
-    INCLUDE_HOSTNAME,
     # Cloudflare configuration
     CLOUDFLARE_API_TOKEN,
     CLOUDFLARE_ACCOUNT_ID,
@@ -99,21 +85,15 @@ from .config import (
     # Hybrid backend configuration
     HYBRID_SYNC_INTERVAL,
     HYBRID_BATCH_SIZE,
-    HYBRID_SYNC_ON_STARTUP,
     # Integrity monitoring
     INTEGRITY_CHECK_ENABLED,
 )
 # Storage imports will be done conditionally in the server class
 from .models.memory import Memory
-from .utils.hashing import generate_content_hash
-from .utils.document_processing import _process_and_store_chunk
 from .utils.system_detection import (
     get_system_info,
-    print_system_diagnostics,
-    AcceleratorType
 )
 from .services.memory_service import MemoryService
-from .utils.time_parser import extract_time_expression, parse_time_expression
 
 # Consolidation system imports (conditional)
 if CONSOLIDATION_ENABLED:
@@ -149,7 +129,6 @@ class MemoryServer:
         self.consolidation_scheduler = None
         if CONSOLIDATION_ENABLED:
             try:
-                config = ConsolidationConfig(**CONSOLIDATION_CONFIG)
                 self.consolidator = None  # Will be initialized after storage
                 self.consolidation_scheduler = None  # Will be initialized after consolidator
                 logger.info("Consolidation system will be initialized after storage")
@@ -846,7 +825,6 @@ class MemoryServer:
                 pass
             except Exception as e:
                 logger.warning(f"Failed to load tag resources: {e}")
-                pass
             
             return resources
         
@@ -855,7 +833,6 @@ class MemoryServer:
             """Read a specific memory resource."""
             await self._ensure_storage_initialized()
 
-            import json
             from urllib.parse import unquote
 
             # Convert AnyUrl to string if necessary (fix for issue #254)
@@ -1157,7 +1134,6 @@ class MemoryServer:
                 for mem in memories:
                     export_text += f"[{mem.created_at_iso}] {mem.content}\n"
             else:  # json
-                import json
                 export_data = [m.to_dict() for m in memories]
                 export_text += json.dumps(export_data, indent=2, default=str)
             
@@ -1171,8 +1147,7 @@ class MemoryServer:
         async def _prompt_memory_cleanup(self, arguments: dict) -> list:
             """Generate memory cleanup prompt."""
             older_than = arguments.get("older_than", "")
-            similarity_threshold = float(arguments.get("similarity_threshold", "0.95"))
-            
+
             cleanup_text = "Memory Cleanup Report:\n\n"
             
             # Find duplicates
@@ -1257,6 +1232,9 @@ class MemoryServer:
                         - Array: ["tag1", "tag2"]
                         - String: "tag1,tag2"
 
+                        Use `conversation_id` to bypass semantic deduplication when saving
+                        incremental memories from the same conversation.
+
                        Examples:
                         # Using array format:
                         {
@@ -1274,6 +1252,15 @@ class MemoryServer:
                                 "tags": "important,reference",
                                 "type": "note"
                             }
+                        }
+
+                        # Using conversation_id to save incremental notes:
+                        {
+                            "content": "User prefers dark mode",
+                            "conversation_id": "conv_abc123",
+                            "metadata": {
+                                "tags": "preference,ui"
+                            }
                         }""",
                         inputSchema={
                             "type": "object",
@@ -1281,6 +1268,10 @@ class MemoryServer:
                                 "content": {
                                     "type": "string",
                                     "description": "The memory content to store, such as a fact, note, or piece of information."
+                                },
+                                "conversation_id": {
+                                    "type": "string",
+                                    "description": "Optional conversation identifier. When provided, semantic deduplication is skipped, allowing multiple incremental memories from the same conversation to be stored even if their content is topically similar. Exact duplicate hashes are still rejected."
                                 },
                                 "metadata": {
                                     "type": "object",
@@ -2499,7 +2490,6 @@ Examples:
         # Fallback: Create backup directly if no scheduler
         from pathlib import Path
         import sqlite3
-        import asyncio
         from datetime import datetime, timezone
         import tempfile
 
@@ -2594,7 +2584,6 @@ Examples:
 
             from pathlib import Path
             import sqlite3
-            import asyncio
 
             if not Path(db_path).exists():
                 return {
@@ -2844,6 +2833,13 @@ def _cleanup_on_shutdown():
 def main():
     import signal
     import atexit
+    from mcp_memory_service.config import validate_config
+
+    # Log any configuration issues at startup for visibility
+    config_issues = validate_config()
+    if config_issues:
+        for issue in config_issues:
+            logger.warning("Configuration issue: %s", issue)
 
     # Register cleanup function for normal exit
     atexit.register(_cleanup_on_shutdown)

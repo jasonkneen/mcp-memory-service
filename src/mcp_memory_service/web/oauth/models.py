@@ -16,7 +16,7 @@
 OAuth 2.1 data models and schemas for MCP Memory Service.
 """
 
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 from pydantic import BaseModel, Field, HttpUrl
 
 

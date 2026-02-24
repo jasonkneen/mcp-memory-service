@@ -8,8 +8,7 @@ This module provides a monkey patch to handle LM Studio's non-standard
 import logging
 import sys
 import platform
-from typing import Any, Dict, Union
-from pydantic import BaseModel, Field
+from typing import Any, Union
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +43,8 @@ def add_windows_timeout_handling():
 
 def create_cancelled_notification_class():
     """Create a proper CancelledNotification class if it doesn't exist."""
-    from pydantic import BaseModel
-    
+    from pydantic import BaseModel, Field
+
     class CancelledNotificationParams(BaseModel):
         """Parameters for cancelled notification."""
         requestId: Any = Field(default=None, alias="requestId")
@@ -89,12 +88,13 @@ def patch_mcp_for_lm_studio():
             # Store the original __or__ operator if it exists
             original_or = getattr(original_client_notification, '__or__', None)
             
-            # Create a new union type that includes CancelledNotification
+            # Create a new union type that includes CancelledNotification (unused, kept for documentation)
             if original_or:
                 # Add CancelledNotification to the union
-                PatchedClientNotification = Union[original_client_notification, CancelledNotification]
+                _patched_union = Union[original_client_notification, CancelledNotification]
             else:
-                PatchedClientNotification = original_client_notification
+                _patched_union = original_client_notification
+            del _patched_union  # Variable is only created for type documentation purposes
             
             # Store original model_validate
             original_validate = original_client_notification.model_validate
@@ -148,8 +148,8 @@ def patch_mcp_for_lm_studio():
                 # Check if this is a CancelledNotification
                 if hasattr(notification, 'method') and notification.method == 'notifications/cancelled':
                     logger.info("Handling cancelled notification - ignoring")
-                    return  # Just ignore it
-                
+                    return None  # Just ignore it
+
                 # Otherwise handle normally
                 return await original_handle(self, notification)
             

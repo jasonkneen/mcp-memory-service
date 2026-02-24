@@ -31,12 +31,11 @@ from pathlib import Path
 from urllib.parse import urlparse, unquote
 
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from ...ingestion import get_loader_for_file, SUPPORTED_FORMATS
 from ...models.memory import Memory
-from ...utils import create_memory_from_chunk, _process_and_store_chunk, generate_content_hash
+from ...utils import _process_and_store_chunk, generate_content_hash
 from ..dependencies import get_storage
 
 logger = logging.getLogger(__name__)
@@ -45,6 +44,11 @@ router = APIRouter()
 
 # Constants
 MAX_TAG_LENGTH = 100
+
+
+def _sanitize_log_value(value: object) -> str:
+    """Sanitize a user-provided value for safe inclusion in log messages."""
+    return str(value).replace("\n", "\\n").replace("\r", "\\r").replace("\x1b", "\\x1b")
 
 
 def parse_and_validate_tags(tags: str) -> List[str]:
@@ -102,27 +106,24 @@ def parse_and_validate_tags(tags: str) -> List[str]:
 
 async def ensure_storage_initialized():
     """Ensure storage is initialized for web API usage."""
-    logger.info("🔍 Checking storage availability...")
+    logger.info("Checking storage availability...")
     try:
         # Try to get storage
         storage = get_storage()
-        logger.info("✅ Storage already available")
+        logger.info("Storage already available")
         return storage
-    except Exception as e:
-        logger.warning(f"⚠️ Storage not available ({e}), attempting to initialize...")
+    except Exception:
+        logger.warning("Storage not available, attempting to initialize...")
         try:
             # Import and initialize storage
             from ..dependencies import create_storage_backend, set_storage
-            logger.info("🏗️ Creating storage backend...")
+            logger.info("Creating storage backend...")
             storage = await create_storage_backend()
             set_storage(storage)
-            logger.info("✅ Storage initialized successfully in API context")
+            logger.info("Storage initialized successfully in API context")
             return storage
         except Exception as init_error:
-            logger.error(f"❌ Failed to initialize storage: {init_error}")
-            logger.error(f"Full error: {str(init_error)}")
-            import traceback
-            logger.error(f"Traceback: {traceback.format_exc()}")
+            logger.exception("Failed to initialize storage")
             # Don't raise HTTPException here since this is called from background tasks
             raise init_error
 
@@ -169,12 +170,12 @@ async def upload_document(
 
     Uses FastAPI BackgroundTasks for proper async processing.
     """
-    logger.info(f"🚀 Document upload endpoint called with file: {file.filename}")
+    logger.info("Document upload endpoint called")
     try:
         # Read file content
         file_content = await file.read()
         file_size = len(file_content)
-        logger.info(f"File content length: {file_size} bytes")
+        logger.info("File content received: %d bytes", file_size)
 
         # Validate file type
         file_ext = Path(file.filename).suffix.lower().lstrip('.')
@@ -233,9 +234,9 @@ async def upload_document(
             "message": f"Document {file.filename} queued for processing"
         }
 
-    except Exception as e:
-        logger.error(f"Upload error: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.exception("Upload error")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.post("/batch-upload", response_model=Dict[str, Any])
 async def batch_upload_documents(
@@ -323,9 +324,9 @@ async def batch_upload_documents(
             "message": f"Batch of {len(files)} documents queued for processing"
         }
 
-    except Exception as e:
-        logger.error(f"Batch upload error: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.exception("Batch upload error")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/status/{upload_id}", response_model=UploadStatus)
 async def get_upload_status(upload_id: str):
@@ -375,8 +376,8 @@ async def get_upload_history():
         history.sort(key=lambda x: x["created_at"], reverse=True)
 
         return {"uploads": history}
-    except Exception as e:
-        logger.error(f"Error in get_upload_history: {e}")
+    except Exception:
+        logger.exception("Error in get_upload_history")
         # Return empty history on error so the UI doesn't break
         return {"uploads": []}
 
@@ -391,7 +392,7 @@ async def process_single_file_upload(
 ):
     """Background task to process a single document upload."""
     try:
-        logger.info(f"Starting document processing: {upload_id} - {filename}")
+        logger.info("Starting document processing: %s", upload_id)
         session = upload_sessions[upload_id]
         session.status = "processing"
 
@@ -451,8 +452,8 @@ async def process_single_file_upload(
                 else:
                     session.errors.append(f"Chunk {chunk.chunk_index}: {error}")
 
-            except Exception as e:
-                session.errors.append(f"Chunk {chunk.chunk_index}: {str(e)}")
+            except Exception:
+                session.errors.append(f"Chunk {chunk.chunk_index}: processing error")
 
             # Update progress
             session.chunks_processed = chunks_processed
@@ -464,22 +465,23 @@ async def process_single_file_upload(
         session.completed_at = datetime.now()
         session.progress = 100.0
 
-        logger.info(f"Document processing completed: {upload_id}, {chunks_stored}/{chunks_processed} chunks")
+        logger.info("Document processing completed: %s, %d/%d chunks", upload_id, chunks_stored, chunks_processed)
         return {"chunks_processed": chunks_processed, "chunks_stored": chunks_stored}
 
-    except Exception as e:
-        logger.error(f"Document processing error: {str(e)}")
+    except Exception:
+        logger.exception("Document processing error: %s", upload_id)
         session = upload_sessions.get(upload_id)
         if session:
             session.status = "failed"
-            session.errors.append(str(e))
+            session.errors.append("Processing error")
             session.completed_at = datetime.now()
+        return None
     finally:
         # Clean up temp file (always executed)
         try:
             os.unlink(file_path)
-        except Exception as cleanup_error:
-            logger.debug(f"Could not delete temp file {file_path}: {cleanup_error}")
+        except Exception:
+            logger.debug("Could not delete temp file %s", file_path)
 
 
 async def process_batch_upload(
@@ -492,14 +494,13 @@ async def process_batch_upload(
 ):
     """Background task to process a batch document upload."""
     try:
-        logger.info(f"Starting batch processing: {batch_id}")
+        logger.info("Starting batch processing: %s", batch_id)
         session = upload_sessions[batch_id]
         session.status = "processing"
 
         # Get storage
         storage = await ensure_storage_initialized()
 
-        total_files = len(file_info)
         processed_files = 0
         total_chunks_processed = 0
         total_chunks_stored = 0
@@ -553,16 +554,16 @@ async def process_batch_upload(
 
                 processed_files += 1
 
-            except Exception as e:
-                all_errors.append(f"{filename}: {str(e)}")
+            except Exception:
+                all_errors.append(f"{filename}: processing error")
                 processed_files += 1
 
             finally:
                 # Clean up temp file (always executed)
                 try:
                     os.unlink(temp_path)
-                except Exception as cleanup_error:
-                    logger.debug(f"Could not delete temp file {temp_path}: {cleanup_error}")
+                except Exception:
+                    logger.debug("Could not delete temp file %s", temp_path)
 
         # Finalize batch
         session.status = "completed" if total_chunks_stored > 0 else "failed"
@@ -572,14 +573,14 @@ async def process_batch_upload(
         session.progress = 100.0
         session.errors = all_errors
 
-        logger.info(f"Batch processing completed: {batch_id}, {total_chunks_stored}/{total_chunks_processed} chunks")
+        logger.info("Batch processing completed: %s, %d/%d chunks", batch_id, total_chunks_stored, total_chunks_processed)
 
-    except Exception as e:
-        logger.error(f"Batch processing error: {str(e)}")
+    except Exception:
+        logger.exception("Batch processing error: %s", batch_id)
         session = upload_sessions.get(batch_id)
         if session:
             session.status = "failed"
-            session.errors.append(str(e))
+            session.errors.append("Processing error")
             session.completed_at = datetime.now()
             # Note: send_progress_update removed - progress tracking via polling instead
 
@@ -601,7 +602,7 @@ async def cleanup_old_sessions():
 
             for upload_id in to_remove:
                 del upload_sessions[upload_id]
-                logger.debug(f"Cleaned up old upload session: {upload_id}")
+                logger.debug("Cleaned up old upload session: %s", upload_id)
 
     asyncio.create_task(cleanup())
 
@@ -617,7 +618,7 @@ async def remove_document(upload_id: str, remove_from_memory: bool = True):
     Returns:
         Removal status with count of memories deleted
     """
-    logger.info(f"Remove document request for upload_id: {upload_id}, remove_from_memory: {remove_from_memory}")
+    logger.info("Remove document request received")
 
     # Get session info if available (may not exist after server restart)
     session = upload_sessions.get(upload_id)
@@ -631,13 +632,13 @@ async def remove_document(upload_id: str, remove_from_memory: bool = True):
 
             # Search by tag pattern: upload_id:{upload_id}
             upload_tag = f"upload_id:{upload_id}"
-            logger.info(f"Searching for memories with tag: {upload_tag}")
+            logger.info("Searching for memories by upload tag")
 
             try:
                 # Delete all memories with this upload_id tag
                 count, _, _ = await storage.delete_by_tags([upload_tag])
                 memories_deleted = count
-                logger.info(f"Deleted {memories_deleted} memories with tag {upload_tag}")
+                logger.info("Memories deleted for upload")
 
                 # If we deleted memories but don't have session info, try to get filename from first memory
                 if memories_deleted > 0 and not session:
@@ -645,13 +646,13 @@ async def remove_document(upload_id: str, remove_from_memory: bool = True):
                     # (we already deleted them, so we'll use a generic message)
                     filename = f"Document (upload_id: {upload_id[:8]}...)"
 
-            except Exception as e:
-                logger.warning(f"Could not delete memories by tag: {e}")
+            except Exception:
+                logger.warning("Could not delete memories by upload tag")
                 # If deletion fails and we don't know about this upload, return 404
                 if not session:
                     raise HTTPException(
                         status_code=404,
-                        detail=f"Upload ID not found and no memories with tag '{upload_tag}'"
+                        detail="Upload ID not found"
                     )
                 memories_deleted = 0
 
@@ -661,19 +662,17 @@ async def remove_document(upload_id: str, remove_from_memory: bool = True):
 
         return {
             "status": "success",
-            "upload_id": upload_id,
-            "filename": filename,
-            "memories_deleted": memories_deleted,
-            "message": f"Document '{filename}' removed successfully"
+            "upload_id": str(upload_id)[:64],
+            "filename": str(filename)[:256],
+            "memories_deleted": int(memories_deleted),
+            "message": "Document removed successfully"
         }
 
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Error removing document: {str(e)}")
-        import traceback
-        logger.error(f"Traceback: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"Failed to remove document: {str(e)}")
+    except Exception:
+        logger.exception("Unexpected error removing document")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.delete("/remove-by-tags")
 async def remove_documents_by_tags(tags: List[str]):
@@ -686,7 +685,7 @@ async def remove_documents_by_tags(tags: List[str]):
     Returns:
         Removal status with affected upload IDs and memory counts
     """
-    logger.info(f"Remove documents by tags request: {tags}")
+    logger.info("Remove documents by tags request received")
 
     try:
         # Get storage
@@ -698,7 +697,6 @@ async def remove_documents_by_tags(tags: List[str]):
 
         # Find and remove affected upload sessions
         affected_sessions = []
-        to_remove = []
 
         for upload_id, session in upload_sessions.items():
             # Check if any of the document's tags match
@@ -708,15 +706,15 @@ async def remove_documents_by_tags(tags: List[str]):
 
         return {
             "status": "success",
-            "tags": tags,
-            "memories_deleted": memories_deleted,
+            "tags": [str(t)[:128] for t in tags],
+            "memories_deleted": int(memories_deleted),
             "affected_uploads": affected_sessions,
-            "message": f"Deleted {memories_deleted} memories matching tags"
+            "message": "Memories deleted successfully"
         }
 
-    except Exception as e:
-        logger.error(f"Error removing documents by tags: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to remove documents: {str(e)}")
+    except Exception:
+        logger.exception("Unexpected error removing documents by tags")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/search-content/{upload_id}")
 async def search_document_content(upload_id: str, limit: int = 1000):
@@ -730,14 +728,14 @@ async def search_document_content(upload_id: str, limit: int = 1000):
     Returns:
         List of memories with their content and metadata
     """
-    logger.info(f"Search document content for upload_id: {upload_id}, limit: {limit}")
+    logger.info("Search document content request received")
 
     # Get session info if available (may not exist after server restart)
     session = upload_sessions.get(upload_id)
 
     # If no session, we'll still try to find memories by upload_id tag
     if not session:
-        logger.info(f"No upload session found for {upload_id}, searching by tag only")
+        logger.info("No upload session found, searching by tag only")
 
     try:
         # Get storage
@@ -745,7 +743,7 @@ async def search_document_content(upload_id: str, limit: int = 1000):
 
         # Search for memories with upload_id tag
         upload_tag = f"upload_id:{upload_id}"
-        logger.info(f"Searching for memories with tag: {upload_tag}")
+        logger.info("Searching for memories by upload tag")
 
         # Use tag search (search_by_tags doesn't support limit parameter)
         all_memories = await storage.search_by_tags([upload_tag])
@@ -796,8 +794,8 @@ async def search_document_content(upload_id: str, limit: int = 1000):
             "memories": results
         }
 
-    except Exception as e:
-        logger.error(f"Error searching document content: {str(e)}")
+    except Exception:
+        logger.exception("Unexpected error searching document content")
         # Get filename from session if available
         filename = session.filename if session else f"Document (upload_id: {upload_id[:8]}...)"
         # Return empty results instead of error to avoid breaking UI
@@ -807,5 +805,5 @@ async def search_document_content(upload_id: str, limit: int = 1000):
             "filename": filename,
             "total_found": 0,
             "memories": [],
-            "error": str(e)
+            "error": "An error occurred while searching document content"
         }

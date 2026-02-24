@@ -19,8 +19,7 @@ Provides semantic search, tag-based search, and time-based recall functionality.
 """
 
 import logging
-from typing import List, Optional, Dict, Any, TYPE_CHECKING
-from datetime import datetime, timedelta, timezone
+from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel, Field
@@ -41,6 +40,11 @@ from ..oauth.middleware import require_read_access, AuthenticationResult
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def _sanitize_log_value(value: object) -> str:
+    """Sanitize a user-provided value for safe inclusion in log messages."""
+    return str(value).replace("\n", "\\n").replace("\r", "\\r").replace("\x1b", "\\x1b")
 
 
 # Request Models
@@ -156,7 +160,6 @@ async def semantic_search(
             # Take top N after reranking
             query_results = query_results[:request.n_results]
 
-            logger.debug(f"Quality-boosted search: reranked {fetch_limit} → {len(query_results)} results")
 
         # Convert to search results
         search_results = []
@@ -182,8 +185,8 @@ async def semantic_search(
                 processing_time_ms=processing_time
             )
             await sse_manager.broadcast_event(event)
-        except Exception as e:
-            logger.warning(f"Failed to broadcast search_completed event: {e}")
+        except Exception:
+            logger.warning("Failed to broadcast search_completed event")
 
         return SearchResponse(
             results=search_results,
@@ -193,8 +196,8 @@ async def semantic_search(
             processing_time_ms=processing_time
         )
 
-    except Exception as e:
-        logger.error(f"Semantic search failed: {str(e)}")
+    except Exception:
+        logger.error("Semantic search failed")
         raise HTTPException(status_code=500, detail="Search operation failed. Please try again.")
 
 
@@ -263,8 +266,8 @@ async def tag_search(
                 processing_time_ms=processing_time
             )
             await sse_manager.broadcast_event(event)
-        except Exception as e:
-            logger.warning(f"Failed to broadcast search_completed event: {e}")
+        except Exception:
+            logger.warning("Failed to broadcast search_completed event")
 
         return SearchResponse(
             results=search_results,
@@ -276,8 +279,8 @@ async def tag_search(
 
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Tag search failed: {str(e)}")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Tag search failed")
 
 
 @router.post("/search/by-time", response_model=SearchResponse, tags=["search"])
@@ -288,14 +291,14 @@ async def time_search(
 ):
     """
     Search memories by time-based queries.
-    
+
     Supports natural language time expressions like 'yesterday', 'last week',
     'this month', etc. Currently implements basic time filtering - full natural
     language parsing can be enhanced later.
     """
     import time
     start_time = time.time()
-    
+
     try:
         # Parse time query using robust time_parser
         start_ts, end_ts = parse_time_expression(request.query)
@@ -322,19 +325,19 @@ async def time_search(
 
         # Limit results
         filtered_memories = query_results[:request.n_results]
-        
+
         # Convert to search results
         search_results = [
             memory_query_result_to_search_result(result)
             for result in filtered_memories
         ]
-        
+
         # Update relevance reason for time-based results
         for result in search_results:
             result.relevance_reason = f"Time match: {request.query}"
-        
+
         processing_time = (time.time() - start_time) * 1000
-        
+
         return SearchResponse(
             results=search_results,
             total_found=len(search_results),
@@ -342,11 +345,11 @@ async def time_search(
             search_type="time",
             processing_time_ms=processing_time
         )
-        
+
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Time search failed: {str(e)}")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Time search failed")
 
 
 @router.get("/search/similar/{content_hash}", response_model=SearchResponse, tags=["search"])
@@ -358,43 +361,43 @@ async def find_similar(
 ):
     """
     Find memories similar to a specific memory identified by its content hash.
-    
+
     Uses the content of the specified memory as a search query to find
     semantically similar memories.
     """
     import time
     start_time = time.time()
-    
+
     try:
         # First, get the target memory by searching with its hash
         # This is inefficient but works with current storage interface
         target_results = await storage.retrieve(content_hash, n_results=1)
-        
+
         if not target_results or target_results[0].memory.content_hash != content_hash:
             raise HTTPException(status_code=404, detail="Memory not found")
-        
+
         target_memory = target_results[0].memory
-        
+
         # Use the target memory's content to find similar memories
         similar_results = await storage.retrieve(
             query=target_memory.content,
             n_results=n_results + 1  # +1 because the original will be included
         )
-        
+
         # Filter out the original memory
         filtered_results = [
             result for result in similar_results
             if result.memory.content_hash != content_hash
         ][:n_results]
-        
+
         # Convert to search results
         search_results = [
             memory_query_result_to_search_result(result)
             for result in filtered_results
         ]
-        
+
         processing_time = (time.time() - start_time) * 1000
-        
+
         return SearchResponse(
             results=search_results,
             total_found=len(search_results),
@@ -402,8 +405,8 @@ async def find_similar(
             search_type="similar",
             processing_time_ms=processing_time
         )
-        
+
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Similar search failed: {str(e)}")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Similar search failed")

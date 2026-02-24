@@ -5,7 +5,6 @@ Based on ONNXMiniLM_L6_V2 implementation.
 """
 
 import hashlib
-import json
 import logging
 import os
 import tarfile
@@ -39,6 +38,19 @@ def _verify_sha256(fname: str, expected_sha256: str) -> bool:
         for byte_block in iter(lambda: f.read(4096), b""):
             sha256_hash.update(byte_block)
     return sha256_hash.hexdigest() == expected_sha256
+
+
+def _safe_tar_extract(tar: tarfile.TarFile, path) -> None:
+    """Safely extract a tar archive, preventing path traversal attacks."""
+    abs_path = os.path.realpath(str(path))
+    members = tar.getmembers()
+    for member in members:
+        member_path = os.path.realpath(os.path.join(abs_path, member.name))
+        if not member_path.startswith(abs_path + os.sep) and member_path != abs_path:
+            raise ValueError(f"Attempted path traversal in tar file: {member.name}")
+    # Extract each member individually after validation to avoid tarslip
+    for member in members:
+        tar.extract(member, path, set_attrs=False)
 
 
 class ONNXEmbeddingModel:
@@ -112,7 +124,7 @@ class ONNXEmbeddingModel:
         # Extract the archive
         logger.info(f"Extracting model to {extracted_path}")
         with tarfile.open(archive_path, "r:gz") as tar:
-            tar.extractall(self.DOWNLOAD_PATH)
+            _safe_tar_extract(tar, self.DOWNLOAD_PATH)
         
         # Verify extraction
         if not (extracted_path / "model.onnx").exists():
