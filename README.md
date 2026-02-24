@@ -620,6 +620,7 @@ These warnings disappear after the first successful run. The service is working 
 - **System Python** on macOS lacks SQLite extension support by default
 - **Solution**: Use Homebrew Python: `brew install python && rehash`
 - **Alternative**: Use pyenv: `PYTHON_CONFIGURE_OPTS='--enable-loadable-sqlite-extensions' pyenv install 3.12.0`
+- **If using uvx/uv**: Add `UV_PYTHON_PREFERENCE=only-managed` to your MCP server `env` block — this forces uv to use its own managed Python (which has SQLite extension support) instead of your pyenv Python
 - **Fallback**: Use Cloudflare or Hybrid backend: `--storage-backend cloudflare` or `--storage-backend hybrid`
 - See [Troubleshooting Guide](docs/troubleshooting/general.md#macos-sqlite-extension-issues) for details
 
@@ -933,6 +934,34 @@ uv run memory health
   }
 }
 ```
+
+### Claude Code (uvx) Configuration
+
+For users installing via `uvx` (no local clone required), add to `~/.claude/claude.json`:
+
+```json
+{
+  "mcpServers": {
+    "memory": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["--from", "mcp-memory-service", "memory", "server"],
+      "env": {
+        "MCP_MEMORY_STORAGE_BACKEND": "sqlite_vec",
+        "UV_PYTHON_PREFERENCE": "only-managed"
+      }
+    }
+  }
+}
+```
+
+> **Note:** `UV_PYTHON_PREFERENCE=only-managed` is required when using `uvx`. pyenv-managed
+> Python builds typically lack `--enable-loadable-sqlite-extensions`, which breaks `sqlite_vec`.
+> Setting this variable forces `uv` to use its own managed Python (which supports SQLite
+> extensions) instead of picking up the pyenv Python from your `PATH`.
+
+> **Note:** The `mcp-memory-server` entry point is **not** for stdio use. Always use
+> `memory server` (or `python -m mcp_memory_service.server`) in stdio MCP configurations.
 
 ### Environment Variables
 

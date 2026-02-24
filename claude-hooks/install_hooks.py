@@ -513,19 +513,21 @@ class HookInstaller:
 
         if server_type == 'stdio':
             # For stdio servers, we'll reference the existing server
+            # connectionTimeout is generous because uvx needs 4-15 seconds to start
+            # (package resolution + embedding model loading on cold cache).
             mcp_config = {
                 "useExistingServer": True,
                 "serverName": "memory",
-                "connectionTimeout": 5000,
-                "toolCallTimeout": 10000
+                "connectionTimeout": 30000,
+                "toolCallTimeout": 60000
             }
         else:
             # For HTTP servers, extract endpoint information
             mcp_config = {
                 "useExistingServer": True,
                 "serverName": "memory",
-                "connectionTimeout": 5000,
-                "toolCallTimeout": 10000
+                "connectionTimeout": 30000,
+                "toolCallTimeout": 60000
             }
 
         # Detect Python path based on platform
@@ -569,6 +571,45 @@ class HookInstaller:
 
         return config
 
+    def _is_running_from_temp_dir(self) -> bool:
+        """Return True if the installer script is being run from a temporary directory.
+
+        When installed via uvx, the script is extracted to a temp directory that is
+        cleaned up after the process exits.  Using a hardcoded ``serverWorkingDir``
+        pointing to that temp directory will break the hooks after cleanup.
+        """
+        script_dir_str = str(self.script_dir)
+        tmp_indicators = ["/tmp/", "\\Temp\\", "\\tmp\\"]
+        tmpdir_env = os.environ.get("TMPDIR", "")
+        if tmpdir_env and script_dir_str.startswith(tmpdir_env):
+            return True
+        return any(indicator in script_dir_str for indicator in tmp_indicators)
+
+    def _build_mcp_server_command_config(self) -> Dict:
+        """Build the MCP server command configuration for the hooks config.json.
+
+        When the installer is run from a temporary directory (e.g. via uvx), use
+        ``uvx --from mcp-memory-service memory server`` so that the command remains
+        valid after the temp directory is cleaned up.  Otherwise fall back to
+        ``uv run python -m mcp_memory_service.server`` with the local working
+        directory.
+
+        Timeouts are set generously because the server needs 4-15 seconds to start
+        (uvx package resolution + embedding model loading on cold cache).
+        """
+        if self._is_running_from_temp_dir():
+            return {
+                "serverCommand": ["uvx", "--from", "mcp-memory-service", "memory", "server"],
+                "connectionTimeout": 30000,
+                "toolCallTimeout": 60000,
+            }
+        return {
+            "serverCommand": ["uv", "run", "python", "-m", "mcp_memory_service.server"],
+            "serverWorkingDir": str(self.script_dir.parent),
+            "connectionTimeout": 30000,
+            "toolCallTimeout": 60000,
+        }
+
     def generate_basic_config(self, env_type: str = "standalone") -> Dict:
         """Generate basic configuration when no template is available.
 
@@ -602,12 +643,7 @@ class HookInstaller:
                     "healthCheckTimeout": 3000,
                     "useDetailedHealthCheck": True
                 },
-                "mcp": {
-                    "serverCommand": ["uv", "run", "python", "-m", "mcp_memory_service.server"],
-                    "serverWorkingDir": str(self.script_dir.parent),
-                    "connectionTimeout": 5000,
-                    "toolCallTimeout": 10000
-                },
+                "mcp": self._build_mcp_server_command_config(),
                 "defaultTags": ["claude-code", "auto-generated"],
                 "maxMemoriesPerSession": 8,
                 "enableSessionConsolidation": True,
@@ -953,9 +989,10 @@ class HookInstaller:
                     with open(config_src, 'r', encoding='utf-8') as f:
                         config = json.load(f)
 
-                    # Update server working directory path for independent setup
+                    # Update MCP server command for independent setup.
+                    # Uses uvx when running from a temp dir, otherwise uses uv run.
                     if 'memoryService' in config and 'mcp' in config['memoryService']:
-                        config['memoryService']['mcp']['serverWorkingDir'] = str(self.script_dir.parent)
+                        config['memoryService']['mcp'].update(self._build_mcp_server_command_config())
 
                     self.success("Generated configuration using template with updated paths")
                 else:
@@ -1156,20 +1193,41 @@ class HookInstaller:
                             if not is_memory_hook:
                                 conflicts.append(hook_type)
 
+                    # Merge hooks by event type in all cases — never replace the entire
+                    # hooks section, so that user-defined hooks for other tools are
+                    # preserved across reinstalls.
                     if conflicts:
                         self.warn(f"Found existing non-memory hooks for: {', '.join(conflicts)}")
                         self.warn("Memory awareness hooks will be added alongside existing hooks")
 
-                        # Add memory hooks alongside existing ones
-                        for hook_type in hook_config['hooks']:
-                            if hook_type in existing_settings['hooks']:
-                                existing_settings['hooks'][hook_type].extend(hook_config['hooks'][hook_type])
-                            else:
-                                existing_settings['hooks'][hook_type] = hook_config['hooks'][hook_type]
-                    else:
-                        # No conflicts, safe to update memory awareness hooks
-                        existing_settings['hooks'].update(hook_config['hooks'])
-                        self.info("Updated memory awareness hooks without conflicts")
+                    for hook_type, new_hook_groups in hook_config['hooks'].items():
+                        if hook_type not in existing_settings['hooks']:
+                            # New event type — just add it
+                            existing_settings['hooks'][hook_type] = new_hook_groups
+                        else:
+                            # Event type already present: append only the groups whose
+                            # commands are not yet registered (idempotent reinstall).
+                            new_commands = set(
+                                hook.get('command', '')
+                                for group in new_hook_groups
+                                for hook in group.get('hooks', [])
+                            )
+                            existing_commands_set = set(
+                                hook.get('command', '')
+                                for group in existing_settings['hooks'][hook_type]
+                                for hook in group.get('hooks', [])
+                            )
+                            if not new_commands.issubset(existing_commands_set):
+                                existing_settings['hooks'][hook_type].extend(new_hook_groups)
+
+                    self.info("Merged memory awareness hooks, preserving all existing hooks")
+
+                    # Propagate top-level keys from hook_config (e.g. statusLine) that
+                    # are not the 'hooks' dict — we always overwrite these since they
+                    # are owned by this installer.
+                    for key, value in hook_config.items():
+                        if key != 'hooks':
+                            existing_settings[key] = value
 
                     # Upgrade path: remove PreToolUse from existing settings when user opted out
                     # (handles upgrades from v10.17.14 where the hook was auto-installed)
