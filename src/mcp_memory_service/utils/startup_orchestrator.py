@@ -247,7 +247,6 @@ class ServerRunManager:
                     elif message["type"] == "lifespan.shutdown":
                         await send({"type": "lifespan.shutdown.complete"})
                         return
-                return
 
             path = scope.get("path", "")
             if path == "/sse":

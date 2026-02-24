@@ -542,8 +542,6 @@ else:
 MCP_SSE_HOST = os.getenv('MCP_SSE_HOST', '127.0.0.1')
 MCP_SSE_PORT = safe_get_int_env('MCP_SSE_PORT', 8765, min_value=1024, max_value=65535)
 
-logger.info(f"SSE transport config: host={MCP_SSE_HOST}, port={MCP_SSE_PORT}")
-
 # HTTP Server Configuration
 HTTP_ENABLED = os.getenv('MCP_HTTP_ENABLED', 'false').lower() == 'true'
 HTTP_PORT = safe_get_int_env('MCP_HTTP_PORT', 8000, min_value=1024, max_value=65535)  # Non-privileged ports only
