@@ -10,6 +10,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [10.18.1] - 2026-02-24
+
+### Security
+- **Sanitize consolidation recommendations response** (CodeQL alert #356 — py/stack-trace-exposure, medium severity): The `GET /api/consolidation/recommendations` endpoint previously allowed internal exception messages and raw data-structure representations to reach API clients, violating CWE-209 (Information Exposure Through an Error Message).
+  - `recommendation` field value is now validated against an explicit allowlist (`consolidate`, `maintain`, `archive`, `review`) before serialisation; unknown values are replaced with the generic string `"unknown"`.
+  - All type conversions (`int()`, `float()`, `datetime.fromisoformat()`) are now wrapped in `try/except` blocks that substitute safe fallback values (`0`, `0.0`, `null`) instead of propagating raw exception text.
+  - Full exception details continue to be recorded via `logger.error()` for operator visibility; only the sanitised response is sent to clients.
+  - File: `src/mcp_memory_service/web/api/consolidation.py`
+
 ## [10.18.0] - 2026-02-24
 
 ### Added

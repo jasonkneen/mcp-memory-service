@@ -259,19 +259,20 @@ Export memories from mcp-memory-service → Import to shodh-cloudflare → Sync 
 ---
 
 
-## 🆕 Latest Release: **v10.18.0** (February 24, 2026)
+## 🆕 Latest Release: **v10.18.1** (February 24, 2026)
 
-**SSE Transport Mode + Setup Fixes**
+**Security Patch: Sanitize Consolidation Recommendations Response**
 
 **What's New:**
-- **SSE transport mode** (#506): Run the MCP server persistently over HTTP with `--sse`; eliminates stdio cold-start latency and race conditions. Configurable via `MCP_SSE_HOST` / `MCP_SSE_PORT`.
-- **Entry point cleanup** (#507, closes #505): `mcp-memory-server` entrypoint now warns users to use `memory server` for stdio mode.
-- **Hook installer improvements** (#507): Merges into existing hooks (no overwrite), raises timeouts to 30s/60s, uses `uvx` from temp directories.
-- **uvx / pyenv setup docs** (#507): Documented `UV_PYTHON_PREFERENCE=only-managed` for installations on pyenv-managed systems.
+- **CWE-209 fix** (CodeQL alert #356): `GET /api/consolidation/recommendations` no longer exposes stack traces or raw exception messages to API clients.
+- **Allowlist validation**: `recommendation` field values are validated against an explicit allowlist; unknown values fall back to `"unknown"`.
+- **Safe type coercion**: All `int()` / `float()` / `datetime` conversions wrapped in `try/except` with safe fallbacks.
+- **No functional change** for valid requests; operator logging unchanged.
 
 ---
 
 **Previous Releases**:
+- **v10.18.0** - SSE transport mode (`--sse` flag), hook installer improvements (merge, raised timeouts, uvx support), setup docs for pyenv+uvx
 - **v10.17.16** - Security patch: fix minimatch ReDoS (Dependabot #3/#6, High), replace abandoned PyPDF2 with pypdf (Dependabot moderate)
 - **v10.17.15** - Permission-Request Hook Made Opt-In (no silent global hook installation, CLI flags added)
 - **v10.17.14** - Security + Performance: CVE-2024-23342 (ecdsa Minerva attack) eliminated via PyJWT migration, CWE-209 fixed, MCP_ASSOCIATION_MAX_PAIRS raised 100→1000
