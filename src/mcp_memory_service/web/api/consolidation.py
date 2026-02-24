@@ -222,11 +222,33 @@ async def get_recommendations(time_horizon: str, user: AuthenticationResult = De
         # Get recommendations
         recommendations = await consolidator.get_consolidation_recommendations(time_horizon)
 
+        # Sanitize all values before returning to prevent stack-trace exposure (CWE-209)
+        _SAFE_RECOMMENDATIONS = {"CONSOLIDATION_BENEFICIAL", "NO_CONSOLIDATION_NEEDED", "UNKNOWN"}
+        raw_rec = recommendations.get("recommendation", "UNKNOWN")
+        safe_rec = raw_rec if raw_rec in _SAFE_RECOMMENDATIONS else "UNKNOWN"
+
+        try:
+            safe_count = int(recommendations.get("memory_count", 0))
+        except (TypeError, ValueError):
+            safe_count = 0
+
+        try:
+            safe_duration = float(recommendations.get("estimated_duration_seconds", 0.0))
+        except (TypeError, ValueError):
+            safe_duration = 0.0
+
+        safe_reasons = []
+        for r in recommendations.get("reasons", []):
+            try:
+                safe_reasons.append(str(r)[:256])
+            except Exception:
+                pass
+
         return {
-            "recommendation": str(recommendations.get("recommendation", "UNKNOWN"))[:64],
-            "memory_count": int(recommendations.get("memory_count", 0)),
-            "reasons": [str(r)[:256] for r in recommendations.get("reasons", [])],
-            "estimated_duration": float(recommendations.get("estimated_duration_seconds", 0.0))
+            "recommendation": safe_rec,
+            "memory_count": safe_count,
+            "reasons": safe_reasons,
+            "estimated_duration": safe_duration,
         }
 
     except HTTPException:
