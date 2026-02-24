@@ -56,9 +56,12 @@ def cli(ctx):
 @cli.command()
 @click.option('--debug', is_flag=True, help='Enable debug logging')
 @click.option('--http', is_flag=True, help='Start HTTP REST API server instead of MCP server (dashboard at http://localhost:8000)')
+@click.option('--sse', is_flag=True, help='Start MCP server with SSE transport (HTTP-based, for systemd services)')
+@click.option('--sse-host', default=None, help='SSE transport host (default: 127.0.0.1)')
+@click.option('--sse-port', default=None, type=int, help='SSE transport port (default: 8765)')
 @click.option('--storage-backend', '-s', default=None,
               type=click.Choice(['sqlite_vec', 'sqlite-vec', 'cloudflare', 'hybrid']), help='Storage backend to use (defaults to environment or sqlite_vec)')
-def server(debug, http, storage_backend):
+def server(debug, http, sse, sse_host, sse_port, storage_backend):
     """
     Start the MCP Memory Service server.
 
@@ -75,6 +78,14 @@ def server(debug, http, storage_backend):
     if debug:
         import logging
         logging.basicConfig(level=logging.DEBUG)
+
+    # Set SSE mode environment variables
+    if sse:
+        os.environ['MCP_SSE_MODE'] = '1'
+        if sse_host is not None:
+            os.environ['MCP_SSE_HOST'] = sse_host
+        if sse_port is not None:
+            os.environ['MCP_SSE_PORT'] = str(sse_port)
 
     # Start HTTP server if --http flag is provided
     if http:
