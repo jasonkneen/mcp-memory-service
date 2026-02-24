@@ -740,14 +740,38 @@ async def get_cache_stats(ctx: Context) -> Dict[str, Any]:
 # =============================================================================
 
 def main():
-    """Main entry point for the FastAPI MCP server."""
+    """Main entry point for the FastAPI MCP server (StreamableHTTP transport).
+
+    WARNING: This entry point (`mcp-memory-server`) uses StreamableHTTP transport,
+    NOT stdio transport. It is NOT suitable for use with `"type": "stdio"` in Claude
+    Code or Claude Desktop MCP configuration.
+
+    If you are configuring Claude Code or Claude Desktop with stdio transport, use:
+        memory server
+    or:
+        python -m mcp_memory_service.server
+
+    This `mcp-memory-server` entry point starts an HTTP server on a port and is
+    intended for remote/HTTP-based MCP clients only.
+    """
     # Configure for Claude Code integration
     port = int(os.getenv("MCP_SERVER_PORT", "8000"))
     host = os.getenv("MCP_SERVER_HOST", "0.0.0.0")
-    
+
+    # Emit a prominent warning so users who accidentally invoke this via stdio
+    # see a clear message rather than a silent misconfiguration.
+    print(
+        "\n"
+        "WARNING: mcp-memory-server uses StreamableHTTP transport, NOT stdio.\n"
+        "  If you are configuring a stdio MCP client (Claude Code, Claude Desktop),\n"
+        "  use 'memory server' or 'python -m mcp_memory_service.server' instead.\n"
+        "  Starting HTTP server now...\n",
+        file=sys.stderr
+    )
+
     logger.info(f"Starting MCP Memory Service FastAPI server on {host}:{port}")
     logger.info(f"Storage backend: {STORAGE_BACKEND}")
-    
+
     # Run server with streamable HTTP transport
     mcp.run("streamable-http")
 
