@@ -10,6 +10,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [10.20.1] - 2026-02-28
+
+### Security
+- **Fix 4 Dependabot vulnerabilities** (#44, #45, #46, #43): Address 2 high-severity RCE alerts in npm dependencies and 2 medium-severity RAM exhaustion alerts in Python dependency.
+  - **serialize-javascript RCE (2 alerts, High severity)**: Added `serialize-javascript` override `^7.0.3` in `tests/bridge/package.json` and `tests/integration/package.json`, with regenerated lockfiles. Fixes Dependabot alerts #44, #45.
+  - **pypdf RunLengthDecode RAM exhaustion (1 alert, Medium severity)**: Updated `pypdf` from 6.7.2 to 6.7.4 via `uv lock`. Fixes CVE-2026-28351 (Dependabot alert #46).
+  - **pypdf FlateDecode XFA RAM exhaustion (1 alert, Medium severity)**: Same `pypdf` 6.7.4 update. Fixes CVE-2026-27888 (Dependabot alert #43).
+
 ## [10.20.0] - 2026-02-28
 
 ### Added
