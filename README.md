@@ -259,22 +259,19 @@ Export memories from mcp-memory-service → Import to shodh-cloudflare → Sync 
 ---
 
 
-## 🆕 Latest Release: **v10.20.0** (February 28, 2026)
+## 🆕 Latest Release: **v10.20.1** (February 28, 2026)
 
-**Streamable HTTP Transport with OAuth 2.1 + PKCE**
+**Security Patch: serialize-javascript RCE + pypdf RAM Exhaustion**
 
-**What's New:**
-- **Streamable HTTP transport** (#518): New `--streamable-http` CLI flag enables Claude.ai remote MCP server connectivity alongside existing `--sse` mode. Fully separate code path — SSE users are unaffected.
-- **PKCE (S256) support**: OAuth authorization code flow now supports Proof Key for Code Exchange across all storage backends (memory + SQLite) with automatic schema migration.
-- **Auth middleware on `/mcp`**: Bearer token / API key authentication — unauthenticated requests receive HTTP 401.
-- **API key-gated `/authorize`**: HTML authorization page requires `MCP_API_KEY` instead of auto-approving.
-- **RFC 9728 endpoint**: `/.well-known/oauth-protected-resource` for OAuth 2.1-compliant client discovery.
-- **Claude.ai compatibility**: `refresh_token` grant type accepted in DCR; JavaScript redirect for OAuth popup flow.
-- **Docker support**: `streamable-http` mode added to unified entrypoint.
+**What's Fixed:**
+- **serialize-javascript RCE** (High, alerts #44 #45): Updated 6.0.2 to 7.0.3 via npm override — RCE via `RegExp.flags` and `Date.prototype.toISOString()`
+- **pypdf RunLengthDecode RAM exhaustion** (Medium, CVE-2026-28351, alert #46): Updated 6.7.2 to 6.7.4
+- **pypdf FlateDecode XFA RAM exhaustion** (Medium, CVE-2026-27888, alert #43): Same pypdf 6.7.4 update
 
 ---
 
 **Previous Releases**:
+- **v10.20.0** - Streamable HTTP transport with OAuth 2.1 + PKCE for Claude.ai remote MCP connectivity (`--streamable-http`, PKCE S256, RFC 9728, #518)
 - **v10.19.0** - Read-only OAuth status display in dashboard (`GET /api/oauth/status`, Settings > System Info, i18n for 7 locales, #515, closes #259)
 - **v10.18.3** - Security patch: 5 Dependabot vulnerabilities fixed (minimatch ReDoS CVE-2026-27903/27904 #39-#42, pypdf RAM exhaustion CVE-2026-27888 #43)
 - **v10.18.2** - Dev dependency fix: add missing pytest-timeout/pytest-subtests, fix update_and_restart.sh to install .[dev] (#509, closes #508)
