@@ -259,19 +259,23 @@ Export memories from mcp-memory-service → Import to shodh-cloudflare → Sync 
 ---
 
 
-## 🆕 Latest Release: **v10.19.0** (February 27, 2026)
+## 🆕 Latest Release: **v10.20.0** (February 28, 2026)
 
-**New Feature: Read-Only OAuth Status in Dashboard**
+**Streamable HTTP Transport with OAuth 2.1 + PKCE**
 
 **What's New:**
-- **OAuth status visibility** (#515, closes #259): New `GET /api/oauth/status` endpoint lets authenticated dashboard users see OAuth configuration at a glance — enabled status, storage backend, client count, and active token count. No credentials or secrets exposed.
-- **Dashboard Settings integration**: OAuth Status card added to Settings > System Info tab; detail rows hidden automatically when OAuth is disabled.
-- **Full i18n support**: All new UI strings translated across all 7 supported locales (en, de, es, fr, ja, ko, zh).
-- **Auth-gated**: Endpoint requires authentication and returns 401 when unauthenticated.
+- **Streamable HTTP transport** (#518): New `--streamable-http` CLI flag enables Claude.ai remote MCP server connectivity alongside existing `--sse` mode. Fully separate code path — SSE users are unaffected.
+- **PKCE (S256) support**: OAuth authorization code flow now supports Proof Key for Code Exchange across all storage backends (memory + SQLite) with automatic schema migration.
+- **Auth middleware on `/mcp`**: Bearer token / API key authentication — unauthenticated requests receive HTTP 401.
+- **API key-gated `/authorize`**: HTML authorization page requires `MCP_API_KEY` instead of auto-approving.
+- **RFC 9728 endpoint**: `/.well-known/oauth-protected-resource` for OAuth 2.1-compliant client discovery.
+- **Claude.ai compatibility**: `refresh_token` grant type accepted in DCR; JavaScript redirect for OAuth popup flow.
+- **Docker support**: `streamable-http` mode added to unified entrypoint.
 
 ---
 
 **Previous Releases**:
+- **v10.19.0** - Read-only OAuth status display in dashboard (`GET /api/oauth/status`, Settings > System Info, i18n for 7 locales, #515, closes #259)
 - **v10.18.3** - Security patch: 5 Dependabot vulnerabilities fixed (minimatch ReDoS CVE-2026-27903/27904 #39-#42, pypdf RAM exhaustion CVE-2026-27888 #43)
 - **v10.18.2** - Dev dependency fix: add missing pytest-timeout/pytest-subtests, fix update_and_restart.sh to install .[dev] (#509, closes #508)
 - **v10.18.1** - Security patch: sanitize consolidation recommendations response (CWE-209, CodeQL alert #356 py/stack-trace-exposure)
