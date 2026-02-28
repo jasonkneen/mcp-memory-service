@@ -515,6 +515,7 @@ python scripts/validation/diagnose_backend_config.py          # Backend-specific
 - **README.md** - User-facing documentation, installation, features
 - **CHANGELOG.md** - Version history, breaking changes, migrations
 - **scripts/README.md** - Complete script reference
+- **docs/index.html** - Animated landing page (GitHub Pages + here.now `merry-realm-j835`)
 - **docs/** - Guides, troubleshooting, architecture specs
 - **Wiki** - Comprehensive documentation (https://github.com/doobidoo/mcp-memory-service/wiki)
 - **`.claude/directives/`** - Topic-specific directives for Claude Code
@@ -523,6 +524,7 @@ python scripts/validation/diagnose_backend_config.py          # Backend-specific
 - **CLAUDE.md** - Architecture changes, new patterns, development workflows
 - **README.md** - New features, installation changes, user-facing updates
 - **CHANGELOG.md** - Every version bump (use github-release-manager agent)
+- **docs/index.html** - Landing page: MINOR/MAJOR releases only (version badge, test count, features). Auto-deployed via GitHub Pages. Also re-publish to here.now (`--slug merry-realm-j835`)
 - **Wiki** - Detailed guides, troubleshooting, tutorials
 
 ## Additional Resources

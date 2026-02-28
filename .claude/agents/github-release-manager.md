@@ -127,6 +127,14 @@ Follow the project's Documentation Decision Matrix from CLAUDE.md:
 - Development guidelines change
 - Troubleshooting procedures are discovered
 
+**Landing Page — docs/index.html** (Update for MINOR/MAJOR only, NOT patches):
+- Update version badge text (`.hero-badge`)
+- Update "What's New" section title and feature cards if new headline features
+- Update test count `data-target` in stats section (run `pytest --collect-only -q 2>/dev/null | tail -1` to get current count)
+- Update Release Notes link URL to latest release tag
+- Update `<title>` and `<meta>` tags with new version
+- Re-publish to here.now: `cd docs && ~/.agents/skills/here-now/scripts/publish.sh . --slug merry-realm-j835`
+
 ### PR Creation and Review Workflow
 
 When creating pull requests:
@@ -419,6 +427,25 @@ Alternatively, use the github-release-manager agent locally to complete the work
        - New user-facing features (dashboard, document ingestion, etc.)
      - **Note**: Routine patches/hotfixes don't require roadmap updates
 
+   - **Update Landing Page** (MINOR/MAJOR releases ONLY — skip for PATCH):
+     - **When**: Version bump type is MINOR (0.x.0) or MAJOR (x.0.0)
+     - **Skip when**: Version bump type is PATCH (0.0.x)
+     - **File**: `docs/index.html` (GitHub Pages landing page)
+     - **What to update**:
+       1. `<title>` tag: Update version number (e.g., `v10.20` → `v10.21`)
+       2. `<meta>` description/og tags: Update version and highlight text
+       3. `.hero-badge` text: Update version display (e.g., `v10.21 &mdash; Now Available`)
+       4. Feature section title: Update "What's New in vX.Y" heading
+       5. Feature cards: Update if release has new headline features (Streamable HTTP, OAuth, etc.)
+       6. Stats `data-target` for test count: Run `pytest --collect-only -q 2>/dev/null | tail -1` and update
+       7. Release Notes link: Update URL to `https://github.com/doobidoo/mcp-memory-service/releases/tag/vX.Y.Z`
+     - **Re-publish to here.now**: After updating docs/index.html, run:
+       ```bash
+       cd docs && ~/.agents/skills/here-now/scripts/publish.sh . --slug merry-realm-j835
+       ```
+     - **Commit**: Include `docs/index.html` in the release documentation commit
+     - **Note**: GitHub Pages auto-deploys from `docs/` on main branch push — no manual deploy needed for the GitHub Pages site
+
 ## CHANGELOG Validation Protocol (CRITICAL)
 
 Before ANY release or documentation commit, ALWAYS validate CHANGELOG.md structure:
@@ -485,6 +512,8 @@ grep -c "Hybrid Storage Sync" CHANGELOG.md
 - [ ] **README.md**: Previous version added to "Previous Releases" list (top position)
 - [ ] **CLAUDE.md**: New commands/utilities documented in appropriate sections
 - [ ] **CLAUDE.md**: Version callout added if significant changes
+- [ ] **Landing Page** (MINOR/MAJOR only): `docs/index.html` version badge, test count, release notes link updated
+- [ ] **Landing Page** (MINOR/MAJOR only): Re-published to here.now via `publish.sh --slug merry-realm-j835`
 - [ ] All related issues identified and tracked
 
 **Local Environment Only**:
