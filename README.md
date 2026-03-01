@@ -259,18 +259,17 @@ Export memories from mcp-memory-service → Import to shodh-cloudflare → Sync 
 ---
 
 
-## 🆕 Latest Release: **v10.20.1** (February 28, 2026)
+## 🆕 Latest Release: **v10.20.2** (March 1, 2026)
 
-**Security Patch: serialize-javascript RCE + pypdf RAM Exhaustion**
+**Bug Fix: TypeError in `_prompt_learning_session` prompt handler**
 
 **What's Fixed:**
-- **serialize-javascript RCE** (High, alerts #44 #45): Updated 6.0.2 to 7.0.3 via npm override — RCE via `RegExp.flags` and `Date.prototype.toISOString()`
-- **pypdf RunLengthDecode RAM exhaustion** (Medium, CVE-2026-28351, alert #46): Updated 6.7.2 to 6.7.4
-- **pypdf FlateDecode XFA RAM exhaustion** (Medium, CVE-2026-27888, alert #43): Same pypdf 6.7.4 update
+- **`learning_session` prompt crash at startup** (#521): `Memory.__init__()` was called without the required `content_hash` argument, raising a `TypeError` that prevented the `learning_session` MCP prompt from loading. Fix: compute `generate_content_hash()` before constructing the `Memory` object and pass it as the required field.
 
 ---
 
 **Previous Releases**:
+- **v10.20.1** - Security patch: serialize-javascript RCE (alerts #44 #45) + pypdf RAM exhaustion (CVE-2026-28351 / CVE-2026-27888, alerts #43 #46)
 - **v10.20.0** - Streamable HTTP transport with OAuth 2.1 + PKCE for Claude.ai remote MCP connectivity (`--streamable-http`, PKCE S256, RFC 9728, #518)
 - **v10.19.0** - Read-only OAuth status display in dashboard (`GET /api/oauth/status`, Settings > System Info, i18n for 7 locales, #515, closes #259)
 - **v10.18.3** - Security patch: 5 Dependabot vulnerabilities fixed (minimatch ReDoS CVE-2026-27903/27904 #39-#42, pypdf RAM exhaustion CVE-2026-27888 #43)
