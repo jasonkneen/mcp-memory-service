@@ -63,6 +63,7 @@ except (ImportError, AttributeError):
 # Package imports
 from .dependency_check import get_recommended_timeout
 from .compat import is_deprecated, transform_deprecated_call
+from .utils.hashing import generate_content_hash
 from .config import (
     BACKUPS_PATH,
     SERVER_NAME,
@@ -1192,8 +1193,10 @@ class MemoryServer:
                     learning_note += f"- {question.strip()}\n"
             
             # Store the learning note
+            content_hash = generate_content_hash(learning_note)
             memory = Memory(
                 content=learning_note,
+                content_hash=content_hash,
                 tags=["learning", topic.lower().replace(" ", "_")],
                 memory_type="learning_note"
             )
