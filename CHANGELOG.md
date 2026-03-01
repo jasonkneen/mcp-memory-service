@@ -10,6 +10,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [10.20.2] - 2026-03-01
+
+### Fixed
+- **Fix TypeError in `_prompt_learning_session` prompt handler** (#521): The `Memory` dataclass requires `content_hash` as a mandatory positional argument, but `_prompt_learning_session` was constructing a `Memory` object without providing it. This caused a `TypeError` at MCP server startup (`Memory.__init__() missing 1 required positional argument: 'content_hash'`), preventing the `learning_session` prompt from loading and resulting in `ERROR: failed to get prompt from MCP server (promptName=learning_session)` for any client that requested it. Fix: import `generate_content_hash` utility and compute the hash from the memory content before constructing the `Memory` object, passing it as the required field.
+
 ## [10.20.1] - 2026-02-28
 
 ### Security
