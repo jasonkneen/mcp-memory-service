@@ -115,7 +115,7 @@ It automatically captures your project context, architecture decisions, and code
 **LangGraph** · **CrewAI** · **AutoGen** · **Any HTTP Client** · **OpenClaw/Nanobot** · **Custom Pipelines**
 
 #### 🖥️ CLI & Terminal AI (MCP)
-**Claude Code** · **Gemini Code Assist** · **Aider** · **GitHub Copilot CLI** · **Amp** · **Continue** · **Zed** · **Cody**
+**Claude Code** · **Gemini Code Assist** · **OpenCode** · **Aider** · **GitHub Copilot CLI** · **Amp** · **Continue** · **Zed** · **Cody**
 
 #### 🎨 Desktop & IDE (MCP)
 **Claude Desktop** · **VS Code** · **Cursor** · **Windsurf** · **Raycast** · **JetBrains** · **Sourcegraph** · **Qodo**
@@ -970,6 +970,27 @@ For users installing via `uvx` (no local clone required), add to `~/.claude/clau
 
 > **Note:** The `mcp-memory-server` entry point is **not** for stdio use. Always use
 > `memory server` (or `python -m mcp_memory_service.server`) in stdio MCP configurations.
+
+### OpenCode Configuration
+
+For [OpenCode](https://opencode.ai) (Go-based terminal AI), add to `~/.config/opencode/opencode.json` or `opencode.json` in your project root:
+
+```json
+{
+  "mcp": {
+    "memory": {
+      "type": "local",
+      "command": ["memory", "server"],
+      "enabled": true,
+      "environment": {
+        "MCP_MEMORY_STORAGE_BACKEND": "sqlite_vec"
+      }
+    }
+  }
+}
+```
+
+> **Note:** OpenCode uses `command` as an array (not separate `command`/`args` fields) and `environment` instead of `env`. If `memory` is not on your PATH, use the full path: `["python", "-m", "mcp_memory_service.server"]`.
 
 ### Environment Variables
 
