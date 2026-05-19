@@ -496,16 +496,17 @@ The `:quality-cpu` image pre-exports both models at build time and ships only `o
 ---
 
 
-## Latest Release: **v10.60.2** (May 19, 2026)
+## Latest Release: **v10.61.0** (May 19, 2026)
 
-**Patch: Milvus Lite growing-segment visibility fix for semantic dedup**
+**Minor: Native Milvus update_memory and update_memories_batch**
 
 **What's New:**
-- `fix(milvus)`: Replace ANN `search()` with brute-force `query(consistency_level="Strong")` + client-side cosine similarity in semantic dedup — fixes Milvus Lite growing-segment visibility bug (#964, closes #938, @henry201605)
+- `feat(milvus)`: Native `update_memory` (delegates to `update_memory_metadata`) and `update_memories_batch` (single batch fetch + embed + upsert — 1 round-trip instead of N) — part of #888 (@henry201605, PR #966)
 
 ---
 
 **Previous Releases**:
+- **v10.60.2** - fix(milvus): replace ANN search() with brute-force query() in semantic dedup — fixes Milvus Lite growing-segment visibility bug (#964, closes #938, @henry201605)
 - **v10.60.1** - fix(milvus): tag_match param in get_all_memories/count_all_memories + fix(hooks): session-end port fallback + fix(consolidation): repair contradiction detection (PRs #958, #960, #961)
 - **v10.60.0** - feat(consolidation): temporal contradiction detection + fix(milvus): instance-level graph cache + fix(hooks): tunnel/reverse-proxy port fix + feat(benchmarks): mem0 adapter (PRs #949, #954, #948, #952)
 - **v10.59.2** - fix(oauth): AnyUrl for redirect_uri so IDE schemes (cursor://, vscode://) pass Pydantic validation (#942, @tkislan)

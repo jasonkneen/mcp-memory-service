@@ -10,9 +10,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [10.61.0] - 2026-05-19
+
 ### Added
 
-- **feat(sse): Last-Event-ID replay on `/api/events` reconnect**: Bounded ring buffer of recently broadcast events lets SSE clients resume after a transient disconnect per the standard EventSource resume header. Buffer size configurable via `MCP_SSE_REPLAY_BUFFER_SIZE` (default 1000, 0 disables). Replay outcome (`status: resumed` or `status: id_not_in_buffer`) is surfaced in the `connection_established` welcome event so clients can detect overflow and fall back to their own catch-up strategy. Connection-scoped events (welcome, close) and heartbeats are not buffered; filtered broadcasts are excluded to avoid expanding the original audience on replay.
+- **feat(milvus): native `update_memory` and `update_memories_batch`** ([#966](https://github.com/doobidoo/mcp-memory-service/pull/966), part of [#888](https://github.com/doobidoo/mcp-memory-service/issues/888), @henry201605): Milvus backend now overrides `update_memory` (delegates to `update_memory_metadata` for a single-record update) and `update_memories_batch` (single batch fetch + batch embedding + single upsert — 1 round-trip instead of N per record). 15 new unit tests added.
+- **feat(sse): Last-Event-ID replay on `/api/events` reconnect** ([#953](https://github.com/doobidoo/mcp-memory-service/pull/953)): Bounded ring buffer of recently broadcast events lets SSE clients resume after a transient disconnect per the standard EventSource resume header. Buffer size configurable via `MCP_SSE_REPLAY_BUFFER_SIZE` (default 1000, 0 disables). Replay outcome (`status: resumed` or `status: id_not_in_buffer`) is surfaced in the `connection_established` welcome event so clients can detect overflow and fall back to their own catch-up strategy. Connection-scoped events (welcome, close) and heartbeats are not buffered; filtered broadcasts are excluded to avoid expanding the original audience on replay.
 
 ## [10.60.2] - 2026-05-19
 
