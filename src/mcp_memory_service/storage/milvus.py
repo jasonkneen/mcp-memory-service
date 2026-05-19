@@ -2189,6 +2189,151 @@ class MilvusMemoryStorage(MemoryStorage):
         summary = self._summarize_updated_fields(updates, self._PROTECTED_UPDATE_KEYS)
         return True, f"Updated fields: {', '.join(summary)}"
 
+    # -- update_memory / update_memories_batch --------------------------------
+
+    async def update_memory(self, memory: Memory) -> bool:
+        """Update an existing memory using Milvus native upsert.
+
+        Delegates to ``update_memory_metadata`` to reuse validation
+        (via ``_merge_updates``), timestamp handling, and entity construction.
+        Passes ``preserve_timestamps=False`` so ``updated_at`` is refreshed.
+        """
+        if not self._ensure_initialized():
+            return False
+
+        updates = {
+            "tags": memory.tags,
+            "memory_type": memory.memory_type,
+            "metadata": memory.metadata,
+        }
+        success, _ = await self.update_memory_metadata(
+            memory.content_hash, updates, preserve_timestamps=False
+        )
+        return success
+
+    async def update_memories_batch(
+        self, memories: List[Memory], preserve_timestamps: bool = False
+    ) -> List[bool]:
+        """Batch-update memories using a single Milvus upsert call.
+
+        Optimizations over the base-class fallback (``asyncio.gather`` of N
+        individual updates):
+
+        1. **Batch fetch**: Single ``client.get(ids=...)`` call instead of
+           N ``get_by_hash`` round-trips.
+        2. **Batch embedding**: Single ``SentenceTransformer.encode(texts)``
+           call instead of N sequential encodes.
+        3. **Batch upsert**: Single Milvus upsert with all entities.
+
+        Metadata is merged via ``_merge_updates`` for consistency with
+        ``update_memory_metadata``.
+
+        Args:
+            memories: List of Memory objects with updated fields.
+            preserve_timestamps: If True, do not advance ``updated_at``.
+
+        Returns:
+            List of booleans indicating success for each memory.
+        """
+        if not memories:
+            return []
+        if not self._ensure_initialized():
+            return [False] * len(memories)
+
+        results: List[bool] = [False] * len(memories)
+
+        # -- Step 1: Batch fetch all existing records in one call --
+        hashes = [m.content_hash for m in memories]
+        existing_map: Dict[str, Memory] = {}
+        try:
+            fetched = await self._call_client(
+                "get",
+                collection_name=self.collection_name,
+                ids=hashes,
+                output_fields=list(self._OUTPUT_FIELDS),
+            )
+            for row in (fetched or []):
+                mem = self._entity_to_memory(row)
+                if mem:
+                    existing_map[mem.content_hash] = mem
+        except Exception as exc:  # noqa: BLE001
+            logger.error("update_memories_batch: batch fetch failed: %s", exc)
+            return results
+
+        # -- Step 2: Merge updates and collect content for batch embedding --
+        # Track which indices have valid existing records and merged data.
+        valid_items: List[tuple] = []  # (idx, existing, merged, updates_dict)
+        for idx, memory in enumerate(memories):
+            existing = existing_map.get(memory.content_hash)
+            if existing is None:
+                logger.warning(
+                    "update_memories_batch: hash %s not found, skipping",
+                    memory.content_hash,
+                )
+                continue
+
+            updates = {
+                "tags": memory.tags,
+                "memory_type": memory.memory_type,
+                "metadata": memory.metadata,
+            }
+            merged, err = self._merge_updates(existing, updates)
+            if merged is None:
+                logger.warning(
+                    "update_memories_batch: merge failed for %s: %s",
+                    memory.content_hash, err,
+                )
+                continue
+
+            valid_items.append((idx, existing, merged, updates))
+
+        if not valid_items:
+            return results
+
+        # -- Step 3: Batch embedding generation --
+        contents = [existing.content or "" for (_, existing, _, _) in valid_items]
+        try:
+            if not self.embedding_model:
+                raise RuntimeError("Embedding model not loaded")
+            raw_embeddings = self.embedding_model.encode(contents, convert_to_numpy=True)
+            embeddings = [
+                e.tolist() if hasattr(e, "tolist") else list(e)
+                for e in raw_embeddings
+            ]
+        except Exception as exc:  # noqa: BLE001
+            logger.error("update_memories_batch: batch embedding failed: %s", exc)
+            return results
+
+        # -- Step 4: Build entities --
+        entities: List[Dict[str, Any]] = []
+        entity_indices: List[int] = []
+
+        for i, (idx, existing, merged, updates) in enumerate(valid_items):
+            timestamps = self._compute_update_timestamps(
+                existing, updates, preserve_timestamps
+            )
+            embedding = embeddings[i]
+            entity = self._build_update_entity(existing, merged, timestamps, embedding)
+            entities.append(entity)
+            entity_indices.append(idx)
+
+        # -- Step 5: Single batch upsert --
+        if not entities:
+            return results
+
+        try:
+            await self._call_client(
+                "upsert",
+                collection_name=self.collection_name,
+                data=entities,
+            )
+            for idx in entity_indices:
+                results[idx] = True
+        except Exception as exc:  # noqa: BLE001
+            logger.error("update_memories_batch: batch upsert failed: %s", exc)
+
+        return results
+
     # -- Stats / misc --------------------------------------------------------
 
     async def get_stats(self) -> Dict[str, Any]:
