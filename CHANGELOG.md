@@ -14,6 +14,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 - **feat(sse): Last-Event-ID replay on `/api/events` reconnect**: Bounded ring buffer of recently broadcast events lets SSE clients resume after a transient disconnect per the standard EventSource resume header. Buffer size configurable via `MCP_SSE_REPLAY_BUFFER_SIZE` (default 1000, 0 disables). Replay outcome (`status: resumed` or `status: id_not_in_buffer`) is surfaced in the `connection_established` welcome event so clients can detect overflow and fall back to their own catch-up strategy. Connection-scoped events (welcome, close) and heartbeats are not buffered; filtered broadcasts are excluded to avoid expanding the original audience on replay.
 
+## [10.60.2] - 2026-05-19
+
+### Fixed
+
+- **fix(milvus): replace ANN `search()` with brute-force `query()` in semantic dedup to fix growing-segment visibility on Milvus Lite** ([#964](https://github.com/doobidoo/mcp-memory-service/pull/964), closes [#938](https://github.com/doobidoo/mcp-memory-service/issues/938), @henry201605): Milvus Lite's ANN `search()` cannot find freshly inserted records in unsealed (growing) segments, causing the semantic deduplication check to silently miss near-duplicates. The fix replaces `search()` with `query(consistency_level="Strong")` + client-side cosine similarity computed from the pre-stored normalized embedding and a pre-computed query norm, restoring correct deduplication behaviour on Milvus Lite.
+
 ## [10.60.1] - 2026-05-19
 
 ### Fixed

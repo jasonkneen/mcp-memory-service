@@ -496,18 +496,17 @@ The `:quality-cpu` image pre-exports both models at build time and ships only `o
 ---
 
 
-## Latest Release: **v10.60.1** (May 19, 2026)
+## Latest Release: **v10.60.2** (May 19, 2026)
 
-**Patch: Milvus tag_match fix + Session-end port fallback + Contradiction detection repair**
+**Patch: Milvus Lite growing-segment visibility fix for semantic dedup**
 
 **What's New:**
-- `fix(milvus)`: Add missing `tag_match` param to `get_all_memories`/`count_all_memories` (#958, @henry201605)
-- `fix(hooks)`: Apply protocol-correct port fallback to `session-end.js` `triggerQualityEvaluation` (#960, fixes #957)
-- `fix(consolidation)`: Repair broken contradiction detection — `list_memories`→`get_all_memories`, dataclass attribute access, `search_memories` param/return type (#961, fixes #959)
+- `fix(milvus)`: Replace ANN `search()` with brute-force `query(consistency_level="Strong")` + client-side cosine similarity in semantic dedup — fixes Milvus Lite growing-segment visibility bug (#964, closes #938, @henry201605)
 
 ---
 
 **Previous Releases**:
+- **v10.60.1** - fix(milvus): tag_match param in get_all_memories/count_all_memories + fix(hooks): session-end port fallback + fix(consolidation): repair contradiction detection (PRs #958, #960, #961)
 - **v10.60.0** - feat(consolidation): temporal contradiction detection + fix(milvus): instance-level graph cache + fix(hooks): tunnel/reverse-proxy port fix + feat(benchmarks): mem0 adapter (PRs #949, #954, #948, #952)
 - **v10.59.2** - fix(oauth): AnyUrl for redirect_uri so IDE schemes (cursor://, vscode://) pass Pydantic validation (#942, @tkislan)
 - **v10.59.1** - fix(oauth): reflect state parameter verbatim per RFC 6749 §4.1.2, fixes Cursor OAuth (#944, @tkislan)
