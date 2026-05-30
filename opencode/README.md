@@ -167,7 +167,7 @@ The plugin shows transient toasts via `client.tui.showToast` in three situations
 
 ## Status File Bridge
 
-The plugin writes a JSON snapshot to `~/.config/opencode/.memory-status.json` on each significant event (load, capture, summary). Schema:
+The plugin writes a JSON snapshot to `~/.local/state/opencode/.memory-status.json` on each significant event (load, capture, summary). Override via `OPENCODE_MEMORY_STATUS_FILE`. Schema:
 
 ```json
 {
