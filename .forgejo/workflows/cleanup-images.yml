@@ -144,12 +144,14 @@ jobs:
                   self.authenticate()
                   tags = self.get_tags()
                   names = {t["name"] for t in tags}
+                  failed = 0
 
                   # Force-delete explicit tags first (escape hatch / test cleanup).
                   for name in force_delete:
                       if name and name in names:
                           print(f"  force-delete requested: {name}")
-                          self.delete_tag(name, dry_run)
+                          if not self.delete_tag(name, dry_run):
+                              failed += 1
                       elif name:
                           print(f"  force-delete: {name} not present, skipping")
 
@@ -178,27 +180,31 @@ jobs:
                   print(f"Keep minor bases: {sorted(keep_minor, reverse=True)}")
                   deleted = kept = 0
 
+                  def _del(name):
+                      nonlocal deleted, failed
+                      if self.delete_tag(name, dry_run): deleted += 1
+                      else: failed += 1
+
                   for base, t in patch_tags.items():
                       if base in keep_patch: kept += 1
-                      else:
-                          if self.delete_tag(t["name"], dry_run): deleted += 1
+                      else: _del(t["name"])
                   for base, tl in patch_var_tags.items():
                       for t in tl:
                           if base in keep_patch: kept += 1
-                          elif self.delete_tag(t["name"], dry_run): deleted += 1
+                          else: _del(t["name"])
                   for base, t in minor_tags.items():
                       if base in keep_minor: kept += 1
-                      elif self.delete_tag(t["name"], dry_run): deleted += 1
+                      else: _del(t["name"])
                   for base, tl in minor_var_tags.items():
                       for t in tl:
                           if base in keep_minor: kept += 1
-                          elif self.delete_tag(t["name"], dry_run): deleted += 1
+                          else: _del(t["name"])
                   for t in rest:
                       print(f"  keep {t['name']} (major/other)")
                       kept += 1
 
-                  print(f"\nSummary: kept {kept}, deleted {deleted} (dry_run={dry_run})")
-                  return True
+                  print(f"\nSummary: kept {kept}, deleted {deleted}, failed {failed} (dry_run={dry_run})")
+                  return failed
 
           def main():
               username = os.environ.get("DOCKER_USERNAME")
@@ -211,7 +217,10 @@ jobs:
               if not username or not password:
                   print("Missing DOCKER_USERNAME or DOCKER_PASSWORD"); sys.exit(1)
               print(f"Docker Hub cleanup for {repo}\n" + "=" * 50)
-              DockerHubCleaner(username, password, repo).cleanup(keep_versions, keep_minor, dry_run, force_delete)
+              failed = DockerHubCleaner(username, password, repo).cleanup(keep_versions, keep_minor, dry_run, force_delete)
+              if failed:
+                  print(f"\nERROR: {failed} tag deletion(s) failed (e.g. token lacks Delete scope?)")
+                  sys.exit(1)
           if __name__ == "__main__":
               main()
           EOF
