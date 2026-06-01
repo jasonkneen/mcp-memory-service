@@ -57,3 +57,33 @@ patterns:
       confidence: 0.6
     - pattern: '\b(?:em andamento|work in progress|WIP)\b'
       confidence: 0.6
+
+meta_keywords:
+  - patternextractor
+  - harvester
+  - harvest pipeline
+  - rewriter
+  - bootstrap profile
+  - consolidator
+  - memory service
+  - memory-service
+  - extractor
+  - autodream
+  - autolearn
+  - meta-filter
+  - bootstrap_utils
+  - threshold
+  - prompt mais rigoroso
+  - rodar harvest
+  - pipeline de harvest
+  - bootstrap vai melhorar
+
+temporal_filters:
+  - pattern: 'aguardando\s+(review|ação|resposta|merge)'
+  - pattern: 'pendente[s]?\s+de\s+review'
+  - pattern: 'PR[s]?\s*#\d+'
+  - pattern: 'conta.*suspens[ao]'
+  - pattern: 'email\s+(enviado|recebido|mandou)'
+
+generic_filters:
+  - pattern: '^é\s+(importante|necessário|fundamental|essencial)\s+'
