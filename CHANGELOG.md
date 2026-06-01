@@ -10,6 +10,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Added
+
+- feat(harvest): §0 harvest-quality pipeline — sentence-level extraction (captures the sentence(s) around a pattern match instead of the first 500 chars), an assistant-only role filter (user messages contribute conventions only), the confidence gate raised 0.6 → 0.75, and an optional multi-provider LLM rewriter (Groq/DeepSeek/Ollama, any OpenAI-compatible endpoint) that rewrites conversational text into standalone, timeless insights. Meta/temporal/generic noise filters are locale-aware via `harvest/patterns/{en,de,pt_BR}.yaml` (no project-specific strings in core); bootstrap dedup reuses the ONNX embedding singleton (RFC-1047 §0, Codeberg PR #2, @filhocf)
+
+### Changed
+
+- ci(codeberg): add Forgejo Actions pipelines for the Codeberg mirror — `.forgejo/workflows/release.yml` (test → PyPI main+lite via API token → Docker Hub: full `amd64` + slim multi-arch `amd64`/`arm64`) and `cleanup-images.yml` (version-aware Docker Hub tag retention, ported from the GHCR cleanup). Both run on a self-hosted `forgejo-runner`, resolve actions via Codeberg's mirror, and use raw `docker buildx` so the release path is independent of GitHub Actions / PyPI OIDC (Codeberg PRs #12, #16, #17)
+
 ### Fixed
 
 - fix(mistake-notes): reject empty/whitespace-only `correct_action` in `mistake_note_add` and `mistake_note_update`. JSON-schema `required` enforces presence, not non-emptiness, so a blank `correct_action` previously passed validation and stored a mistake note with an error pattern but no remediation. Both add and update now return a clear validation error instead (issue #1055, PR #1057, @Aigen-Protocol)
