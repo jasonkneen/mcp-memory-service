@@ -19,9 +19,10 @@ class ParsedMessage:
 
 
 class TranscriptParser:
-    """Parses JSONL session transcripts (Claude Code and Kiro CLI).
+    """Parses JSONL session transcripts (Claude Code, Kiro CLI, and OpenClaw).
 
     Format is detected from the first message in the file:
+    - If "traceSchema" is "openclaw-trajectory" → OpenClaw gateway format
     - If "type" key exists → Claude Code format
     - If "kind" key exists → Kiro CLI format
     - Unknown → warning logged, returns empty
@@ -29,12 +30,14 @@ class TranscriptParser:
 
     RELEVANT_TYPES = {"user", "assistant"}
     KIRO_KIND_MAP = {"Prompt": "user", "Response": "assistant", "AssistantMessage": "assistant"}
+    OPENCLAW_MESSAGE_TYPES = {"prompt.submitted", "model.completed"}
 
     def find_sessions(self, project_dir: Path, count: int = 1) -> List[Path]:
         """Find the most recent JSONL session files in a project directory."""
         project_dir = Path(project_dir)
+        # Support both .jsonl (Claude/Kiro) and .trajectory.jsonl (OpenClaw)
         jsonl_files = sorted(
-            project_dir.glob("*.jsonl"),
+            list(project_dir.glob("*.jsonl")) + list(project_dir.glob("*.trajectory.jsonl")),
             key=lambda p: p.stat().st_mtime,
             reverse=True
         )
@@ -66,7 +69,9 @@ class TranscriptParser:
 
                 # Auto-detect format from first valid JSON line
                 if format_detected is None:
-                    if "type" in obj:
+                    if obj.get("traceSchema") == "openclaw-trajectory":
+                        format_detected = "openclaw"
+                    elif "type" in obj:
                         format_detected = "claude"
                     elif "kind" in obj:
                         format_detected = "kiro"
@@ -76,8 +81,12 @@ class TranscriptParser:
 
                 if format_detected == "claude":
                     msgs = self._parse_claude_line(obj)
-                else:
+                elif format_detected == "kiro":
                     msgs = self._parse_kiro_line(obj)
+                elif format_detected == "openclaw":
+                    msgs = self._parse_openclaw_line(obj)
+                else:
+                    msgs = None
 
                 if msgs:
                     messages.extend(msgs)
@@ -129,6 +138,37 @@ class TranscriptParser:
                 if text and not self._is_system_content(text):
                     results.append(ParsedMessage(role=role, text=text, timestamp=timestamp, uuid=uuid))
         return results
+
+    def _parse_openclaw_line(self, obj: dict) -> List[ParsedMessage]:
+        """Parse a single OpenClaw gateway trajectory JSONL line.
+
+        Format (openclaw-trajectory):
+        - prompt.submitted  → user message from data.prompt
+        - model.completed   → assistant from data.assistantTexts[]
+        - session.started/ended, trace.metadata, context.compiled → skip
+        """
+        event_type = obj.get("type")
+        if event_type not in self.OPENCLAW_MESSAGE_TYPES:
+            return []
+
+        data = obj.get("data", {})
+        timestamp = obj.get("ts")
+
+        if event_type == "prompt.submitted":
+            text = data.get("prompt", "").strip()
+            if text and not self._is_system_content(text):
+                return [ParsedMessage(role="user", text=text, timestamp=timestamp)]
+
+        elif event_type == "model.completed":
+            assistant_texts = data.get("assistantTexts", [])
+            if isinstance(assistant_texts, list):
+                texts = [t.strip() for t in assistant_texts if isinstance(t, str) and t.strip()]
+                if texts:
+                    combined = "\n\n".join(texts)
+                    if not self._is_system_content(combined):
+                        return [ParsedMessage(role="assistant", text=combined, timestamp=timestamp)]
+
+        return []
 
     @staticmethod
     def _is_system_content(text: str) -> bool:
