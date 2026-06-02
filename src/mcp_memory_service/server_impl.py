@@ -2593,23 +2593,29 @@ Examples:
                 return await self.handle_memory_harvest(arguments)
             elif name == "memory_conflicts":
                 logger.info("Calling handle_memory_conflicts")
-                return await self.handle_memory_conflicts(arguments)
+                from .server.handlers import quality as quality_handlers
+                return await quality_handlers.handle_memory_conflicts(self, arguments)
             elif name == "memory_resolve":
                 logger.info("Calling handle_memory_resolve")
-                return await self.handle_memory_resolve(arguments)
+                from .server.handlers import quality as quality_handlers
+                return await quality_handlers.handle_memory_resolve(self, arguments)
 
             elif name == "mistake_note_add":
                 logger.info("Calling handle_mistake_note_add")
-                return await self.handle_mistake_note_add(arguments)
+                from .server.handlers import mistake_notes as mistake_handlers
+                return await mistake_handlers.handle_mistake_note_add(self, arguments)
             elif name == "mistake_note_search":
                 logger.info("Calling handle_mistake_note_search")
-                return await self.handle_mistake_note_search(arguments)
+                from .server.handlers import mistake_notes as mistake_handlers
+                return await mistake_handlers.handle_mistake_note_search(self, arguments)
             elif name == "mistake_note_update":
                 logger.info("Calling handle_mistake_note_update")
-                return await self.handle_mistake_note_update(arguments)
+                from .server.handlers import mistake_notes as mistake_handlers
+                return await mistake_handlers.handle_mistake_note_update(self, arguments)
             elif name == "mistake_note_delete":
                 logger.info("Calling handle_mistake_note_delete")
-                return await self.handle_mistake_note_delete(arguments)
+                from .server.handlers import mistake_notes as mistake_handlers
+                return await mistake_handlers.handle_mistake_note_delete(self, arguments)
 
             # Legacy handlers (for tools that haven't been fully migrated yet)
             # These will be removed once all old tool definitions are removed
@@ -2995,91 +3001,40 @@ Examples:
         return await graph_handlers.handle_get_memory_subgraph(self, arguments)
 
     # ============================================================
-    # Conflict Detection Handlers
+    # Conflict Detection Handlers (delegates to quality handler)
     # ============================================================
 
     async def handle_memory_conflicts(self, arguments: dict) -> List[types.TextContent]:
-        """List unresolved memory conflicts."""
-        await self._ensure_storage_initialized()
-        conflicts = await self.storage.get_conflicts()
-        if not conflicts:
-            return [types.TextContent(type="text", text="No unresolved conflicts found.")]
-
-        lines = [f"Found {len(conflicts)} conflict(s):\n"]
-        for c in conflicts:
-            lines.append(f"- {c['hash_a'][:12]} vs {c['hash_b'][:12]} "
-                         f"(similarity: {c['similarity']:.2f}, divergence: {c.get('divergence', '?')})")
-            lines.append(f"  A: {c['content_a'][:100]}")
-            lines.append(f"  B: {c['content_b'][:100]}")
-        return [types.TextContent(type="text", text="\n".join(lines))]
+        """List unresolved memory conflicts (delegates to handler)."""
+        from .server.handlers import quality as quality_handlers
+        return await quality_handlers.handle_memory_conflicts(self, arguments)
 
     async def handle_memory_resolve(self, arguments: dict) -> List[types.TextContent]:
-        """Resolve a memory conflict. Accepts single pair or batch (hashes list)."""
-        await self._ensure_storage_initialized()
+        """Resolve a memory conflict (delegates to handler)."""
+        from .server.handlers import quality as quality_handlers
+        return await quality_handlers.handle_memory_resolve(self, arguments)
 
-        # Batch mode: list of {winner_hash, loser_hash} dicts
-        hashes = arguments.get("hashes")
-        if hashes and isinstance(hashes, list):
-            results = []
-            for pair in hashes:
-                w = pair.get("winner_hash", "")
-                l = pair.get("loser_hash", "")
-                if w and l:
-                    ok, msg = await self.storage.resolve_conflict(w, l)
-                    results.append(msg)
-            return [types.TextContent(type="text", text=f"Resolved {len(results)} conflict(s):\n" + "\n".join(results))]
-
-        # Single mode (backward compat)
-        winner = arguments.get("winner_hash", "")
-        loser = arguments.get("loser_hash", "")
-        if not winner or not loser:
-            return [types.TextContent(type="text", text="Error: winner_hash and loser_hash required (or pass hashes list for batch)")]
-
-        ok, msg = await self.storage.resolve_conflict(winner, loser)
-        return [types.TextContent(type="text", text=msg)]
-
-    # ─── Mistake Notes Handlers ───────────────────────────────────
+    # ─── Mistake Notes Handlers (delegates to handler) ────────────
 
     async def handle_mistake_note_add(self, arguments: dict) -> List[types.TextContent]:
-        """Record a mistake pattern for error replay."""
-        await self._ensure_storage_initialized()
-        result = await self.memory_service.mistake_note_add(
-            error_pattern=arguments.get("error_pattern", ""),
-            context_signature=arguments.get("context_signature", ""),
-            incorrect_action=arguments.get("incorrect_action", ""),
-            correct_action=arguments.get("correct_action", ""),
-        )
-        return [types.TextContent(type="text", text=json.dumps(result, indent=2, default=str))]
+        """Record a mistake pattern for error replay (delegates to handler)."""
+        from .server.handlers import mistake_notes as mistake_handlers
+        return await mistake_handlers.handle_mistake_note_add(self, arguments)
 
     async def handle_mistake_note_search(self, arguments: dict) -> List[types.TextContent]:
-        """Search mistake notes by semantic similarity."""
-        await self._ensure_storage_initialized()
-        result = await self.memory_service.mistake_note_search(
-            query=arguments.get("query", ""),
-            limit=arguments.get("limit", 5),
-        )
-        return [types.TextContent(type="text", text=json.dumps(result, indent=2, default=str))]
+        """Search mistake notes by semantic similarity (delegates to handler)."""
+        from .server.handlers import mistake_notes as mistake_handlers
+        return await mistake_handlers.handle_mistake_note_search(self, arguments)
 
     async def handle_mistake_note_update(self, arguments: dict) -> List[types.TextContent]:
-        """Update fields of an existing mistake note."""
-        await self._ensure_storage_initialized()
-        result = await self.memory_service.mistake_note_update(
-            content_hash=arguments.get("content_hash", ""),
-            failure_count=arguments.get("failure_count"),
-            error_pattern=arguments.get("error_pattern"),
-            context_signature=arguments.get("context_signature"),
-            incorrect_action=arguments.get("incorrect_action"),
-            correct_action=arguments.get("correct_action"),
-        )
-        return [types.TextContent(type="text", text=json.dumps(result, indent=2, default=str))]
+        """Update fields of an existing mistake note (delegates to handler)."""
+        from .server.handlers import mistake_notes as mistake_handlers
+        return await mistake_handlers.handle_mistake_note_update(self, arguments)
 
     async def handle_mistake_note_delete(self, arguments: dict) -> List[types.TextContent]:
-        """Delete a mistake note by content hash."""
-        await self._ensure_storage_initialized()
-        result = await self.memory_service.mistake_note_delete(
-            content_hash=arguments.get("content_hash", ""),
-        )
-        return [types.TextContent(type="text", text=json.dumps(result, indent=2, default=str))]
+        """Delete a mistake note by content hash (delegates to handler)."""
+        from .server.handlers import mistake_notes as mistake_handlers
+        return await mistake_handlers.handle_mistake_note_delete(self, arguments)
 
     # ============================================================
     # Test Compatibility Wrapper Methods
