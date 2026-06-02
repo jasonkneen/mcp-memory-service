@@ -417,6 +417,37 @@ use TLS termination (reverse proxy with HTTPS) or VPN overlays.
 
 ## 💡 Why You Need This
 
+### Embedding Model Selection
+
+The default model (`all-MiniLM-L6-v2`) works well for **English-only** content. If you store memories in other languages, switch to a multilingual model:
+
+| Model | Languages | Dimensions | Use case |
+|-------|-----------|-----------|----------|
+| `all-MiniLM-L6-v2` (default) | English only | 384 | Fastest, English-only deployments |
+| `paraphrase-multilingual-MiniLM-L12-v2` | 50+ languages | 384 | Mixed-language or non-English content |
+
+**Configuration:**
+
+```bash
+export MCP_EMBEDDING_MODEL=paraphrase-multilingual-MiniLM-L12-v2
+```
+
+> ⚠️ **Switching models requires re-embedding existing memories.** Memories embedded with the old model will have degraded search quality (cross-language cosine drops from ~0.95 to ~0.10).
+
+**Re-embedding after model change:**
+
+```bash
+# Stop the service
+memory stop  # or: systemctl --user stop memory-service
+
+# Regenerate all embeddings with the new model
+CUDA_VISIBLE_DEVICES="" MCP_EMBEDDING_MODEL=paraphrase-multilingual-MiniLM-L12-v2 \
+  python scripts/maintenance/regenerate_embeddings.py
+
+# Restart
+memory launch  # or: systemctl --user start memory-service
+```
+
 ### The Problem
 
 | Session 1 | Session 2 (Fresh Start) |
