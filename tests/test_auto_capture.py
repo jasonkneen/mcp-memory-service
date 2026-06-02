@@ -117,7 +117,9 @@ async def test_handle_memory_observe_dry_run():
     response = await handle_memory_observe(
         server,
         {
-            "content": "I learned that ONNX models need warmup on first inference to avoid latency spikes.",
+            # High-confidence content: §0 raised the harvest gate to 0.75, so the
+            # observed text must match a strong pattern (bug/convention) to be extracted.
+            "content": "The root cause was a missing WAL pragma in SQLite. Fix: add PRAGMA journal_mode=WAL.",
             "dry_run": True,
         },
     )

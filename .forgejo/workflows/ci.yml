@@ -36,6 +36,7 @@ jobs:
         python3 -m pytest tests/ \
           --ignore=tests/consolidation \
           --ignore=tests/benchmarks \
+          -m "not benchmark" \
           --cov=mcp_memory_service \
           --cov-report=term-missing:skip-covered \
           --cov-fail-under=55 \
