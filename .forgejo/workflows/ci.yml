@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['docs/**', '*.md', 'LICENSE', '.gitignore']
+  pull_request:
+    branches: [main]
+    paths-ignore: ['docs/**', '*.md', 'LICENSE', '.gitignore']
+
+jobs:
+  test:
+    runs-on: docker
+    name: Tests + Coverage
+    timeout-minutes: 20
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        python3 -m pip install --upgrade pip
+        python3 -m pip install -e ".[dev,sqlite]"
+
+    - name: Verify install
+      run: |
+        python3 -c "import mcp_memory_service; print(mcp_memory_service.__file__)"
+        python3 -m pytest --version
+
+    - name: Run tests with coverage
+      env:
+        MCP_API_KEY: ""
+        MCP_OAUTH_ENABLED: "false"
+        MCP_ALLOW_ANONYMOUS_ACCESS: "true"
+      run: |
+        python3 -m pytest tests/ \
+          --ignore=tests/consolidation \
+          --ignore=tests/benchmarks \
+          --cov=mcp_memory_service \
+          --cov-report=term-missing:skip-covered \
+          --cov-fail-under=55 \
+          --timeout=120 \
+          -x -q
