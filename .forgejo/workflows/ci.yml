@@ -32,13 +32,21 @@ jobs:
         MCP_API_KEY: ""
         MCP_OAUTH_ENABLED: "false"
         MCP_ALLOW_ANONYMOUS_ACCESS: "true"
+      # Scope: deterministic suite on this minimal self-hosted runner.
+      # - tests/integration excluded: those shell out to `uv`, hit the network, or
+      #   need services not present in the runner image.
+      # - tests/consolidation, tests/benchmarks and `-m "not benchmark"` excluded
+      #   (benchmark fixture / heavy).
+      # - coverage is report-only for now (no --cov-fail-under): re-introduce a gate
+      #   once the deterministic-subset baseline is known and stable.
+      # - no -x: report all failures, not just the first.
       run: |
         python3 -m pytest tests/ \
           --ignore=tests/consolidation \
           --ignore=tests/benchmarks \
+          --ignore=tests/integration \
           -m "not benchmark" \
           --cov=mcp_memory_service \
           --cov-report=term-missing:skip-covered \
-          --cov-fail-under=55 \
           --timeout=120 \
-          -x -q
+          -q
