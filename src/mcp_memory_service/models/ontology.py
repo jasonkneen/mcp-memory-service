@@ -75,7 +75,10 @@ TAXONOMY: Final[Dict[str, List[str]]] = {
         "session",
         "document",
         "note",
-        "reference"
+        "reference",
+        "user_correction",
+        "tool_outcome",
+        "preference_signal",
     ],
     "decision": [
         "architecture",
