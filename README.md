@@ -540,19 +540,19 @@ The `:quality-cpu` image pre-exports both models at build time and ships only `o
 ---
 
 
-## Latest Release: **v10.71.0** (June 3, 2026)
+## Latest Release: **v10.72.0** (June 3, 2026)
 
-**Minor: first Codeberg (Forgejo) release — §0/§1 memory-intelligence groundwork, OpenClaw harvest, §8 handler refactor, and the full Codeberg CI/CD + release tooling**
+**Minor: Milvus ranked-search parity, Schema Versioning migration registry + CLI, and §2 Belief Store derivation pipeline**
 
 **What's New:**
-- `feat(harvest)`: §0 harvest-quality pipeline — sentence-level extraction, assistant-only role filter, 0.75 confidence gate, and an optional multi-provider LLM rewriter, with locale-aware noise filters (RFC-1047 §0, PR #2, @filhocf)
-- `feat(ontology)`: §1 Observation Store — new `observation` subtypes (`user_correction`, `tool_outcome`, `preference_signal`) with `derived_from` preserved (RFC-1047 §1, PR #3, @filhocf)
-- `feat(harvest)`: OpenClaw trajectory parser + refreshed pt_BR v2 locale patterns (PR #20, @filhocf)
-- `chore(ci)`: completed the GitHub→Codeberg migration — Forgejo Actions pipeline (test → PyPI → Docker Hub), retired GitHub workflows removed (archived at tag `archive/github-workflows-pre-codeberg`), and a new Forgejo-native `codeberg-release-manager` (PRs #12–#29)
+- `fix(milvus)`: ranked mode and `ranking_weights` support in the Milvus backend — full parity with the SQLite-Vec ranked reranker (PR #32, @henry201605)
+- `feat(schema-versioning)`: migration registry + CLI (`memory schema check/migrate/status`), checksum verification, `_stamp_baseline()` for existing DBs (RFC-1047 §6, PR #13, @filhocf)
+- `feat(beliefs)`: §2 Belief Store — observation-to-belief derivation pipeline with confidence scoring, contradiction detection, and evidence linking (RFC-1047 §2, PR #33, @filhocf)
 
 ---
 
 **Previous Releases**:
+- **v10.71.0** - first Codeberg (Forgejo) release: §0/§1 memory-intelligence groundwork, OpenClaw harvest, §8 handler refactor, and full Codeberg CI/CD + release tooling (June 3, 2026)
 - **v10.70.3** - fix(ci): multi-arch-safe GHCR cleanup — Docker pull 404s resolved for all multi-arch tags (issue #1044, PR #1052) (May 29, 2026)
 - **v10.70.2** - fix(security): wrap log f-strings in `storage/graph.py` with `_sanitize_log_value()` — CodeQL `py/log-injection` alerts #483–#486 (May 29, 2026)
 - **v10.70.1** - feat(auto-capture): memory_observe + auto_extract + harvest pipeline (RFC #1008 §3, @filhocf) + fix(ci): Docker multi-arch push 404 (May 29, 2026)

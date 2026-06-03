@@ -10,6 +10,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [10.72.0] - 2026-06-03
+
+### Added
+
+- fix(milvus): support `mode="ranked"` and `ranking_weights` in `search_memories` — the Milvus backend was missing the ranked-mode contract introduced in v10.70.0. Every `memory_search` call on Milvus raised `TypeError: search_memories() got an unexpected keyword argument 'ranking_weights'`. The override now accepts `ranking_weights`, whitelists `ranked` mode, over-fetches 3x and applies the shared `apply_ranked_rerank` multi-signal reranker (semantic + time decay + access frequency + quality), reaching parity with the base/SQLite-Vec implementation (PR #32, @henry201605)
+- feat(schema-versioning): migration registry + CLI (#11) — checksum-verified migration registry, `check()` read-only safety probe, per-migration transactions, `_stamp_baseline()` for existing databases, and a `memory schema` CLI subcommand (`check`, `migrate`, `status`). Backward-compat `run_migrations_sync` wrapper preserved; `sqlite_vec.py` now routes all schema work through `runner.run_pending()` (RFC-1047 §6, PR #13, @filhocf)
+- feat(beliefs): §2 Belief Store — observation-to-belief derivation pipeline — new `belief` memory subtype, `belief.py` derivation engine (confidence scoring, contradiction detection, evidence linking), `belief_service.py` orchestrator, SQL migration `012_add_belief_store.sql`, and 417-test coverage in `tests/test_belief_store.py` (RFC-1047 §2, PR #33, @filhocf)
+
 ## [10.71.0] - 2026-06-03
 
 First release published from Codeberg (Forgejo). It bundles the post-migration body of work: the §0/§1 memory-intelligence groundwork, the OpenClaw harvest parser, the §8 handler refactor, and the full Codeberg CI/CD + release tooling that replaces the retired GitHub Actions pipeline.
