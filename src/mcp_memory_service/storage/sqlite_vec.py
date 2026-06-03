@@ -407,55 +407,31 @@ class SqliteVecMemoryStorage(MemoryStorage):
 
         await self._execute_with_retry(batch_update)
 
-    def _run_graph_migrations(self):
-        """Execute Knowledge Graph table migrations.
+    def _run_schema_migrations(self):
+        """Execute all pending schema migrations using versioned MigrationRunner.
 
-        Runs migration files for the Knowledge Graph feature (v9.0.0+):
-        - 008_add_graph_table.sql: Creates memory_graph table
-        - 009_add_relationship_type.sql: Adds relationship_type column
-        - 010_fix_asymmetric_relationships.sql: Fixes asymmetric relationships
-
-        This is called during database initialization (both existing and new databases).
+        Runs migration files from the migrations directory (008+).
+        Each migration is wrapped in a transaction with registry tracking.
         Migration failures are non-fatal and logged as warnings.
         """
         try:
             migrations_dir = Path(__file__).parent / "migrations"
-            if migrations_dir.exists():
-                migration_runner = MigrationRunner(migrations_dir)
-                graph_migrations = [
-                    "008_add_graph_table.sql",
-                    "009_add_relationship_type.sql",
-                    "010_fix_asymmetric_relationships.sql"
-                ]
-                success, message = migration_runner.run_migrations_sync(
-                    self.conn,
-                    graph_migrations
-                )
-                if not success:
-                    logger.warning(f"Graph migrations warning: {message}")
-                else:
-                    logger.info(f"Graph migrations completed: {message}")
+            if not migrations_dir.exists():
+                logger.debug("Migrations directory not found, skipping schema migrations")
+                return
+            runner = MigrationRunner(migrations_dir)
+            result = runner.run_pending(self.conn)
+            if result["error"]:
+                logger.warning(f"Schema migration warning: {result['error']}")
             else:
-                logger.debug("Migrations directory not found, skipping graph migrations")
-        except Exception as e:
-            logger.warning(f"Failed to run graph migrations (non-fatal): {e}")
-
-    def _run_evolution_migrations(self):
-        """Execute Memory Evolution P1 migrations (non-destructive updates + lineage tracking)."""
-        try:
-            migrations_dir = Path(__file__).parent / "migrations"
-            if migrations_dir.exists():
-                migration_runner = MigrationRunner(migrations_dir)
-                success, message = migration_runner.run_migrations_sync(
-                    self.conn,
-                    ["011_memory_evolution_p1.sql"]
-                )
-                if not success:
-                    logger.warning(f"Evolution migrations warning: {message}")
+                version = runner._get_current_version(self.conn)
+                applied_count = len(result["applied"])
+                if applied_count > 0:
+                    logger.info(f"Schema at v{version}, {applied_count} migrations applied")
                 else:
-                    logger.info(f"Evolution migrations completed: {message}")
+                    logger.debug(f"Schema at v{version}, no pending migrations")
         except Exception as e:
-            logger.warning(f"Failed to run evolution migrations (non-fatal): {e}")
+            logger.warning(f"Failed to run schema migrations (non-fatal): {e}")
 
     def _ensure_fts5_initialized(self):
         """Ensure FTS5 virtual table exists for BM25 keyword search (v10.8.0+).
@@ -754,11 +730,8 @@ SOLUTIONS:
                     except Exception as e:
                         logger.warning(f"Migration check for deleted_at (non-fatal): {e}")
 
-                    # Execute graph table migrations (Knowledge Graph feature v9.0.0+)
-                    await self._run_in_thread(self._run_graph_migrations)
-
-                    # Execute Memory Evolution P1 migrations (v10.30.0+)
-                    await self._run_in_thread(self._run_evolution_migrations)
+                    # Execute schema migrations (Knowledge Graph, Evolution, etc.)
+                    await self._run_in_thread(self._run_schema_migrations)
 
                     # Ensure FTS5 table exists (v10.8.0+ migration for existing databases)
                     await self._run_in_thread(self._ensure_fts5_initialized)
@@ -932,11 +905,8 @@ SOLUTIONS:
             # Ensure FTS5 table exists (v10.8.0+)
             await self._run_in_thread(self._ensure_fts5_initialized)
 
-            # Execute graph table migrations (Knowledge Graph feature v9.0.0+)
-            await self._run_in_thread(self._run_graph_migrations)
-
-            # Execute Memory Evolution P1 migrations (v10.30.0+)
-            await self._run_in_thread(self._run_evolution_migrations)
+            # Execute schema migrations (Knowledge Graph, Evolution, etc.)
+            await self._run_in_thread(self._run_schema_migrations)
 
             # Mark as initialized to prevent re-initialization
             self._initialized = True
