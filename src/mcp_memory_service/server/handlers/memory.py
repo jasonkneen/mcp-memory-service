@@ -932,6 +932,31 @@ async def handle_cleanup_duplicates(server, arguments: dict) -> List[types.TextC
         return [types.TextContent(type="text", text=f"Error cleaning up duplicates: {str(e)}")]
 
 
+async def _format_beliefs_section(arguments: dict, storage) -> str:
+    """Append beliefs section if include_beliefs=True."""
+    if not arguments.get("include_beliefs"):
+        return ""
+    try:
+        from ...consolidation.belief_service import BeliefService
+
+        svc = BeliefService(storage)
+        beliefs = await svc.get_beliefs()
+
+        if not beliefs:
+            return ""
+
+        lines = ["\n\n--- Beliefs (derived knowledge) ---"]
+        for idx, b in enumerate(beliefs, 1):
+            lines.append(
+                f"{idx}. [conf={b['confidence']:.2f}] {b['content']}\n"
+                f"   Hash: {b['belief_hash']}\n"
+                f"   Status: {b['status']} | Sources: {len(b.get('derived_from', []))}"
+            )
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
 async def handle_memory_search(server, arguments: dict) -> List[types.TextContent]:
     """Unified handler for memory search with flexible modes and filters."""
     import json
@@ -1078,7 +1103,8 @@ async def handle_memory_search(server, arguments: dict) -> List[types.TextConten
                 header += f" for query: '{result['query']}'"
             header += "\n\n"
 
-            response_text = header + format_truncated_response(truncated, meta)
+            beliefs_section = await _format_beliefs_section(arguments, storage)
+            response_text = header + format_truncated_response(truncated, meta) + beliefs_section
             return [types.TextContent(type="text", text=response_text)]
 
         # Format response without truncation
@@ -1086,7 +1112,8 @@ async def handle_memory_search(server, arguments: dict) -> List[types.TextConten
             response = "No memories found"
             if result.get("query"):
                 response += f" for query: '{result['query']}'"
-            return [types.TextContent(type="text", text=response)]
+            beliefs_section = await _format_beliefs_section(arguments, storage)
+            return [types.TextContent(type="text", text=response + beliefs_section)]
 
         # Format memories (memories are dicts from storage.search_memories())
         formatted_results = []
@@ -1129,9 +1156,10 @@ async def handle_memory_search(server, arguments: dict) -> List[types.TextConten
                 if tf.get('start_timestamp') or tf.get('end_timestamp'):
                     header += f"\n  Time range: {tf.get('start_timestamp')} - {tf.get('end_timestamp')}"
 
+        beliefs_section = await _format_beliefs_section(arguments, storage)
         return [types.TextContent(
             type="text",
-            text=header + "\n\n" + "\n\n".join(formatted_results)
+            text=header + "\n\n" + "\n\n".join(formatted_results) + beliefs_section
         )]
 
     except Exception as e:

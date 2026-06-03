@@ -1734,6 +1734,11 @@ Examples:
                                 "type": "boolean",
                                 "default": False,
                                 "description": "Enable cascading fallback when semantic results are sparse. When true and fewer than 3 results are found with scores below 0.4, automatically attempts BM25 keyword match and tag intersection. Each result includes match_method field. Default: false."
+                            },
+                            "include_beliefs": {
+                                "type": "boolean",
+                                "default": False,
+                                "description": "Include derived beliefs alongside memories. Beliefs are confidence-scored knowledge derived from observations. Each belief result includes result_type='belief' and confidence score."
                             }
                         }
                     },
