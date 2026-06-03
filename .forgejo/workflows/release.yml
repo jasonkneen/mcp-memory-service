@@ -70,6 +70,13 @@ jobs:
         run: |
           cp pyproject.toml pyproject-main.toml
           cp pyproject-lite.toml pyproject.toml
+          # Single source of truth: force the lite version to match the main package
+          # (_version.py). Without this, pyproject-lite.toml's static version drifts and
+          # `twine upload --skip-existing` silently skips an already-published version —
+          # the lite package was stuck at 10.39.1 for many releases this way.
+          VERSION=$(grep -E '^__version__' src/mcp_memory_service/_version.py | sed -E 's/.*"([^"]+)".*/\1/')
+          sed -i "s/^version = .*/version = \"$VERSION\"/" pyproject.toml
+          echo "Lite version synced to $VERSION"
           rm -rf dist/ build/ ./*.egg-info
       - name: Build lite package
         run: python3 -m build
@@ -86,6 +93,10 @@ jobs:
     name: Publish Docker images
     runs-on: docker
     needs: test
+    # Only on a real version tag. The image tags are derived from github.ref_name, so a
+    # manual workflow_dispatch (ref_name = "main") would push junk "main" tags and clobber
+    # "latest". Manual dispatch is for PyPI catch-up only.
+    if: startsWith(github.ref, 'refs/tags/v')
     env:
       IMAGE: docker.io/doobidoo/mcp-memory-service
     steps:

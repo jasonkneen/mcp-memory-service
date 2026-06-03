@@ -44,12 +44,14 @@ You are an elite Release Manager for the MCP Memory Service project, which is ho
 - Check open issues that this release resolves (Forgejo API: `GET /repos/doobidoo/mcp-memory-service/issues?state=open`)
 
 ### 2. Version Bump (then `uv lock`)
-- `src/mcp_memory_service/__init__.py` (`__version__`)
+- `src/mcp_memory_service/_version.py` (`__version__`) — the canonical source; `__init__.py` imports from it (do not edit `__init__.py`)
 - `pyproject.toml` (`version`)
-- Keep `_version.py` in sync if present
 - `README.md` ("Latest Release" section)
-- Run `uv lock` to update the lock file
+- Do NOT hand-bump `pyproject-lite.toml` — the release workflow overrides the lite version from `_version.py` at publish time (see the lite-publish note below). Keeping its static value current is nice-to-have, not required.
+- Run `uv lock` to update the lock file (expect a single version-line change; if `uv` rewrites the lockfile `revision`, `git checkout uv.lock` and keep only the version delta)
 - Commit ALL files together: `git commit -m "chore: release vX.Y.Z"`
+
+> **Lite-package gotcha (fixed in the workflow):** `mcp-memory-service-lite` was stuck at 10.39.1 for many releases because `pyproject-lite.toml` had a static version that never got bumped, so `twine upload --skip-existing` silently skipped an already-published version (green no-op). The workflow now force-syncs the lite version from `_version.py` before building, so lite always matches the release. If you ever see a release where lite did not advance, check that step.
 
 ### 3. Documentation Updates
 
