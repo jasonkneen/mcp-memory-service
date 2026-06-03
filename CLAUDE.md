@@ -39,7 +39,7 @@ Before merging or releasing:
 1. Verify CI is green on the target branch (`gh run list --branch <branch>`)
 2. **Update `docs/index.html` version strings** whenever MAJOR.MINOR changes (i.e. every MINOR or MAJOR release — PATCH releases are exempt). The `version-drift-check` CI gate enforces this and will fail if skipped. Update ALL occurrences: `<title>`, `<meta og:title>`, release link `href`. Use `grep -n "v10\." docs/index.html` to find them. This is MANDATORY — not optional for "incremental" releases.
 3. Clean up merged branches after release (`git branch -d`, `git push origin --delete`)
-4. Use `github-release-manager` agent — never manually bump versions
+4. Use `codeberg-release-manager` agent — never manually bump versions
 
 ## Overview
 
@@ -436,13 +436,13 @@ export MCP_EXTERNAL_EMBEDDING_API_KEY=sk-xxx  # Optional
 2. Make changes
 3. `pytest` - Run tests
 4. `bash scripts/pr/pre_pr_check.sh` - Pre-PR validation (MANDATORY)
-5. Create PR - **IMPORTANT: Use `github-release-manager` agent for ALL version bumps and releases**
+5. Create PR - **IMPORTANT: Use `codeberg-release-manager` agent for ALL version bumps and releases**
 
 **🚨 Release Protocol (MANDATORY)**:
-- **NEVER manually bump versions** - always use `github-release-manager` agent
+- **NEVER manually bump versions** - always use `codeberg-release-manager` agent
 - Agent handles: version bump, CHANGELOG update, _version.py sync, PR creation, release notes
 - Ensures consistency across `pyproject.toml`, `_version.py`, CHANGELOG, and GitHub releases
-- Example: After merging feature PR, invoke github-release-manager agent to create release
+- Example: After merging feature PR, invoke codeberg-release-manager agent to create release
 
 **Dashboard changes (`web/static/`):** Verify in browser before merging. Dashboard JS lacks automated test coverage — PRs touching this area should include manual testing evidence or screenshots.
 
@@ -572,7 +572,7 @@ python scripts/validation/diagnose_backend_config.py          # Backend-specific
 
 **Workflow automation:**
 - **changelog-archival** - Maintains lean CHANGELOG by archiving older versions
-- **github-release-manager** - Complete release workflow (version bump, CHANGELOG, PR creation)
+- **codeberg-release-manager** - Complete release workflow (version bump, CHANGELOG, PR creation)
 - **amp-automation** - Coding tasks + PR quality analysis with Amp CLI
 - **code-quality-guard** - Quality analysis before commits
 - **gemini-pr-automator** - Automated PR reviews and fixes
@@ -611,7 +611,7 @@ python scripts/validation/diagnose_backend_config.py          # Backend-specific
 **When to update each:**
 - **CLAUDE.md** - Architecture changes, new patterns, development workflows
 - **README.md** - New features, installation changes, user-facing updates
-- **CHANGELOG.md** - Every version bump (use github-release-manager agent)
+- **CHANGELOG.md** - Every version bump (use codeberg-release-manager agent)
 - **docs/index.html** - Landing page: MINOR/MAJOR releases only (version badge, test count, features). Auto-deployed via GitHub Pages. Also re-publish to here.now:
   ```bash
   mkdir -p /tmp/herenow-publish && \
