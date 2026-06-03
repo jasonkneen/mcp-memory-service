@@ -10,13 +10,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [10.71.0] - 2026-06-03
+
+First release published from Codeberg (Forgejo). It bundles the post-migration body of work: the §0/§1 memory-intelligence groundwork, the OpenClaw harvest parser, the §8 handler refactor, and the full Codeberg CI/CD + release tooling that replaces the retired GitHub Actions pipeline.
+
 ### Added
 
 - feat(harvest): §0 harvest-quality pipeline — sentence-level extraction (captures the sentence(s) around a pattern match instead of the first 500 chars), an assistant-only role filter (user messages contribute conventions only), the confidence gate raised 0.6 → 0.75, and an optional multi-provider LLM rewriter (Groq/DeepSeek/Ollama, any OpenAI-compatible endpoint) that rewrites conversational text into standalone, timeless insights. Meta/temporal/generic noise filters are locale-aware via `harvest/patterns/{en,de,pt_BR}.yaml` (no project-specific strings in core); bootstrap dedup reuses the ONNX embedding singleton (RFC-1047 §0, Codeberg PR #2, @filhocf)
+- feat(ontology): §1 Observation Store — new `observation` subtypes (`user_correction`, `tool_outcome`, `preference_signal`) with `derived_from` preserved, so harvested signals classify into meaningful buckets instead of a generic catch-all (RFC-1047 §1, Codeberg PR #3, @filhocf)
+- feat(harvest): OpenClaw trajectory parser plus refreshed pt_BR v2 locale patterns — harvest now ingests OpenClaw session trajectories and recognises Brazilian-Portuguese decision/bug/convention cues (Codeberg PR #20, @filhocf)
 
 ### Changed
 
 - ci(codeberg): add Forgejo Actions pipelines for the Codeberg mirror — `.forgejo/workflows/release.yml` (test → PyPI main+lite via API token → Docker Hub: full `amd64` + slim multi-arch `amd64`/`arm64`) and `cleanup-images.yml` (version-aware Docker Hub tag retention, ported from the GHCR cleanup). Both run on a self-hosted `forgejo-runner`, resolve actions via Codeberg's mirror, and use raw `docker buildx` so the release path is independent of GitHub Actions / PyPI OIDC (Codeberg PRs #12, #16, #17)
+- ci(codeberg): completed the GitHub→Codeberg CI/CD migration — removed the 21 leftover `.github/workflows/*.yml` (GitHub-only; `runs-on: ubuntu-latest` never matched the self-hosted Forgejo runner and left permanent "pending" phantom checks on PRs), scoped the Forgejo test job to a deterministic subset with report-only coverage, and archived the old workflows at git tag `archive/github-workflows-pre-codeberg` in case the project ever returns to GitHub (Codeberg PRs #14, #23, #25, #26)
+- refactor: extract inline MCP handlers out of `server_impl.py` into `server/handlers/*` for the §8 structural-improvements track — smaller, testable handler modules with no behavioral change (RFC #7 §8, Codeberg PR #15, @filhocf)
+- chore(agents): replace the GitHub-bound `github-release-manager` with a Forgejo-native `codeberg-release-manager` (Forgejo REST API, token from `.env`, never `gh`; Forgejo releases; PyPI/Docker publish via `.forgejo/workflows/release.yml`). The old agent is kept as a deprecated historical reference (Codeberg PRs #28, #29)
+- docs: multilingual embedding model selection + re-embedding guide (Codeberg PR #22)
 
 ### Fixed
 

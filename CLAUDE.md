@@ -45,7 +45,7 @@ Before merging or releasing:
 
 MCP Memory Service is a semantic memory layer for AI applications, accessible via REST API and MCP transport. It provides persistent storage for 14+ AI clients including Claude Desktop, OpenCode, LangGraph, CrewAI, and any HTTP client. It uses vector embeddings for semantic search, supports multiple storage backends (SQLite-vec, Cloudflare, Hybrid), and includes advanced features like memory consolidation, quality scoring, and OAuth 2.1 team collaboration.
 
-**Current Version:** v10.70.3 - fix(ci): multi-arch-safe GHCR cleanup — replace `actions/delete-package-versions` with `dataaxiom/ghcr-cleanup-action`, removing `workflow_run`-after-release trigger; Docker pull 404s resolved for all multi-arch tags since v10.66 (issue #1044, PR #1052) — ~1,828 tests — see [CHANGELOG.md](CHANGELOG.md) for details
+**Current Version:** v10.71.0 - First Codeberg (Forgejo) release: §0/§1 memory-intelligence groundwork (harvest-quality pipeline + Observation Store subtypes), OpenClaw harvest parser, §8 handler refactor, and the full Codeberg CI/CD + release tooling replacing the retired GitHub Actions pipeline (Codeberg PRs #2–#29) — ~1,828 tests — see [CHANGELOG.md](CHANGELOG.md) for details
 
 > **🎯 v10.0.0 Milestone**: This major release represents a complete API consolidation - 34 tools unified into 12 with enhanced capabilities. All deprecated tools continue working with warnings until v11.0. See `docs/MIGRATION.md` for migration guide.
 

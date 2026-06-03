@@ -540,16 +540,20 @@ The `:quality-cpu` image pre-exports both models at build time and ships only `o
 ---
 
 
-## Latest Release: **v10.70.3** (May 29, 2026)
+## Latest Release: **v10.71.0** (June 3, 2026)
 
-**Patch: fix(ci) multi-arch-safe GHCR cleanup — Docker pull 404s resolved for all multi-arch tags**
+**Minor: first Codeberg (Forgejo) release — §0/§1 memory-intelligence groundwork, OpenClaw harvest, §8 handler refactor, and the full Codeberg CI/CD + release tooling**
 
 **What's New:**
-- `fix(ci)`: Replace `actions/delete-package-versions` with `dataaxiom/ghcr-cleanup-action` and remove the `workflow_run`-after-release trigger — the old cleanup deleted per-platform manifests minutes after publish, causing `docker pull` 404s for all multi-arch tags since v10.66. Fresh platform manifests now survive cleanup (issue #1044, @jonatanbellido, PR #1052).
+- `feat(harvest)`: §0 harvest-quality pipeline — sentence-level extraction, assistant-only role filter, 0.75 confidence gate, and an optional multi-provider LLM rewriter, with locale-aware noise filters (RFC-1047 §0, PR #2, @filhocf)
+- `feat(ontology)`: §1 Observation Store — new `observation` subtypes (`user_correction`, `tool_outcome`, `preference_signal`) with `derived_from` preserved (RFC-1047 §1, PR #3, @filhocf)
+- `feat(harvest)`: OpenClaw trajectory parser + refreshed pt_BR v2 locale patterns (PR #20, @filhocf)
+- `chore(ci)`: completed the GitHub→Codeberg migration — Forgejo Actions pipeline (test → PyPI → Docker Hub), retired GitHub workflows removed (archived at tag `archive/github-workflows-pre-codeberg`), and a new Forgejo-native `codeberg-release-manager` (PRs #12–#29)
 
 ---
 
 **Previous Releases**:
+- **v10.70.3** - fix(ci): multi-arch-safe GHCR cleanup — Docker pull 404s resolved for all multi-arch tags (issue #1044, PR #1052) (May 29, 2026)
 - **v10.70.2** - fix(security): wrap log f-strings in `storage/graph.py` with `_sanitize_log_value()` — CodeQL `py/log-injection` alerts #483–#486 (May 29, 2026)
 - **v10.70.1** - feat(auto-capture): memory_observe + auto_extract + harvest pipeline (RFC #1008 §3, @filhocf) + fix(ci): Docker multi-arch push 404 (May 29, 2026)
 - **v10.70.0** - feat(search): multi-signal ranked search mode (`mode="ranked"`) + fix(security): 9 CodeQL path-injection dismissals + fix(ci): version badge (May 29, 2026)
