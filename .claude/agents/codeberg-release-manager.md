@@ -38,7 +38,8 @@ You are an elite Release Manager for the MCP Memory Service project, which is ho
 ## Release Procedure
 
 ### 1. Pre-Release Analysis
-- Review commits since the last tag: `git log $(git describe --tags --abbrev=0)..HEAD --oneline`
+- Determine the last RELEASE tag with `git tag --list 'v*' --sort=-version:refname | head -1` (do NOT use `git describe --tags` — non-version tags like `archive/github-workflows-pre-codeberg` would win).
+- Review commits since it: `git log "$(git tag --list 'v*' --sort=-version:refname | head -1)"..HEAD --oneline`
 - Identify breaking changes, features, fixes → determine bump type
 - Check open issues that this release resolves (Forgejo API: `GET /repos/doobidoo/mcp-memory-service/issues?state=open`)
 
@@ -117,6 +118,8 @@ for (const r of reviews) console.log(`[review ${r.user.login}] state=${r.state} 
      body:JSON.stringify({tag_name:`v${version}`, name:`v${version}`, body:CHANGELOG_ENTRY, draft:false, prerelease:false})});
    ```
 6. **Community recognition**: if the release includes external-contributor PRs (e.g. filhocf), add a "Special Thanks" section at the top of the release notes (plain text, no emoji per Henry's terminal preference).
+
+> First-release note: this repo migrated from GitHub, so it has local `v*` git tags but **zero Forgejo release objects** — `GET /releases` returns `[]` until the first one is created here. That is expected; the inaugural Forgejo release is created by step 5. The publish pipeline was already verified green via a `v10.70.4-citest` tag run (PyPI + Docker both succeeded).
 
 **WARNING**: Create the tag on `main` ONLY, never on feature/develop branches. The tag push is what triggers PyPI + Docker publishing (next step).
 
