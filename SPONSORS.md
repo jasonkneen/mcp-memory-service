@@ -67,11 +67,6 @@ Your sponsorship directly funds:
 
 ## 🤝 How to Sponsor
 
-### GitHub Sponsors (Recommended)
-<a href="https://github.com/sponsors/doobidoo">
-  <img src="https://img.shields.io/badge/Sponsor_on_GitHub-❤️-ea4aaa?style=for-the-badge&logo=github-sponsors" />
-</a>
-
 ### One-time Donations
 - **Ko-fi**: [ko-fi.com/doobidoo](https://ko-fi.com/doobidoo)
 - **Buy Me a Coffee**: [buymeacoffee.com/doobidoo](https://coff.ee/doobidoo)
@@ -80,6 +75,11 @@ Your sponsorship directly funds:
 ### Cryptocurrency
 - **Bitcoin**: `bc1qypcx7m9jl3mkptvc3xrzyd7dywjctpxyvaajgr`
 - **Ethereum**: `0xf049d21449D1F6FAD2B94080c40B751147F1099a`
+
+### GitHub Sponsors 
+<a href="https://github.com/sponsors/doobidoo">
+  <img src="https://img.shields.io/badge/Sponsor_on_GitHub-❤️-ea4aaa?style=for-the-badge&logo=github-sponsors" />
+</a>
 
 ## 🏆 Current Sponsors
 
