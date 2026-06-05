@@ -229,9 +229,13 @@ class SessionHarvester:
         messages = self.parser.parse_file(filepath)
         session_id = filepath.stem
 
+        # OpenClaw trajectories: disable role_filter (context.compiled already
+        # filtered by parser; both user and assistant messages have value)
+        use_role_filter = ".trajectory." not in filepath.name
+
         all_candidates: List[HarvestCandidate] = []
         for msg in messages:
-            candidates = self.extractor.extract(msg, role_filter=True)
+            candidates = self.extractor.extract(msg, role_filter=use_role_filter)
             all_candidates.extend(candidates)
 
         # Apply regex-level filters

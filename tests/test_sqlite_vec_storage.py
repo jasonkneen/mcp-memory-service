@@ -1606,14 +1606,14 @@ class TestSqliteVecStorageWithoutEmbeddings:
         db_path = os.path.join(temp_dir, "test_no_embeddings.db")
 
         try:
-            with patch('src.mcp_memory_service.storage.sqlite_vec.SENTENCE_TRANSFORMERS_AVAILABLE', False):
+            with patch('mcp_memory_service.storage.sqlite_vec.SENTENCE_TRANSFORMERS_AVAILABLE', False), \
+                 patch('mcp_memory_service.storage.mixins.embeddings.SENTENCE_TRANSFORMERS_AVAILABLE', False):
                 storage = SqliteVecMemoryStorage(db_path)
                 await storage.initialize()
 
                 assert storage.conn is not None
                 # When sentence_transformers unavailable, falls back to _HashEmbeddingModel
-                from src.mcp_memory_service.storage.sqlite_vec import _HashEmbeddingModel
-                assert isinstance(storage.embedding_model, _HashEmbeddingModel)
+                assert type(storage.embedding_model).__name__ == '_HashEmbeddingModel'
 
                 storage.close()
 
@@ -1627,7 +1627,8 @@ class TestSqliteVecStorageWithoutEmbeddings:
         db_path = os.path.join(temp_dir, "test_no_embeddings.db")
         
         try:
-            with patch('src.mcp_memory_service.storage.sqlite_vec.SENTENCE_TRANSFORMERS_AVAILABLE', False):
+            with patch('mcp_memory_service.storage.sqlite_vec.SENTENCE_TRANSFORMERS_AVAILABLE', False), \
+                 patch('mcp_memory_service.storage.mixins.embeddings.SENTENCE_TRANSFORMERS_AVAILABLE', False):
                 storage = SqliteVecMemoryStorage(db_path)
                 await storage.initialize()
                 

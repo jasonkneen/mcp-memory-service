@@ -36,11 +36,30 @@ class TranscriptParser:
         """Find the most recent JSONL session files in a project directory."""
         project_dir = Path(project_dir)
         # Support both .jsonl (Claude/Kiro) and .trajectory.jsonl (OpenClaw)
-        jsonl_files = sorted(
-            list(project_dir.glob("*.jsonl")) + list(project_dir.glob("*.trajectory.jsonl")),
-            key=lambda p: p.stat().st_mtime,
-            reverse=True
-        )
+        all_jsonl = list(project_dir.glob("*.jsonl")) + list(project_dir.glob("*.trajectory.jsonl"))
+        # Deduplicate (*.jsonl already matches *.trajectory.jsonl)
+        seen = set()
+        unique = []
+        for p in all_jsonl:
+            if p not in seen:
+                seen.add(p)
+                unique.append(p)
+        # Exclude checkpoints, resets, deleted, and trajectory-path metadata
+        filtered = [
+            p for p in unique
+            if ".checkpoint." not in p.name
+            and ".reset." not in p.name
+            and ".deleted." not in p.name
+            and not p.name.endswith("-path.json")
+        ]
+        # Prefer .trajectory.jsonl over plain .jsonl for same session ID
+        trajectory_stems = {p.name.replace(".trajectory.jsonl", "") for p in filtered if ".trajectory.jsonl" in p.name}
+        final = [
+            p for p in filtered
+            if not (p.name.endswith(".jsonl") and not ".trajectory." in p.name
+                    and p.stem in trajectory_stems)
+        ]
+        jsonl_files = sorted(final, key=lambda p: p.stat().st_mtime, reverse=True)
         return jsonl_files[:count]
 
     def parse_file(self, filepath: Path) -> List[ParsedMessage]:
