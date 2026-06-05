@@ -138,6 +138,93 @@ if not os.getenv('DEBUG_MODE'):
     for module_name in ['sentence_transformers', 'transformers', 'torch', 'numpy']:
         logging.getLogger(module_name).setLevel(logging.WARNING)
 
+
+def _get_onboarding_guide(client_type: str = "generic") -> str:
+    """Return integration guide for a specific client type."""
+
+    # Shared sections reused across client types
+    _DURING_SESSION = """\
+### During session:
+- `memory_store`: save decisions, observations, references. Include ≥2 tags and a
+  memory_type (decision, observation, note, reference). Use `conversation_id` for
+  multiple checkpoints in the same session (bypasses dedup).
+- `mistake_note_add`: record error patterns with {pattern, context, wrong, right}.
+- `memory_search(mode="ranked")`: default search — ranks by recency + access + quality.
+  Use `mode="hybrid"` when you need pure semantic + quality boost.
+- `memory_quality(action="rate", content_hash, rating=1|-1)`: rate memories after use.
+  Aim for ≥3 ratings per session. This drives the ranking system.
+"""
+
+    _SERVER_DOES = """\
+### What the server does automatically:
+- **Post-commit learning**: after `commit_session_legacy`, the server runs
+  harvest + distill in background (~8s). No action needed from you.
+- **Scheduled distill**: every 6h, undistilled memories are batch-processed via LLM.
+- **Bootstrap refresh**: `get_bootstrap_profile` always returns the latest profile.
+- **Frustration tracking**: errors weigh 3× more than successes. High-frustration
+  patterns are promoted to AVOID rules in your bootstrap profile.
+- **Threshold trigger**: if >20 new observations accumulate without distill, it runs
+  automatically on the next store call.
+"""
+
+    guides = {
+        "kiro": f"""## Integration Guide: mcp-memory-service → Kiro CLI
+
+### On session start (REQUIRED):
+1. `get_bootstrap_profile(agent_ids=["kiro"])` — returns behavioral rules
+   (avoidances, conventions, preferences). Follow them.
+2. `mistake_note_search(query="<current task context>")` — check known pitfalls
+   before starting work.
+
+### On session end (REQUIRED):
+1. `commit_session_legacy` with: session_id, agent_id, task_summary, outcome,
+   decisions (what+why), errors (tool+message+count+severity), user_corrections.
+   This triggers server-side learning automatically.
+2. `memory_harvest(sessions=1, dry_run=false)` — extracts insights from the
+   current session JSONL via LLM. Fallback if commit_session_legacy is unavailable.
+3. Rate memories consulted during the session (≥3 ratings).
+
+{_DURING_SESSION}
+### Advanced tools:
+- `memory_harvest(sessions=N, use_llm=true)`: batch-extract insights from N sessions.
+- `memory_distill(batch_size=20)`: extract insights from existing long memories via LLM.
+- `get_bootstrap_profile(agent_ids=["kiro"])`: re-fetch profile mid-session if needed.
+- `memory_quality(action="maintain")`: run maintenance cycle (decay, stale, entities).
+
+{_SERVER_DOES}""",
+
+        "claude-code": f"""## Integration Guide: mcp-memory-service → Claude Code
+
+### On session start (REQUIRED):
+1. `get_bootstrap_profile(agent_ids=["claude-code"])` — incorporate returned rules.
+2. `mistake_note_search(query="<task context>")` — check known pitfalls.
+
+### On session end (REQUIRED):
+1. `commit_session_legacy` with session summary, decisions, errors, corrections.
+   Server runs learning pipeline automatically after this call.
+2. Rate memories used during the session.
+
+{_DURING_SESSION}
+{_SERVER_DOES}""",
+    }
+
+    guide = guides.get(client_type)
+    if not guide:
+        guide = f"""## Integration Guide: mcp-memory-service
+
+### On session start (REQUIRED):
+1. `get_bootstrap_profile(agent_ids=["your_agent_id"])` — follow returned rules.
+2. `mistake_note_search(query="<task context>")` — check known pitfalls.
+
+### On session end (REQUIRED):
+1. `commit_session_legacy` with: session_id, agent_id, task_summary, outcome,
+   decisions, errors, user_corrections. Triggers server-side learning.
+2. Rate memories consulted (≥3 ratings per session).
+
+{_DURING_SESSION}
+{_SERVER_DOES}"""
+    return guide
+
 class MemoryServer:
     def __init__(
         self,
@@ -173,6 +260,8 @@ class MemoryServer:
         # builds them (only when CONSOLIDATION_ENABLED).
         self.consolidator = consolidator
         self.consolidation_scheduler = consolidation_scheduler
+        self._harvest_lock = asyncio.Lock()  # C2: prevent concurrent harvest race condition
+        self._background_tasks: set = set()  # Track background tasks to prevent GC
         if CONSOLIDATION_ENABLED and self.consolidator is None:
             try:
                 logger.info("Consolidation system will be initialized after storage")
@@ -814,11 +903,50 @@ class MemoryServer:
                     # Start the scheduler
                     if await self.consolidation_scheduler.start():
                         logger.info("Consolidation scheduler started successfully")
+                        # Add periodic distill job (every 6h, checks threshold)
+                        try:
+                            from apscheduler.triggers.interval import IntervalTrigger
+                            self.consolidation_scheduler.scheduler.add_job(
+                                self._scheduled_distill_check,
+                                trigger=IntervalTrigger(hours=6),
+                                id="distill_check",
+                                replace_existing=True,
+                            )
+                            self.consolidation_scheduler.scheduler.add_job(
+                                self._scheduled_contradiction_check,
+                                trigger=IntervalTrigger(hours=6),
+                                id="contradiction_check",
+                                replace_existing=True,
+                            )
+                            logger.info("Scheduled distill_check + contradiction_check jobs (every 6h)")
+                        except Exception as e:
+                            logger.warning(f"Failed to add distill_check job: {e}")
                     else:
                         logger.warning("Failed to start consolidation scheduler")
                         self.consolidation_scheduler = None
                 else:
                     logger.info("Consolidation scheduler disabled (all schedules set to 'disabled')")
+                    # T5 Fix: Start independent distill scheduler even without consolidation
+                    try:
+                        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+                        from apscheduler.triggers.interval import IntervalTrigger
+                        self._distill_scheduler = AsyncIOScheduler()
+                        self._distill_scheduler.add_job(
+                            self._scheduled_distill_check,
+                            trigger=IntervalTrigger(hours=6),
+                            id="distill_check",
+                            replace_existing=True,
+                        )
+                        self._distill_scheduler.add_job(
+                            self._scheduled_contradiction_check,
+                            trigger=IntervalTrigger(hours=6),
+                            id="contradiction_check",
+                            replace_existing=True,
+                        )
+                        self._distill_scheduler.start()
+                        logger.info("Independent distill + contradiction scheduler started (every 6h)")
+                    except Exception as e:
+                        logger.warning(f"Failed to start independent distill scheduler: {e}")
                 
         except Exception as e:
             logger.error(f"Failed to initialize consolidation system: {e}")
@@ -893,7 +1021,19 @@ class MemoryServer:
                     name="Recent Memories",
                     description="10 most recent memories",
                     mimeType="application/json"
-                )
+                ),
+                types.Resource(
+                    uri="memory://onboarding/generic",
+                    name="Client Onboarding Guide",
+                    description="Integration guide — how to use this memory server optimally",
+                    mimeType="text/markdown"
+                ),
+                types.Resource(
+                    uri="memory://agent/default/bootstrap",
+                    name="Agent Bootstrap Profile",
+                    description="Confidence-weighted behavioral profile for agent startup injection",
+                    mimeType="text/markdown"
+                ),
             ]
             
             # Add tag-specific resources for existing tags
@@ -966,6 +1106,17 @@ class MemoryServer:
                         "count": len(results)
                     }, indent=2, default=str)
                     
+                elif uri.startswith("memory://onboarding"):
+                    # Client onboarding guide
+                    parts = uri.replace("memory://onboarding", "").strip("/")
+                    client_type = parts if parts else "generic"
+                    return _get_onboarding_guide(client_type)
+
+                elif uri.startswith("memory://agent/") and uri.endswith("/bootstrap"):
+                    # §7: Bootstrap profile as resource
+                    agent_id = uri[len("memory://agent/"):-len("/bootstrap")]
+                    return await self._read_bootstrap_resource(agent_id)
+
                 else:
                     return json.dumps({"error": f"Resource not found: {uri}"}, indent=2)
                     
@@ -1428,25 +1579,6 @@ class MemoryServer:
                                 "type": "string",
                                 "description": "Optional conversation identifier. When provided, semantic deduplication is skipped, allowing multiple incremental memories from the same conversation to be stored even if their content is topically similar. Exact duplicate hashes are still rejected."
                             },
-                            "auto_extract": {
-                                "type": "boolean",
-                                "description": "When true, pattern-extract decisions/facts/learnings from content and store linked child memories (RFC #1008 §3). Defaults to MCP_AUTO_EXTRACT_DEFAULT env (false)."
-                            },
-                            "min_extract_confidence": {
-                                "type": "number",
-                                "minimum": 0,
-                                "maximum": 1,
-                                "description": "Minimum confidence for auto_extract candidates (default 0.6)"
-                            },
-                            "extract_types": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "description": "Harvest types to extract (decision, bug, convention, learning, context)"
-                            },
-                            "role": {
-                                "type": "string",
-                                "description": "Speaker role hint for auto_extract pattern matching (default assistant)"
-                            },
                             "metadata": {
                                 "type": "object",
                                 "description": "Optional metadata about the memory, including tags and type.",
@@ -1480,71 +1612,6 @@ class MemoryServer:
                     },
                     annotations=types.ToolAnnotations(
                         title="Store Memory",
-                        destructiveHint=False,
-                    ),
-                ),
-                types.Tool(
-                    name="memory_observe",
-                    description="""Observe conversation text and auto-extract durable learnings inline (RFC #1008 §3).
-
-Unlike memory_store, this does not persist the raw text unless store_source=true.
-Uses the same harvest pattern rules as memory_harvest, but in streaming fashion
-for live multi-session / always-on engines.
-
-Examples:
-{"content": "We decided to use WAL mode for concurrent SQLite access.", "dry_run": true}
-{"content": "User prefers dark mode for all dashboards.", "store_source": true}
-{"content": "Root cause was a race in the pool.", "conversation_id": "conv-42", "min_confidence": 0.7}""",
-                    inputSchema={
-                        "type": "object",
-                        "properties": {
-                            "content": {
-                                "type": "string",
-                                "description": "Conversation text to analyze"
-                            },
-                            "role": {
-                                "type": "string",
-                                "default": "assistant",
-                                "description": "Speaker role hint (user or assistant)"
-                            },
-                            "conversation_id": {
-                                "type": "string",
-                                "description": "Optional conversation id for grouped storage"
-                            },
-                            "parent_hash": {
-                                "type": "string",
-                                "description": "Optional parent memory hash for derived_from graph links"
-                            },
-                            "store_source": {
-                                "type": "boolean",
-                                "default": False,
-                                "description": "Also store the raw observed text as an observation memory"
-                            },
-                            "dry_run": {
-                                "type": "boolean",
-                                "default": False,
-                                "description": "Extract only — do not persist candidates"
-                            },
-                            "min_confidence": {
-                                "type": "number",
-                                "minimum": 0,
-                                "maximum": 1,
-                                "default": 0.6
-                            },
-                            "types": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "description": "Candidate types to extract"
-                            },
-                            "metadata": {
-                                "type": "object",
-                                "description": "Metadata when store_source=true"
-                            }
-                        },
-                        "required": ["content"]
-                    },
-                    annotations=types.ToolAnnotations(
-                        title="Observe and Auto-Capture",
                         destructiveHint=False,
                     ),
                 ),
@@ -2275,6 +2342,15 @@ Examples:
                                 "type": "boolean",
                                 "default": False,
                                 "description": "Use LLM to validate and refine candidates (requires GROQ_API_KEY)"
+                            },
+                            "auto_commit": {
+                                "type": "boolean",
+                                "default": False,
+                                "description": "Bridge harvested candidates to commit_session_legacy (feeds bootstrap profile)"
+                            },
+                            "agent_id": {
+                                "type": "string",
+                                "description": "Agent ID for auto_commit attribution (default: MCP_AGENT_ID env or 'unknown')"
                             }
                         }
                     },
@@ -2558,6 +2634,64 @@ Examples:
             tools.extend(quarantine_tools)
             logger.info(f"Added {len(quarantine_tools)} quarantine tools")
 
+            # Session Legacy + Bootstrap Profile tools (RFC Self-Service Memory Intelligence)
+            intelligence_tools = [
+                types.Tool(
+                    name="commit_session_legacy",
+                    description="Record end-of-session learnings from an ephemeral agent. Stores decisions, errors, corrections as structured observations.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "session_id": {"type": "string", "description": "Unique session identifier"},
+                            "agent_id": {"type": "string", "description": "Agent identifier"},
+                            "task_summary": {"type": "string", "description": "Brief description of what was attempted"},
+                            "outcome": {"type": "string", "enum": ["success", "partial", "failure"]},
+                            "decisions": {"type": "array", "items": {"type": "object"}, "description": "Decisions made"},
+                            "errors": {"type": "array", "items": {"type": "object"}, "description": "Errors encountered"},
+                            "user_corrections": {"type": "array", "items": {"type": "object"}, "description": "User corrections"},
+                            "belief_updates": {"type": "array", "items": {"type": "object"}, "description": "Belief updates"},
+                        },
+                        "required": ["session_id", "agent_id", "task_summary", "outcome"],
+                    },
+                ),
+                types.Tool(
+                    name="get_onboarding_guide",
+                    description="Get integration guide for a specific client type. "
+                                "Returns instructions on how to use this memory server optimally "
+                                "(what to call on startup, shutdown, during session).",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "client_type": {"type": "string", "default": "generic", "description": "Client type (generic, kiro, claude-code)"},
+                        },
+                    },
+                ),
+                types.Tool(
+                    name="memory_distill",
+                    description="Extract insights from existing memories via LLM rewriter (batch mode). "
+                                "Reprocesses long memories to extract actionable insights buried in verbose text. "
+                                "Use dry_run=true to preview candidates without storing.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "batch_size": {"type": "integer", "default": 20, "description": "Max memories to process per run"},
+                            "dry_run": {"type": "boolean", "default": True, "description": "Preview candidates without storing (default: true)"},
+                            "memory_types": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Memory types to process (default: observation, decision, reference, learning)",
+                            },
+                        },
+                    },
+                    annotations=types.ToolAnnotations(
+                        title="Distill Memory Insights",
+                        destructiveHint=False,
+                    ),
+                ),
+            ]
+            tools.extend(intelligence_tools)
+            logger.info(f"Added {len(intelligence_tools)} intelligence tools")
+
             logger.info(f"Returning {len(tools)} tools")
             return tools
         except Exception as e:
@@ -2631,6 +2765,9 @@ Examples:
             elif name == "memory_harvest":
                 logger.info("Calling handle_memory_harvest")
                 return await self.handle_memory_harvest(arguments)
+            elif name == "memory_distill":
+                logger.info("Calling handle_memory_distill")
+                return await self.handle_memory_distill(arguments)
             elif name == "memory_conflicts":
                 logger.info("Calling handle_memory_conflicts")
                 from .server.handlers import quality as quality_handlers
@@ -2656,6 +2793,12 @@ Examples:
                 logger.info("Calling handle_mistake_note_delete")
                 from .server.handlers import mistake_notes as mistake_handlers
                 return await mistake_handlers.handle_mistake_note_delete(self, arguments)
+            elif name == "commit_session_legacy":
+                logger.info("Calling handle_commit_session_legacy")
+                return await self.handle_commit_session_legacy(arguments)
+            elif name == "get_onboarding_guide":
+                client_type = (arguments or {}).get("client_type", "generic")
+                return [types.TextContent(type="text", text=_get_onboarding_guide(client_type))]
 
             # §6 Anti-Hallucination quarantine tools
             elif name == "get_quarantined_memories":
@@ -2754,10 +2897,23 @@ Examples:
             logger.error("%s", error_msg)
             print(f"ERROR in tool execution: {error_msg}", file=sys.stderr, flush=True)
             return [types.TextContent(type="text", text=f"Error: {str(e)}")]
+
+    async def handle_call_tool(self, name: str, arguments: dict | None) -> List[types.TextContent]:
+        """Public alias for call_tool (used by tests)."""
+        return await self.call_tool(name, arguments)
+
+    async def handle_list_tools(self) -> List[types.Tool]:
+        """Public alias for list_tools (used by tests)."""
+        return await self.list_tools()
+
     async def handle_store_memory(self, arguments: dict) -> List[types.TextContent]:
         """Store new memory (delegates to handler)."""
         from .server.handlers import memory as memory_handlers
-        return await memory_handlers.handle_store_memory(self, arguments)
+        result = await memory_handlers.handle_store_memory(self, arguments)
+        # §3: Increment consolidation counter on successful store
+        self._consolidation_counter += 1
+        await self._check_consolidation_threshold()
+        return result
 
     async def handle_memory_observe(self, arguments: dict) -> List[types.TextContent]:
         """Observe conversation and auto-capture learnings (delegates to handler)."""
@@ -2969,6 +3125,23 @@ Examples:
             await self._ensure_storage_initialized()
             memory_service = self.memory_service
 
+        # T1 Fix: Filter out already-harvested sessions to prevent cross-run duplicates
+        already_harvested = set()
+        if not config.dry_run and not config.session_ids:
+            async with self._harvest_lock:
+                try:
+                    tracker = await self.memory_service.list_memories(
+                        page=1, page_size=1, tags=["harvest-tracker"],
+                    )
+                    for mem in tracker.get("memories", []):
+                        content = mem.get("content", "")
+                        if content.startswith("harvested_sessions:"):
+                            ids_str = content.split(":", 1)[1]
+                            already_harvested = {s for s in ids_str.split(",") if s}
+                            break
+                except Exception:
+                    pass  # First run or tracker not found — proceed normally
+
         harvester = SessionHarvester(
             project_dir=project_path,
             memory_service=memory_service
@@ -2977,7 +3150,45 @@ Examples:
         if config.dry_run:
             results = harvester.harvest(config)
         else:
+            # Pagination: resolve ALL sessions, filter by tracker, take config.sessions
+            if already_harvested and not config.session_ids:
+                from .harvest.models import HarvestConfig as _HC
+                all_config = _HC(sessions=9999, project_path=config.project_path)
+                all_sessions = harvester._resolve_sessions(all_config)
+                filtered_sessions = [
+                    s for s in all_sessions if s.stem not in already_harvested
+                ]
+                if not filtered_sessions:
+                    return [types.TextContent(type="text", text=json.dumps({
+                        "dry_run": False, "results": [],
+                        "note": f"All {len(all_sessions)} sessions already harvested"
+                    }))]
+                # Process next batch (config.sessions = page size)
+                config.session_ids = [s.stem for s in filtered_sessions[:config.sessions]]
+
             results = await harvester.harvest_and_store(config)
+
+            # Track newly harvested sessions
+            if results:
+                new_ids = {r.session_id for r in results if r.session_id}
+                if new_ids:
+                    all_harvested = already_harvested | new_ids
+                    tracker_content = f"harvested_sessions:{','.join(sorted(all_harvested))}"
+                    # Upsert tracker (delete old + store new)
+                    try:
+                        old_tracker = await self.memory_service.list_memories(
+                            page=1, page_size=1, tags=["harvest-tracker"],
+                        )
+                        for mem in old_tracker.get("memories", []):
+                            await self.memory_service.storage.delete(mem["content_hash"])
+                        await self.memory_service.store_memory(
+                            content=tracker_content,
+                            tags=["harvest-tracker"],
+                            memory_type="observation",
+                            metadata={"count": len(all_harvested)},
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to update harvest tracker: {e}")
 
         output = {
             "dry_run": config.dry_run,
@@ -3001,6 +3212,55 @@ Examples:
                 for r in results
             ]
         }
+
+        # §9: auto_commit — bridge harvest candidates to commit_session_legacy
+        auto_commit = arguments.get("auto_commit", False)
+        auto_commit_agent_id = arguments.get("agent_id", os.getenv("MCP_AGENT_ID", "unknown"))
+        if auto_commit and not config.dry_run and results:
+            auto_commit_results = []
+            for r in results:
+                if not r.candidates:
+                    continue
+                # Map candidates to commit_session_legacy fields
+                decisions = [
+                    {"decision": c.content[:500], "reason": "harvested"}
+                    for c in r.candidates if c.memory_type == "decision"
+                ]
+                errors = [
+                    {"error": c.content[:500], "count": 1, "severity": "medium"}
+                    for c in r.candidates if c.memory_type == "bug"
+                ]
+                belief_updates = [
+                    {"belief": c.content[:500], "new_confidence": round(c.confidence, 2)}
+                    for c in r.candidates if c.memory_type in ("convention", "learning")
+                ]
+                # First context candidate becomes task_summary
+                context_candidates = [c for c in r.candidates if c.memory_type == "context"]
+                task_summary = context_candidates[0].content[:200] if context_candidates else "Harvested session"
+
+                commit_args = {
+                    "session_id": r.session_id,
+                    "agent_id": auto_commit_agent_id,
+                    "task_summary": task_summary,
+                    "outcome": "success",
+                    "decisions": decisions,
+                    "errors": errors,
+                    "belief_updates": belief_updates,
+                }
+                try:
+                    commit_result = await self.handle_commit_session_legacy(commit_args)
+                    auto_commit_results.append({
+                        "session_id": r.session_id,
+                        "committed": True,
+                        "result": json.loads(commit_result[0].text) if commit_result else None,
+                    })
+                except Exception as e:
+                    auto_commit_results.append({
+                        "session_id": r.session_id,
+                        "committed": False,
+                        "error": str(e),
+                    })
+            output["auto_commit_results"] = auto_commit_results
 
         return [types.TextContent(type="text", text=json.dumps(output, indent=2))]
 
@@ -3058,6 +3318,97 @@ Examples:
     # Conflict Detection Handlers (delegates to quality handler)
     # ============================================================
 
+    async def handle_memory_distill(self, arguments: dict) -> List[types.TextContent]:
+        """Extract insights from existing memories via LLM rewriter (batch mode)."""
+        import json as _json
+        await self._ensure_storage_initialized()
+
+        batch_size = arguments.get("batch_size", 20)
+        dry_run = arguments.get("dry_run", True)
+        min_length = 200
+        skip_types = {"mistake", "insight", "session"}
+
+        # Collect candidates
+        candidates = []
+        for mtype in ["observation", "decision", "reference", "learning"]:
+            if mtype in skip_types:
+                continue
+            mems = await self.memory_service.list_memories(
+                page=1, page_size=batch_size, memory_type=mtype
+            )
+            for mem in mems.get("memories", []):
+                content = mem.get("content", "")
+                tags = mem.get("tags", "") or ""
+                # Normalize: tags can be string ("tag1,tag2") or list ["tag1","tag2"]
+                tag_str = ",".join(tags) if isinstance(tags, list) else tags
+                if len(content) < min_length:
+                    continue
+                if "memory-distilled" in tag_str or "association" in tag_str:
+                    continue
+                if "checkpoint" in tag_str and "sessao" in tag_str:
+                    continue  # Session checkpoints are temporal by nature
+                candidates.append(mem)
+
+        candidates = candidates[:batch_size]
+
+        if dry_run:
+            result = {
+                "dry_run": True,
+                "candidates_found": len(candidates),
+                "candidates": [
+                    {"hash": c["content_hash"], "type": c["memory_type"], "preview": c["content"][:150]}
+                    for c in candidates
+                ],
+            }
+            return [types.TextContent(type="text", text=_json.dumps(result, indent=2))]
+
+        # Batch rewrite via LLM
+        from .harvest.rewriter import HarvestRewriter
+        from pathlib import Path as _Path
+        rewriter = HarvestRewriter()
+
+        items = [{"content": m["content"][:800], "memory_type": m["memory_type"]} for m in candidates]
+        batch_results = await rewriter.rewrite_batch(items)
+
+        stored = []
+        skipped = 0
+        for mem, result in zip(candidates, batch_results):
+            if not result:
+                skipped += 1
+                continue
+            # Note: no meta-filter here — LLM already decides what's actionable.
+            # Meta-filter is for harvest (raw conversations), not distill (curated memories).
+            # Store insight
+            original_tags = mem.get("tags", "")
+            if isinstance(original_tags, list):
+                original_tags = ",".join(original_tags)
+            new_tags = f"memory-distill,consolidado,{original_tags}".rstrip(",")
+            await self.memory_service.store_memory(
+                content=result.content,
+                tags=new_tags,
+                memory_type=result.memory_type,
+                metadata={"source_hash": mem["content_hash"]},
+            )
+            # Mark original as processed
+            if isinstance(original_tags, list):
+                tag_list = [t.strip() for t in original_tags if t.strip()]
+            else:
+                tag_list = [t.strip() for t in original_tags.split(",") if t.strip()]
+            tag_list.append("memory-distilled")
+            await self.memory_service.storage.update_memory_metadata(
+                mem["content_hash"], {"tags": tag_list}
+            )
+            stored.append({"hash": mem["content_hash"], "insight": result.content[:100], "type": result.memory_type})
+
+        output = {
+            "dry_run": False,
+            "processed": len(candidates),
+            "stored": len(stored),
+            "skipped": skipped,
+            "insights": stored,
+        }
+        return [types.TextContent(type="text", text=_json.dumps(output, indent=2))]
+
     async def handle_memory_conflicts(self, arguments: dict) -> List[types.TextContent]:
         """List unresolved memory conflicts (delegates to handler)."""
         from .server.handlers import quality as quality_handlers
@@ -3089,6 +3440,183 @@ Examples:
         """Delete a mistake note by content hash (delegates to handler)."""
         from .server.handlers import mistake_notes as mistake_handlers
         return await mistake_handlers.handle_mistake_note_delete(self, arguments)
+
+        """Delete a mistake note by content hash."""
+        await self._ensure_storage_initialized()
+        result = await self.memory_service.mistake_note_delete(
+            content_hash=arguments.get("content_hash", ""),
+        )
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2, default=str))]
+    # ─── Session Legacy & Bootstrap Profile Handlers ──────────────
+
+    async def handle_commit_session_legacy(self, arguments: dict) -> List[types.TextContent]:
+        """Record end-of-session learnings as structured observations."""
+        await self._ensure_storage_initialized()
+
+        session_id = arguments.get("session_id")
+        agent_id = arguments.get("agent_id")
+        task_summary = arguments.get("task_summary")
+        outcome = arguments.get("outcome")
+
+        if not all([session_id, agent_id, task_summary, outcome]):
+            return [types.TextContent(type="text", text=json.dumps({"status": "error", "message": "Missing required fields: session_id, agent_id, task_summary, outcome"}))]
+
+        observations_created = 0
+        mistake_notes_updated = 0
+
+        try:
+            # Store full legacy as observation
+            legacy_content = f"Session: {session_id} | Agent: {agent_id} | Task: {task_summary} | Outcome: {outcome}"
+            await self.memory_service.store_memory(
+                content=legacy_content,
+                tags="session-legacy",
+                memory_type="observation",
+                metadata={
+                    "observation_type": "session_legacy",
+                    "session_id": session_id,
+                    "agent_id": agent_id,
+                    "source": "observation",
+                    "outcome": outcome,
+                },
+            )
+            observations_created += 1
+
+            # Process errors → mistake_note_add
+            for err in arguments.get("errors", []):
+                await self.memory_service.mistake_note_add(
+                    error_pattern=err.get("error", ""),
+                    context_signature=err.get("tool", ""),
+                    incorrect_action=err.get("error", ""),
+                    correct_action=err.get("resolution", ""),
+                )
+                mistake_notes_updated += 1
+
+            # Process user_corrections → separate observations
+            for corr in arguments.get("user_corrections", []):
+                content = f"User corrected: {corr.get('original', '')} → {corr.get('corrected_to', '')}"
+                await self.memory_service.store_memory(
+                    content=content,
+                    tags="user-correction,high-priority",
+                    memory_type="observation",
+                    metadata={
+                        "observation_type": "user_correction",
+                        "session_id": session_id,
+                        "agent_id": agent_id,
+                        "source": "observation",
+                    },
+                )
+                observations_created += 1
+
+            # Process decisions → separate observations
+            for dec in arguments.get("decisions", []):
+                content = f"Decision: {dec.get('what', '')} — Reason: {dec.get('why', '')}"
+                await self.memory_service.store_memory(
+                    content=content,
+                    tags="decision",
+                    memory_type="observation",
+                    metadata={
+                        "observation_type": "decision",
+                        "session_id": session_id,
+                        "agent_id": agent_id,
+                        "source": "observation",
+                    },
+                )
+                observations_created += 1
+
+            # Server-side autolearn: trigger learning pipeline in background
+            task = asyncio.create_task(
+                self._post_commit_learning(session_id, agent_id)
+            )
+            self._background_tasks.add(task)
+            task.add_done_callback(self._background_tasks.discard)
+
+            return [types.TextContent(type="text", text=json.dumps({
+                "status": "recorded",
+                "observations_created": observations_created,
+                "mistake_notes_updated": mistake_notes_updated,
+            }))]
+
+        except Exception as e:
+            logger.error(f"Error in commit_session_legacy: {e}")
+            return [types.TextContent(type="text", text=json.dumps({"status": "error", "message": str(e)}))]
+
+    async def _post_commit_learning(self, session_id: str, agent_id: str):
+        """Background: distill undistilled memories if threshold reached."""
+        try:
+            # Count undistilled memories
+            undistilled = await self.memory_service.list_memories(
+                page=1, page_size=1, memory_type="observation"
+            )
+            total = undistilled.get("total", 0)
+            # Simple threshold: if many observations exist, run distill
+            if total >= 10:
+                await self.handle_memory_distill({"batch_size": 20, "dry_run": False})
+                logger.info(f"Post-commit learning: distill completed for session {session_id}")
+        except Exception as e:
+            logger.warning(f"Post-commit learning failed (non-fatal): {e}")
+
+    async def _scheduled_distill_check(self):
+        """Periodic (6h): run distill if undistilled memories exceed threshold."""
+        try:
+            await self._ensure_storage_initialized()
+            # Only run if there are enough undistilled candidates
+            candidates = await self.memory_service.list_memories(
+                page=1, page_size=1, memory_type="observation"
+            )
+            total = candidates.get("total", 0)
+            if total < 20:
+                return  # Not enough candidates to justify LLM call
+            await self.handle_memory_distill({"batch_size": 20, "dry_run": False})
+            logger.info("Scheduled distill_check completed")
+        except Exception as e:
+            logger.warning(f"Scheduled distill_check failed (non-fatal): {e}")
+
+    # --- §3: Contradiction search (scheduled alongside distill) ---
+
+    async def _scheduled_contradiction_check(self):
+        """Periodic: check for unresolved memory conflicts and log warnings."""
+        try:
+            await self._ensure_storage_initialized()
+            result = await self.handle_memory_conflicts({})
+            if result and hasattr(result[0], 'text'):
+                import json as _json
+                data = _json.loads(result[0].text)
+                conflicts = data.get("conflicts", [])
+                unresolved = [c for c in conflicts if c.get("status") != "resolved"]
+                if unresolved:
+                    logger.warning(
+                        f"Contradiction check: {len(unresolved)} unresolved conflict(s)"
+                    )
+        except Exception as e:
+            logger.warning(f"Scheduled contradiction_check failed (non-fatal): {e}")
+
+    # --- §3: Threshold trigger for consolidation ---
+
+    _consolidation_counter: int = 0
+    _last_consolidation_at: float = 0
+    _consolidation_threshold: int = int(os.environ.get("MCP_CONSOLIDATION_THRESHOLD", "50"))
+    _consolidation_min_interval: int = int(os.environ.get("MCP_CONSOLIDATION_MIN_INTERVAL", "86400"))
+
+    async def _check_consolidation_threshold(self):
+        """Check if consolidation should be triggered based on store count."""
+        if (self._consolidation_counter >= self._consolidation_threshold
+                and (time.time() - self._last_consolidation_at) > self._consolidation_min_interval):
+            self._consolidation_counter = 0
+            task = asyncio.create_task(self._background_consolidation())
+            self._background_tasks.add(task)
+            task.add_done_callback(self._background_tasks.discard)
+
+    async def _background_consolidation(self):
+        """Background: run incremental consolidation."""
+        try:
+            await self._ensure_storage_initialized()
+            await self.handle_memory_consolidate({"time_horizon": "incremental"})
+            self._last_consolidation_at = time.time()
+            logger.info("Background consolidation (threshold-triggered) completed")
+        except Exception as e:
+            logger.warning(f"Background consolidation failed (non-fatal): {e}")
+
+    # --- §7: Resource URI helpers ---
 
     # ============================================================
     # Test Compatibility Wrapper Methods
