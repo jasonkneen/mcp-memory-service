@@ -254,23 +254,16 @@ async def test_count_quarantined_for_belief():
 
 
 def test_tool_annotations_readonlyhint():
-    """Verify readOnlyHint is correct for quarantine tools by checking server_impl source."""
-    import pathlib
-
-    server_impl_path = pathlib.Path(__file__).parent.parent / "src" / "mcp_memory_service" / "server_impl.py"
-    source = server_impl_path.read_text()
+    """Verify readOnlyHint is correct for quarantine tools by checking registry source."""
+    from mcp_memory_service.tools.registry import TOOL_REGISTRY
 
     # get_quarantined_memories should have readOnlyHint=True
-    idx_get = source.find('name="get_quarantined_memories"')
-    assert idx_get > 0
-    annotation_section = source[idx_get:idx_get + 800]
-    assert "readOnlyHint=True" in annotation_section
+    get_tool = next(t for t in TOOL_REGISTRY if t.name == "get_quarantined_memories")
+    assert get_tool.annotations.get("readOnlyHint") is True
 
     # unquarantine_memory should have readOnlyHint=False
-    idx_unq = source.find('name="unquarantine_memory"')
-    assert idx_unq > 0
-    annotation_section = source[idx_unq:idx_unq + 800]
-    assert "readOnlyHint=False" in annotation_section
+    unq_tool = next(t for t in TOOL_REGISTRY if t.name == "unquarantine_memory")
+    assert unq_tool.annotations.get("readOnlyHint") is False
 
 
 @pytest.mark.asyncio

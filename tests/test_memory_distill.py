@@ -19,13 +19,9 @@ class TestMemoryDistillToolExists:
         assert int(result.stdout.strip()) >= 1
 
     def test_dispatch_exists(self):
-        """Dispatch table deve ter 'memory_distill'."""
-        result = subprocess.run(
-            ["grep", "-c", 'name == "memory_distill"',
-             "src/mcp_memory_service/server_impl.py"],
-            capture_output=True, text=True, cwd=str(Path(__file__).resolve().parents[1])
-        )
-        assert int(result.stdout.strip()) >= 1
+        """Routing table deve ter 'memory_distill'."""
+        from mcp_memory_service.tools.routing import ROUTING_TABLE
+        assert "memory_distill" in ROUTING_TABLE
 
 
 class TestMemoryDistillLogic:
