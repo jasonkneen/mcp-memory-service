@@ -2523,6 +2523,41 @@ Examples:
             tools.extend(mistake_tools)
             logger.info(f"Added {len(mistake_tools)} mistake note tools")
 
+            # §6 Anti-Hallucination quarantine tools
+            quarantine_tools = [
+                types.Tool(
+                    name="get_quarantined_memories",
+                    description="List memories that have been quarantined due to contradicting active beliefs. Use to review flagged memories.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "limit": {"type": "integer", "default": 50, "description": "Maximum results to return"},
+                        },
+                    },
+                    annotations=types.ToolAnnotations(
+                        title="Get Quarantined Memories",
+                        readOnlyHint=True,
+                    ),
+                ),
+                types.Tool(
+                    name="unquarantine_memory",
+                    description="Release a memory from quarantine. Use when a quarantined memory is valid (e.g., the contradicted belief was wrong).",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "content_hash": {"type": "string", "description": "Content hash of the quarantined memory"},
+                        },
+                        "required": ["content_hash"],
+                    },
+                    annotations=types.ToolAnnotations(
+                        title="Unquarantine Memory",
+                        readOnlyHint=False,
+                    ),
+                ),
+            ]
+            tools.extend(quarantine_tools)
+            logger.info(f"Added {len(quarantine_tools)} quarantine tools")
+
             logger.info(f"Returning {len(tools)} tools")
             return tools
         except Exception as e:
@@ -2621,6 +2656,20 @@ Examples:
                 logger.info("Calling handle_mistake_note_delete")
                 from .server.handlers import mistake_notes as mistake_handlers
                 return await mistake_handlers.handle_mistake_note_delete(self, arguments)
+
+            # §6 Anti-Hallucination quarantine tools
+            elif name == "get_quarantined_memories":
+                from .consolidation.quarantine import get_quarantined_memories
+                limit = (arguments or {}).get("limit", 50)
+                results = await get_quarantined_memories(self.storage, limit=limit)
+                return [types.TextContent(type="text", text=json.dumps({"quarantined": results, "count": len(results)}, indent=2))]
+            elif name == "unquarantine_memory":
+                from .consolidation.quarantine import unquarantine_memory as _unquarantine
+                content_hash = (arguments or {}).get("content_hash", "")
+                if not content_hash:
+                    return [types.TextContent(type="text", text="Error: content_hash is required")]
+                result = await _unquarantine(self.storage, content_hash)
+                return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
             # Legacy handlers (for tools that haven't been fully migrated yet)
             # These will be removed once all old tool definitions are removed

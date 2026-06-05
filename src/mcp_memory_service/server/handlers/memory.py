@@ -255,6 +255,23 @@ async def handle_store_memory(server, arguments: dict) -> List[types.TextContent
             except Exception as e:
                 logger.debug(f"NLI on-store check failed: {e}")
 
+        # §6: Check against active beliefs (if belief service available)
+        if nli_on_store and result.get("success") and "memory" in result:
+            try:
+                from ...consolidation.belief_service import BeliefService
+                from ...consolidation.quarantine import check_beliefs_on_store
+
+                belief_svc = BeliefService(server.storage)
+                quarantine_result = await check_beliefs_on_store(
+                    server.storage, belief_svc,
+                    content, result["memory"]["content_hash"],
+                )
+                if quarantine_result and quarantine_result.get("status") == "quarantined":
+                    result["quarantine_warning"] = quarantine_result
+                    message += "\n⚠️ Memory quarantined: contradicts an active belief."
+            except Exception as e:
+                logger.debug(f"Belief quarantine check failed: {e}")
+
         # RFC #1008 §3: optional inline auto-capture from stored content
         from ...config import MCP_AUTO_EXTRACT_DEFAULT, MCP_AUTO_EXTRACT_MIN_CONFIDENCE
         from ...harvest.auto_capture import AutoCaptureService, parent_hash_from_store_result
