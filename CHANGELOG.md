@@ -10,6 +10,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [10.74.0] - 2026-06-05
+
+### Changed
+
+- refactor(dispatch): §13 — decompose monolithic if/elif tool dispatch in `server_impl.py` into a declarative `TOOL_REGISTRY` (in `tools/registry.py`) + `ROUTING_TABLE` (in `tools/routing.py`) lookup. Removes 49 inline `handle_*` wrapper methods; uses `__getattr__` lazy delegation via `_HANDLER_METHOD_MAP` with `setattr` caching for first-call performance. All 26 active tools registered including the 7 new tools from v10.73.0. 81 tests pass (+1427/-1407 across 7 files, PR #37, @filhocf)
+- refactor(storage): §10 — decompose monolithic 5800-line `storage/sqlite_vec.py` into 8 focused mixins under `storage/mixins/`: `BaseMixin`, `MigrationsMixin`, `EmbeddingsMixin`, `StoreMixin`, `RetrieveMixin`, `HybridMixin`, `DeleteMixin`, `MetadataMixin`. No public API changes. 265 tests pass (+5464/-5861 across 21 files, PR #42, @filhocf)
+
+### Fixed
+
+- fix(harvest): OpenClaw trajectory harvest fixes — file discovery deduplication prevents double-ingestion of trajectory files; `role_filter` disabled for trajectory files to avoid silently dropping assistant turns (issues from #43, merged via PR #42, @filhocf)
+
 ## [10.73.0] - 2026-06-05
 
 ### Added

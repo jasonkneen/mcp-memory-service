@@ -540,19 +540,19 @@ The `:quality-cpu` image pre-exports both models at build time and ships only `o
 ---
 
 
-## Latest Release: **v10.73.0** (June 5, 2026)
+## Latest Release: **v10.74.0** (June 5, 2026)
 
-**Minor: §3 Consolidation Engine v2, §4 Bootstrap Profile, §5 Session Legacy, §6 Belief-Aware Quarantine, and §9 Config Refactor (all @filhocf)**
+**Minor: §13 declarative dispatch registry + §10 sqlite_vec mixin decomposition (both @filhocf)**
 
 **What's New:**
-- `feat(anti-hallucination)`: §6 belief-aware quarantine pipeline — memories contradicting active beliefs are quarantined automatically; `get_quarantined_memories` + `unquarantine_memory` MCP tools (PR #36, @filhocf)
-- `feat(consolidation)`: §3 Consolidation Engine v2 — `memory_distill`, `get_onboarding_guide`, `commit_session_legacy` tools; scheduled distill (6h), harvest pipeline v2 (PR #39, @filhocf)
-- `feat(bootstrap)`: §4+§5 Bootstrap Profile + Session Legacy — `get_bootstrap_profile` tool, Kiro/Claude/Generic formatters, confidence-weighted dedup (cosine 0.70) (PR #40, @filhocf)
-- `refactor(config)`: §9 split 1327-line `config.py` into 12 domain modules with backward-compatible re-exports (PR #38, @filhocf)
+- `refactor(dispatch)`: §13 — `server_impl.py` if/elif dispatch replaced by `TOOL_REGISTRY` + `ROUTING_TABLE`; `__getattr__` lazy delegation with `setattr` caching; 49 inline wrappers removed (PR #37, @filhocf)
+- `refactor(storage)`: §10 — `sqlite_vec.py` decomposed into 8 focused mixins under `storage/mixins/`; no public API changes (PR #42, @filhocf)
+- `fix(harvest)`: OpenClaw trajectory harvest deduplication + `role_filter` disabled for trajectory files (issue #43, PR #42, @filhocf)
 
 ---
 
 **Previous Releases**:
+- **v10.73.0** - §3 Consolidation Engine v2, §4 Bootstrap Profile, §5 Session Legacy, §6 Belief-Aware Quarantine, §9 Config Refactor (all @filhocf) (June 5, 2026)
 - **v10.72.0** - Milvus ranked-search parity, Schema Versioning migration registry + CLI, §2 Belief Store derivation pipeline (June 3, 2026)
 - **v10.71.0** - first Codeberg (Forgejo) release: §0/§1 memory-intelligence groundwork, OpenClaw harvest, §8 handler refactor, and full Codeberg CI/CD + release tooling (June 3, 2026)
 - **v10.70.3** - fix(ci): multi-arch-safe GHCR cleanup — Docker pull 404s resolved for all multi-arch tags (issue #1044, PR #1052) (May 29, 2026)
