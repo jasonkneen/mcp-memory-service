@@ -2655,6 +2655,20 @@ Examples:
                     },
                 ),
                 types.Tool(
+                    name="get_bootstrap_profile",
+                    description="Generate a behavioral bootstrap profile for an ephemeral agent.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "agent_ids": {"type": "array", "items": {"type": "string"}, "minItems": 1, "description": "Agent identifiers"},
+                            "project_id": {"type": "string", "description": "Optional project scope"},
+                            "task_summary": {"type": "string", "description": "Optional task context"},
+                            "max_tokens": {"type": "integer", "default": 2048, "description": "Token budget"},
+                        },
+                        "required": ["agent_ids"],
+                    },
+                ),
+                types.Tool(
                     name="get_onboarding_guide",
                     description="Get integration guide for a specific client type. "
                                 "Returns instructions on how to use this memory server optimally "
@@ -2799,6 +2813,9 @@ Examples:
             elif name == "get_onboarding_guide":
                 client_type = (arguments or {}).get("client_type", "generic")
                 return [types.TextContent(type="text", text=_get_onboarding_guide(client_type))]
+            elif name == "get_bootstrap_profile":
+                logger.info("Calling handle_get_bootstrap_profile")
+                return await self.handle_get_bootstrap_profile(arguments)
 
             # §6 Anti-Hallucination quarantine tools
             elif name == "get_quarantined_memories":
@@ -3523,6 +3540,9 @@ Examples:
                 )
                 observations_created += 1
 
+            # Increment session counter for fresh-start sentinel
+            await self._increment_session_counter(agent_id)
+
             # Server-side autolearn: trigger learning pipeline in background
             task = asyncio.create_task(
                 self._post_commit_learning(session_id, agent_id)
@@ -3617,6 +3637,220 @@ Examples:
             logger.warning(f"Background consolidation failed (non-fatal): {e}")
 
     # --- §7: Resource URI helpers ---
+
+    @staticmethod
+    def _get_bootstrap_resource_uri(agent_id: str) -> str:
+        """Return the MCP resource URI for an agent's bootstrap profile."""
+        return f"memory://agent/{agent_id}/bootstrap"
+
+    async def _read_bootstrap_resource(self, agent_id: str) -> str:
+        """Read bootstrap profile as resource content."""
+        result = await self.handle_get_bootstrap_profile({"agent_ids": [agent_id]})
+        if result and hasattr(result[0], 'text'):
+            return result[0].text
+        return ""
+
+    # --- §4/§5: Session counter + Bootstrap profile ---
+
+    async def _increment_session_counter(self, agent_id: str):
+        """Increment session counter for fresh-start sentinel tracking."""
+        counter_key = f"__session_counter_{agent_id}"
+        try:
+            existing = await self.memory_service.retrieve_memories(
+                query=counter_key,
+                n_results=1,
+                memory_type="observation",
+            )
+            if existing.get("memories"):
+                for mem in existing["memories"]:
+                    meta = mem.get("metadata") or {}
+                    if isinstance(meta, str):
+                        meta = json.loads(meta) if meta else {}
+                    if meta.get("counter_key") == counter_key:
+                        meta["session_count"] = meta.get("session_count", 0) + 1
+                        await self.storage.update_memory_metadata(
+                            content_hash=mem["content_hash"],
+                            updates={"metadata": meta},
+                            preserve_timestamps=False,
+                        )
+                        return
+
+            # Create new counter
+            await self.memory_service.store_memory(
+                content=counter_key,
+                tags="session-counter,internal",
+                memory_type="observation",
+                metadata={
+                    "counter_key": counter_key,
+                    "session_count": 1,
+                    "agent_id": agent_id,
+                    "observation_type": "session_legacy",
+                    "source": "observation",
+                },
+            )
+        except Exception as e:
+            logger.debug(f"Failed to increment session counter: {e}")
+
+    async def _get_session_count(self, agent_id: str) -> int:
+        """Get current session count for an agent."""
+        counter_key = f"__session_counter_{agent_id}"
+        try:
+            existing = await self.memory_service.retrieve_memories(
+                query=counter_key,
+                n_results=3,
+                memory_type="observation",
+            )
+            if existing.get("memories"):
+                for mem in existing["memories"]:
+                    meta = mem.get("metadata") or {}
+                    if isinstance(meta, str):
+                        meta = json.loads(meta) if meta else {}
+                    if meta.get("counter_key") == counter_key:
+                        return meta.get("session_count", 0)
+        except Exception:
+            pass
+        return 0
+
+    async def _reset_session_counter(self, agent_id: str):
+        """Reset session counter after fresh-start trigger."""
+        counter_key = f"__session_counter_{agent_id}"
+        try:
+            existing = await self.memory_service.retrieve_memories(
+                query=counter_key,
+                n_results=3,
+                memory_type="observation",
+            )
+            if existing.get("memories"):
+                for mem in existing["memories"]:
+                    meta = mem.get("metadata") or {}
+                    if isinstance(meta, str):
+                        meta = json.loads(meta) if meta else {}
+                    if meta.get("counter_key") == counter_key:
+                        meta["session_count"] = 0
+                        await self.storage.update_memory_metadata(
+                            content_hash=mem["content_hash"],
+                            updates={"metadata": meta},
+                            preserve_timestamps=False,
+                        )
+                        return
+        except Exception:
+            pass
+
+    async def handle_get_bootstrap_profile(self, arguments: dict) -> List[types.TextContent]:
+        """Generate a behavioral bootstrap profile for ephemeral agents."""
+        await self._ensure_storage_initialized()
+
+        # Opt-in: disabled by default to avoid token budget issues on tight clients
+        enabled = os.getenv("MCP_BOOTSTRAP_ENABLED", "false").lower() in ("true", "1", "yes")
+        if not enabled:
+            return [types.TextContent(type="text", text="=== BEHAVIORAL PROFILE (v1) ===\n\nBootstrap disabled. Set MCP_BOOTSTRAP_ENABLED=true to enable.\n=== END PROFILE ===")]
+
+        agent_ids = arguments.get("agent_ids", [])
+        max_tokens = arguments.get("max_tokens", int(os.getenv("MCP_BOOTSTRAP_MAX_TOKENS", "2048")))
+        fresh_start_interval = int(os.getenv("MCP_BOOTSTRAP_FRESH_START_INTERVAL", "10"))
+
+        avoidances = []
+        preferences = []
+        conventions = []
+        fresh_start_recommended = False
+
+        try:
+            # Check fresh-start sentinel for each agent
+            for agent_id in agent_ids:
+                count = await self._get_session_count(agent_id)
+                if count >= fresh_start_interval:
+                    fresh_start_recommended = True
+                    await self._reset_session_counter(agent_id)
+
+            # Query avoid-rule mistake notes
+            all_mistakes = await self.memory_service.list_memories(
+                page=1, page_size=50, memory_type="mistake"
+            )
+            for mem in all_mistakes.get("memories", []):
+                meta = mem.get("metadata") or {}
+                if isinstance(meta, str):
+                    meta = json.loads(meta) if meta else {}
+                if agent_ids and meta.get("agent_id") and meta.get("agent_id") not in agent_ids:
+                    continue
+                if meta.get("is_avoid_rule") or meta.get("frustration_score", 0) >= 3.0 or meta.get("confidence", 0) > 0.7:
+                    content = mem.get("content", "")
+                    conf = meta.get("confidence", 0.5)
+                    count = meta.get("failure_count", 1)
+                    avoidances.append(f"- ⚠️ {content} [confidence: {conf:.2f}, errors: {count}]")
+
+            # Query user_correction and decision observations
+            corrections = await self.memory_service.list_memories(
+                page=1, page_size=50, memory_type="observation"
+            )
+            for mem in corrections.get("memories", []):
+                meta = mem.get("metadata") or {}
+                if isinstance(meta, str):
+                    meta = json.loads(meta) if meta else {}
+                obs_type = meta.get("observation_type")
+                if obs_type == "user_correction":
+                    if not agent_ids or meta.get("agent_id") in agent_ids:
+                        preferences.append(f"- {mem.get('content', '')}")
+                elif obs_type == "decision":
+                    if not agent_ids or meta.get("agent_id") in agent_ids:
+                        conventions.append(f"- {mem.get('content', '')}")
+
+            # Query harvest-produced memories
+            harvest_types = {"convention": conventions, "bug": avoidances, "decision": conventions, "learning": preferences}
+            for htype, target_list in harvest_types.items():
+                for _htag in ["session-harvest", "memory-distill"]:
+                    harvest_mems = await self.memory_service.list_memories(
+                        page=1, page_size=20, memory_type=htype, tags=[_htag],
+                    )
+                    for mem in harvest_mems.get("memories", []):
+                        content = mem.get("content", "")
+                        if content and len(content) > 20:
+                            meta = mem.get("metadata") or {}
+                            if isinstance(meta, str):
+                                meta = json.loads(meta) if meta else {}
+                            conf = meta.get("confidence", 0.75)
+                            prefix = "⚠️ " if htype == "bug" else ""
+                            entry = f"- {prefix}{content} [confidence: {conf:.2f}]"
+                            if entry not in target_list:
+                                target_list.append(entry)
+
+            # Deduplicate and rank
+            from mcp_memory_service.harvest.bootstrap_utils import deduplicate_entries, rank_entries
+
+            def _dedup_and_rank(entries: list) -> list:
+                parsed = []
+                for e in entries:
+                    conf = 0.75
+                    if "confidence:" in e:
+                        try:
+                            conf = float(e.split("confidence:")[1].split("]")[0].strip().rstrip(","))
+                        except (ValueError, IndexError):
+                            pass
+                    parsed.append({"content": e, "confidence": conf, "quality_score": conf, "created_at": time.time()})
+                deduped = deduplicate_entries(parsed, similarity_threshold=0.70)
+                ranked = rank_entries(deduped)
+                return [r["content"] for r in ranked]
+
+            avoidances = _dedup_and_rank(avoidances)
+            preferences = _dedup_and_rank(preferences)
+            conventions = _dedup_and_rank(conventions)
+
+            # Build profile using formatter plugin
+            from .bootstrap.formatter import get_formatter_for_agent
+            agent_id_for_format = agent_ids[0] if agent_ids else "claude-code"
+            formatter = get_formatter_for_agent(agent_id_for_format)
+            meta = {"fresh_start": fresh_start_recommended}
+            profile = formatter.format(avoidances, preferences, conventions, meta)
+
+            # Truncate to token budget (rough: 1 token ≈ 4 chars)
+            max_chars = max_tokens * 4
+            if len(profile) > max_chars:
+                profile = profile[:max_chars] + "\n... (truncated to token budget)"
+
+            return [types.TextContent(type="text", text=profile)]
+
+        except Exception as e:
+            logger.error(f"Error in get_bootstrap_profile: {e}")
+            return [types.TextContent(type="text", text="=== BEHAVIORAL PROFILE (v1) ===\n\nNo data available yet.\n=== END PROFILE ===")]
 
     # ============================================================
     # Test Compatibility Wrapper Methods
