@@ -10,6 +10,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [10.73.0] - 2026-06-05
+
+### Added
+
+- feat(anti-hallucination): §6 belief-aware quarantine pipeline — new `consolidation/quarantine.py` (117 LOC) triggers quarantine when a memory contradicts active beliefs above CONTRADICTION_THRESHOLD. Two new MCP tools: `get_quarantined_memories` and `unquarantine_memory`. 290 LOC of new tests (RFC-1047 §6, PR #36, @filhocf)
+- feat(consolidation): §3 Consolidation Engine v2 — three new MCP tools: `memory_distill` (batch LLM rewriter for undistilled memories), `get_onboarding_guide`, and `commit_session_legacy`. Adds scheduled distill job (6h interval), `_consolidation_counter` post-store trigger, and harvest pipeline v2 (RFC-1047 §3, PR #39, @filhocf)
+- feat(bootstrap): §4 Bootstrap Profile + §5 Session Legacy — new `bootstrap/` package with Kiro/Claude/Generic formatters. Adds `get_bootstrap_profile` MCP tool. Confidence-weighted dedup (cosine threshold 0.70). Fixes deprecated `datetime.utcnow()` calls (RFC-1047 §4+§5, PR #40, @filhocf)
+
+### Changed
+
+- refactor(config): §9 — split monolithic 1327-line `config.py` into 12 domain modules (`base`, `backup`, `consolidation`, `documents`, `embedding`, `graph`, `oauth`, `ontology`, `quality`, `search`, `storage`, `transport`, `validation`) with full backward-compatible re-exports in `config/__init__.py`. 61 tests pass unchanged (PR #38, @filhocf)
+
 ## [10.72.0] - 2026-06-03
 
 ### Added

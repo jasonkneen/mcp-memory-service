@@ -540,18 +540,20 @@ The `:quality-cpu` image pre-exports both models at build time and ships only `o
 ---
 
 
-## Latest Release: **v10.72.0** (June 3, 2026)
+## Latest Release: **v10.73.0** (June 5, 2026)
 
-**Minor: Milvus ranked-search parity, Schema Versioning migration registry + CLI, and §2 Belief Store derivation pipeline**
+**Minor: §3 Consolidation Engine v2, §4 Bootstrap Profile, §5 Session Legacy, §6 Belief-Aware Quarantine, and §9 Config Refactor (all @filhocf)**
 
 **What's New:**
-- `fix(milvus)`: ranked mode and `ranking_weights` support in the Milvus backend — full parity with the SQLite-Vec ranked reranker (PR #32, @henry201605)
-- `feat(schema-versioning)`: migration registry + CLI (`memory schema check/migrate/status`), checksum verification, `_stamp_baseline()` for existing DBs (RFC-1047 §6, PR #13, @filhocf)
-- `feat(beliefs)`: §2 Belief Store — observation-to-belief derivation pipeline with confidence scoring, contradiction detection, and evidence linking (RFC-1047 §2, PR #33, @filhocf)
+- `feat(anti-hallucination)`: §6 belief-aware quarantine pipeline — memories contradicting active beliefs are quarantined automatically; `get_quarantined_memories` + `unquarantine_memory` MCP tools (PR #36, @filhocf)
+- `feat(consolidation)`: §3 Consolidation Engine v2 — `memory_distill`, `get_onboarding_guide`, `commit_session_legacy` tools; scheduled distill (6h), harvest pipeline v2 (PR #39, @filhocf)
+- `feat(bootstrap)`: §4+§5 Bootstrap Profile + Session Legacy — `get_bootstrap_profile` tool, Kiro/Claude/Generic formatters, confidence-weighted dedup (cosine 0.70) (PR #40, @filhocf)
+- `refactor(config)`: §9 split 1327-line `config.py` into 12 domain modules with backward-compatible re-exports (PR #38, @filhocf)
 
 ---
 
 **Previous Releases**:
+- **v10.72.0** - Milvus ranked-search parity, Schema Versioning migration registry + CLI, §2 Belief Store derivation pipeline (June 3, 2026)
 - **v10.71.0** - first Codeberg (Forgejo) release: §0/§1 memory-intelligence groundwork, OpenClaw harvest, §8 handler refactor, and full Codeberg CI/CD + release tooling (June 3, 2026)
 - **v10.70.3** - fix(ci): multi-arch-safe GHCR cleanup — Docker pull 404s resolved for all multi-arch tags (issue #1044, PR #1052) (May 29, 2026)
 - **v10.70.2** - fix(security): wrap log f-strings in `storage/graph.py` with `_sanitize_log_value()` — CodeQL `py/log-injection` alerts #483–#486 (May 29, 2026)
