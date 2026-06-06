@@ -10,6 +10,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [10.74.1] - 2026-06-06
+
+### Fixed
+
+- fix(harvest): reject OpenClaw prompt preamble noise in PatternExtractor — adds `_is_openclaw_preamble()` filter that inspects the first 200 chars for gateway markers ("Sender (untrusted metadata):", "Conversation context:", "(untrusted metadata):") and rejects the input before pattern matching. Eliminates false-positive harvest candidates caused by OpenClaw prepending metadata to user prompts. Fixes the third issue from #43 (PR #46, @filhocf)
+
 ## [10.74.0] - 2026-06-05
 
 ### Changed
