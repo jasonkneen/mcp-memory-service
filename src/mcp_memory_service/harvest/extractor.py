@@ -140,6 +140,10 @@ class PatternExtractor:
             if not self._has_convention_match(clean_text):
                 return []
 
+        # OpenClaw noise filter: reject prompt preamble injected by gateway
+        if self._is_openclaw_preamble(clean_text):
+            return []
+
         candidates: List[HarvestCandidate] = []
         seen_types = {}  # type -> best confidence
 
@@ -198,3 +202,20 @@ class PatternExtractor:
         text_lower = text.lower()
         count = sum(1 for term in META_TERMS if term in text_lower)
         return count >= 2
+
+    @staticmethod
+    def _is_openclaw_preamble(text: str) -> bool:
+        """Reject OpenClaw gateway prompt preamble injected as conversation context.
+
+        The OpenClaw gateway prepends metadata like:
+          "Sender (untrusted metadata): Conversation context: #5450 Sat 2026-05-30..."
+        This is not user content — it's routing metadata that should not be harvested.
+        """
+        markers = (
+            "Sender (untrusted metadata):",
+            "Conversation context:",
+            "(untrusted metadata):",
+        )
+        # Check first 200 chars — preamble is always at the start
+        head = text[:200]
+        return any(marker in head for marker in markers)
