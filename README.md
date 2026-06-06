@@ -540,18 +540,22 @@ The `:quality-cpu` image pre-exports both models at build time and ships only `o
 ---
 
 
-## Latest Release: **v10.74.0** (June 5, 2026)
+## Latest Release: **v10.74.1** (June 6, 2026)
 
-**Minor: §13 declarative dispatch registry + §10 sqlite_vec mixin decomposition (both @filhocf)**
+**Patch: OpenClaw harvest preamble noise filter (@filhocf)**
 
-**What's New:**
+**What's Fixed:**
+- `fix(harvest)`: reject OpenClaw gateway prompt preamble in `PatternExtractor` — "Sender (untrusted metadata): Conversation context:..." routing metadata no longer harvested as false-positive decisions (issue #43 fix 3, PR #46, @filhocf)
+
+**Includes everything from v10.74.0 (June 5, 2026):**
 - `refactor(dispatch)`: §13 — `server_impl.py` if/elif dispatch replaced by `TOOL_REGISTRY` + `ROUTING_TABLE`; `__getattr__` lazy delegation with `setattr` caching; 49 inline wrappers removed (PR #37, @filhocf)
 - `refactor(storage)`: §10 — `sqlite_vec.py` decomposed into 8 focused mixins under `storage/mixins/`; no public API changes (PR #42, @filhocf)
-- `fix(harvest)`: OpenClaw trajectory harvest deduplication + `role_filter` disabled for trajectory files (issue #43, PR #42, @filhocf)
+- `fix(harvest)`: OpenClaw trajectory harvest deduplication + `role_filter` disabled for trajectory files (issue #43 fixes 1+2, PR #42, @filhocf)
 
 ---
 
 **Previous Releases**:
+- **v10.74.0** - §13 declarative dispatch registry + §10 sqlite_vec mixin decomposition (both @filhocf) (June 5, 2026)
 - **v10.73.0** - §3 Consolidation Engine v2, §4 Bootstrap Profile, §5 Session Legacy, §6 Belief-Aware Quarantine, §9 Config Refactor (all @filhocf) (June 5, 2026)
 - **v10.72.0** - Milvus ranked-search parity, Schema Versioning migration registry + CLI, §2 Belief Store derivation pipeline (June 3, 2026)
 - **v10.71.0** - first Codeberg (Forgejo) release: §0/§1 memory-intelligence groundwork, OpenClaw harvest, §8 handler refactor, and full Codeberg CI/CD + release tooling (June 3, 2026)
