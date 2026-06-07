@@ -7,8 +7,8 @@ Thank you for considering sponsoring MCP Memory Service! Your support helps main
 MCP Memory Service is more than just a memory storage tool—it's a comprehensive knowledge management platform that:
 
 - **Processes queries in <1 second** with advanced semantic search
-- **Manages 300+ memories** in production environments
-- **Provides 16 operations** for complete memory lifecycle management
+- **Manages 10000+ memories** in production environments
+- **Provides 20+ operations** for complete memory lifecycle management
 - **Offers enterprise features** like automatic backups and health monitoring
 - **Supports the MCP ecosystem** with a reference implementation
 
@@ -27,7 +27,7 @@ MCP Memory Service is more than just a memory storage tool—it's a comprehensiv
 - ✅ Name listed in README.md
 - ✅ Access to sponsor-only discussions
 - ✅ Early access to new features
-- ✅ Sponsor badge on GitHub profile
+- ✅ Sponsor badge on profile
 
 ### 🥈 Silver Sponsor ($50/month)
 - ✅ All Bronze benefits
@@ -55,12 +55,12 @@ MCP Memory Service is more than just a memory storage tool—it's a comprehensiv
 
 Your sponsorship directly funds:
 
-### Immediate Goals (Q1 2026)
+### Achieved Goals
 - [x] **$200/month** - HTTP REST API with FastAPI dashboard
 - [x] **$400/month** - Document ingestion pipeline (PDF, URL, YouTube)
-- [ ] **$600/month** - Multi-language support (ES, FR, DE, JP)
 
-### Growth Goals (Q2 2026)
+### Current Goals (H2 2026)
+- [ ] **$600/month** - Multi-language support (ES, FR, DE, JP)
 - [ ] **$800/month** - Cloud sync capabilities (AWS, GCP, Azure)
 - [ ] **$1000/month** - Plugin system for custom extensions
 - [ ] **$1500/month** - Enterprise authentication (SSO, LDAP)
@@ -102,7 +102,7 @@ The project migrated to Codeberg while the GitHub account is locked. All develop
 *Be the first Silver sponsor!*
 
 ### 🥉 Bronze Sponsors
-*Be the first Bronze sponsor!*
+- **Marco de Abreu** — *first sponsor!*
 
 ## 📈 Sponsorship Benefits in Detail
 
