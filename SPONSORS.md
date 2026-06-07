@@ -15,7 +15,7 @@ MCP Memory Service is more than just a memory storage tool—it's a comprehensiv
 ## 📊 Project Impact
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Memories_Managed-1700+-blue?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/Memories_Managed-10000+-blue?style=for-the-badge" />
   <img src="https://img.shields.io/badge/Query_Time-<500ms-green?style=for-the-badge" />
   <img src="https://img.shields.io/badge/Cache_Hit_Rate-100%25-brightgreen?style=for-the-badge" />
   <img src="https://img.shields.io/badge/Operations-20+-orange?style=for-the-badge" />
