@@ -123,6 +123,8 @@ The project migrated to Codeberg while the GitHub account is locked. All develop
 
 > "I've been a long-time user of MCP Memory Service and really appreciate all the thought and work you've put into it. Judging by the progress, quality and success of this project, this is one of the rare projects nowadays that really excels." - **Marco de Abreu** *(first sponsor, Bronze Sponsor)*
 
+> "I love your product—it’s the cornerstone of my Hermes agent" - **Pascal de Sélys**
+
 ## 📞 Contact
 
 For custom sponsorship packages or enterprise inquiries:
