@@ -1530,23 +1530,6 @@ class MemoryServer:
                     )
                 )
 
-            # Optionally include deprecated tools
-            show_legacy = os.getenv("MCP_SHOW_LEGACY_TOOLS", "false").lower() == "true"
-            if show_legacy:
-                from mcp_memory_service.compat import get_deprecated_tool_defs
-                for tool_def in get_deprecated_tool_defs():
-                    annotations = None
-                    if tool_def.annotations:
-                        annotations = types.ToolAnnotations(**tool_def.annotations)
-                    tools.append(
-                        types.Tool(
-                            name=tool_def.name,
-                            description=tool_def.description,
-                            inputSchema=tool_def.input_schema,
-                            annotations=annotations,
-                        )
-                    )
-
             logger.info(f"Returning {len(tools)} tools")
             return tools
         except Exception as e:
@@ -1560,14 +1543,8 @@ class MemoryServer:
             arguments = {}
 
         # Apply deprecated name transformation
-        from mcp_memory_service.compat import (
-            get_deprecation_message,
-            is_deprecated,
-            transform_deprecated_call,
-        )
-        deprecation_note = None
+        from mcp_memory_service.compat import is_deprecated, transform_deprecated_call
         if is_deprecated(name):
-            deprecation_note = get_deprecation_message(name)
             name, arguments = transform_deprecated_call(name, arguments)
 
         # Resolve handler from routing table
@@ -1589,16 +1566,8 @@ class MemoryServer:
                 result = await handler(self, arguments)
 
             if isinstance(result, list):
-                if deprecation_note:
-                    for item in result:
-                        if item.type == "text" and item.text:
-                            item.text = f"{deprecation_note}\n\n{item.text}"
-                            break
                 return result
-            text = str(result)
-            if deprecation_note:
-                text = f"{deprecation_note}\n\n{text}"
-            return [types.TextContent(type="text", text=text)]
+            return [types.TextContent(type="text", text=str(result))]
         except Exception as e:
             logger.error(f"Error in tool {name}: {e}", exc_info=True)
             error_response = json.dumps({"error": str(e)})
