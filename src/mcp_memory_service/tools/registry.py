@@ -19,6 +19,8 @@ class ToolDef:
     description: str
     input_schema: dict[str, Any]
     annotations: dict[str, Any] = field(default_factory=dict)
+    deprecated: bool = False
+    deprecated_replacement: str | None = None
 
 
 TOOL_REGISTRY: list[ToolDef] = [
