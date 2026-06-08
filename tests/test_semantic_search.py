@@ -32,6 +32,14 @@ def _skip_if_hash_embeddings(memory_server):
         if model and type(model).__name__ == "_HashEmbeddingModel":
             pytest.skip("Semantic search requires real embeddings (install mcp-memory-service[ml])")
 
+# Skip all semantic search tests if only hash embeddings available
+@pytest.fixture(autouse=True)
+def _skip_if_hash_embeddings(memory_server):
+    """Skip semantic search tests when no ML embedding backend is available."""
+    storage = getattr(memory_server, 'storage', None)
+    if storage and type(getattr(storage, 'embedding_model', None)).__name__ == "_HashEmbeddingModel":
+        pytest.skip("Semantic search requires real embeddings (install mcp-memory-service[ml])")
+
 @pytest.mark.asyncio
 async def test_semantic_similarity(memory_server):
     """Test semantic similarity scoring."""
