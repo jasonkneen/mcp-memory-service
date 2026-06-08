@@ -54,12 +54,8 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "python-multipart>=0.0.22",
     "requests>=2.32.4",
-    "sentence-transformers>=2.2.2",
     "sqlite-vec>=0.1.0",
     "sse-starlette>=2.1.0",
-    "tokenizers>=0.22.2",
-    "torch>=2.0.0",
-    "transformers>=4.30,<5.0.0",
     "typing-extensions>=4.0.0; python_version < '3.11'",
     "uvicorn>=0.30.0",
     "zeroconf>=0.130.0",
@@ -80,7 +76,9 @@ dev = [
 # Machine learning dependencies for semantic search and embeddings
 ml = [
     "sentence-transformers>=2.2.2",
+    "tokenizers>=0.22.2",
     "torch>=2.0.0",
+    "transformers>=4.30,<5.0.0",
     "wandb>=0.18.0"  # Fix for Issue #311: Ensure wandb is compatible with protobuf 5.x
 ]
 # NLI contradiction detection (Phase 3, RFC #732)

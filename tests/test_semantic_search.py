@@ -15,9 +15,22 @@ from mcp_memory_service.server import MemoryServer
 async def memory_server():
     """Create a test instance of the memory server."""
     server = MemoryServer()
-    # MemoryServer initializes itself, no initialize() call needed
     yield server
-    # No cleanup needed
+
+@pytest.fixture(autouse=True)
+def _skip_if_hash_embeddings(memory_server):
+    """Skip semantic search tests when no ML embedding backend is available."""
+    storage = getattr(memory_server, 'storage', None)
+    if storage is None:
+        # Try alternate attribute names
+        for attr in ('_storage', 'memory_storage', 'db'):
+            storage = getattr(memory_server, attr, None)
+            if storage:
+                break
+    if storage:
+        model = getattr(storage, 'embedding_model', None)
+        if model and type(model).__name__ == "_HashEmbeddingModel":
+            pytest.skip("Semantic search requires real embeddings (install mcp-memory-service[ml])")
 
 @pytest.mark.asyncio
 async def test_semantic_similarity(memory_server):
