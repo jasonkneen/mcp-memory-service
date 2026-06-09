@@ -92,6 +92,12 @@ class TestFallbackChainNoTorch:
             return real_import(name, *args, **kwargs)
 
         monkeypatch.setattr(builtins, "__import__", fake_import)
+        # Also disable ONNX via env var and patch SentenceTransformer to None
+        # to handle the case where modules are already loaded
+        monkeypatch.setenv('MCP_MEMORY_USE_ONNX', '0')
+        monkeypatch.setattr(
+            "mcp_memory_service.storage.mixins.embeddings.SentenceTransformer", None
+        )
 
     def test_service_starts_without_importerror(self, _hide_torch_and_onnx):
         """Service module should be importable without torch/onnx installed."""
@@ -354,8 +360,11 @@ class TestRuntimeWarning:
             "mcp_memory_service.storage.mixins.embeddings.SENTENCE_TRANSFORMERS_AVAILABLE",
             False,
         )
+        monkeypatch.setattr(
+            "mcp_memory_service.storage.mixins.embeddings.SentenceTransformer", None
+        )
         monkeypatch.delenv("MCP_EXTERNAL_EMBEDDING_URL", raising=False)
-        monkeypatch.delenv("MCP_MEMORY_USE_ONNX", raising=False)
+        monkeypatch.setenv("MCP_MEMORY_USE_ONNX", "0")
 
         mixin = EmbeddingsMixin()
         mixin.embedding_model_name = "all-MiniLM-L6-v2"
@@ -366,13 +375,8 @@ class TestRuntimeWarning:
         mixin._run_in_thread = AsyncMock(return_value=None)
 
         with caplog.at_level(logging.WARNING):
-            # Also mock ONNX as unavailable to force hash fallback
-            with patch(
-                "mcp_memory_service.embeddings.get_onnx_embedding_model",
-                side_effect=ImportError("No onnxruntime"),
-            ):
-                import asyncio
-                asyncio.run(mixin._initialize_embedding_model())
+            import asyncio
+            asyncio.run(mixin._initialize_embedding_model())
 
         warning_messages = " ".join(
             r.message for r in caplog.records if r.levelno >= logging.WARNING
@@ -390,7 +394,11 @@ class TestRuntimeWarning:
             "mcp_memory_service.storage.mixins.embeddings.SENTENCE_TRANSFORMERS_AVAILABLE",
             False,
         )
+        monkeypatch.setattr(
+            "mcp_memory_service.storage.mixins.embeddings.SentenceTransformer", None
+        )
         monkeypatch.delenv("MCP_EXTERNAL_EMBEDDING_URL", raising=False)
+        monkeypatch.setenv("MCP_MEMORY_USE_ONNX", "0")
 
         mixin = EmbeddingsMixin()
         mixin.embedding_model_name = "all-MiniLM-L6-v2"

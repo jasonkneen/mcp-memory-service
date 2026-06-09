@@ -42,12 +42,16 @@ TEST_MEMORY_TAG = "__test__"
 
 
 @pytest.fixture(autouse=True)
-def _disable_plugins(monkeypatch):
+def _disable_plugins(request, monkeypatch):
     """Prevent external plugins from loading during tests (e.g. hostname-tag injection)."""
+    if 'enable_plugins' in [m.name for m in request.node.iter_markers()]:
+        yield
+        return
     monkeypatch.setattr(
         "mcp_memory_service.plugins.registry.PluginRegistry.discover_and_register",
         lambda self: None,
     )
+    yield
 
 
 @pytest.fixture(autouse=True)
