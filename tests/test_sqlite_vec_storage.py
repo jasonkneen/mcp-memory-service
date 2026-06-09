@@ -1601,21 +1601,27 @@ class TestSqliteVecStorageWithoutEmbeddings:
 
     @pytest.mark.asyncio
     async def test_initialization_without_embeddings(self):
-        """Test that storage can initialize without sentence transformers."""
+        """Test that storage can initialize without sentence transformers AND ONNX."""
         temp_dir = tempfile.mkdtemp()
         db_path = os.path.join(temp_dir, "test_no_embeddings.db")
 
         try:
-            with patch('mcp_memory_service.storage.sqlite_vec.SENTENCE_TRANSFORMERS_AVAILABLE', False), \
-                 patch('mcp_memory_service.storage.mixins.embeddings.SENTENCE_TRANSFORMERS_AVAILABLE', False):
+            with patch('mcp_memory_service.storage.mixins.embeddings._MODEL_CACHE', {}), \
+                 patch('src.mcp_memory_service.storage.mixins.embeddings._MODEL_CACHE', {}), \
+                 patch('mcp_memory_service.storage.sqlite_vec.SENTENCE_TRANSFORMERS_AVAILABLE', False), \
+                 patch('mcp_memory_service.storage.mixins.embeddings.SENTENCE_TRANSFORMERS_AVAILABLE', False), \
+                 patch('mcp_memory_service.storage.mixins.embeddings.SentenceTransformer', None), \
+                 patch('src.mcp_memory_service.storage.mixins.embeddings.SENTENCE_TRANSFORMERS_AVAILABLE', False), \
+                 patch('src.mcp_memory_service.storage.mixins.embeddings.SentenceTransformer', None), \
+                 patch.dict(os.environ, {'MCP_MEMORY_USE_ONNX': '0'}):
                 storage = SqliteVecMemoryStorage(db_path)
                 await storage.initialize()
 
                 assert storage.conn is not None
-                # When sentence_transformers unavailable, falls back to _HashEmbeddingModel
+                # When all embedding backends unavailable, falls back to _HashEmbeddingModel
                 assert type(storage.embedding_model).__name__ == '_HashEmbeddingModel'
 
-                storage.close()
+                await storage.close()
 
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
@@ -1627,8 +1633,14 @@ class TestSqliteVecStorageWithoutEmbeddings:
         db_path = os.path.join(temp_dir, "test_no_embeddings.db")
         
         try:
-            with patch('mcp_memory_service.storage.sqlite_vec.SENTENCE_TRANSFORMERS_AVAILABLE', False), \
-                 patch('mcp_memory_service.storage.mixins.embeddings.SENTENCE_TRANSFORMERS_AVAILABLE', False):
+            with patch('mcp_memory_service.storage.mixins.embeddings._MODEL_CACHE', {}), \
+                 patch('src.mcp_memory_service.storage.mixins.embeddings._MODEL_CACHE', {}), \
+                 patch('mcp_memory_service.storage.sqlite_vec.SENTENCE_TRANSFORMERS_AVAILABLE', False), \
+                 patch('mcp_memory_service.storage.mixins.embeddings.SENTENCE_TRANSFORMERS_AVAILABLE', False), \
+                 patch('mcp_memory_service.storage.mixins.embeddings.SentenceTransformer', None), \
+                 patch('src.mcp_memory_service.storage.mixins.embeddings.SENTENCE_TRANSFORMERS_AVAILABLE', False), \
+                 patch('src.mcp_memory_service.storage.mixins.embeddings.SentenceTransformer', None), \
+                 patch.dict(os.environ, {'MCP_MEMORY_USE_ONNX': '0'}):
                 storage = SqliteVecMemoryStorage(db_path)
                 await storage.initialize()
                 
@@ -1651,7 +1663,7 @@ class TestSqliteVecStorageWithoutEmbeddings:
                 results = await storage.retrieve("test", n_results=1)
                 # May or may not return results, but shouldn't crash
                 
-                storage.close()
+                await storage.close()
                 
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
@@ -1740,12 +1752,12 @@ async def test_embedding_model_initialization():
         model_type_name = type(storage.embedding_model).__name__
 
         # Accept any valid backend
-        valid_backends = ("SentenceTransformer", "OnnxEmbeddingModel", "_HashEmbeddingModel")
+        valid_backends = ("SentenceTransformer", "OnnxEmbeddingModel", "ONNXEmbeddingModel", "_HashEmbeddingModel")
         assert model_type_name in valid_backends, \
             f"Expected one of {valid_backends} but got {model_type_name}."
 
         # If SentenceTransformer or ONNX loaded, dimension should be 384
-        if model_type_name in ("SentenceTransformer", "OnnxEmbeddingModel"):
+        if model_type_name in ("SentenceTransformer", "OnnxEmbeddingModel", "ONNXEmbeddingModel"):
             assert storage.embedding_dimension == 384, \
                 f"Expected 384-dim embeddings but got {storage.embedding_dimension}"
 
