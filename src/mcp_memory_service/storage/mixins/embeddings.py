@@ -33,12 +33,13 @@ def clear_model_caches() -> dict:
     """Clear embedding model caches to free memory."""
     import gc
 
-    global _MODEL_CACHE, _EMBEDDING_CACHE
+    global _MODEL_CACHE, _EMBEDDING_CACHE, _DIMENSION_CACHE
 
     model_count = len(_MODEL_CACHE)
     embedding_count = len(_EMBEDDING_CACHE)
 
     _MODEL_CACHE.clear()
+    _DIMENSION_CACHE.clear()
     _EMBEDDING_CACHE.clear()
 
     collected = gc.collect()

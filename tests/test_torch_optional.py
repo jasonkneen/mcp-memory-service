@@ -95,13 +95,22 @@ class TestFallbackChainNoTorch:
 
     def test_service_starts_without_importerror(self, _hide_torch_and_onnx):
         """Service module should be importable without torch/onnx installed."""
-        # Remove cached modules to force re-import
-        mods_to_remove = [k for k in sys.modules if "mcp_memory_service" in k]
-        for m in mods_to_remove:
-            del sys.modules[m]
+        # Save modules before manipulation
+        saved_modules = {k: v for k, v in sys.modules.items() if k.startswith('mcp_memory_service')}
+        try:
+            # Remove cached modules to force re-import
+            for key in list(sys.modules.keys()):
+                if key.startswith('mcp_memory_service'):
+                    del sys.modules[key]
 
-        # This should NOT raise ImportError
-        from mcp_memory_service.storage.mixins.embeddings import EmbeddingsMixin  # noqa: F401
+            # This should NOT raise ImportError
+            from mcp_memory_service.storage.mixins.embeddings import EmbeddingsMixin  # noqa: F401
+        finally:
+            # Restore: remove any newly-loaded modules, then restore originals
+            for key in list(sys.modules.keys()):
+                if key.startswith('mcp_memory_service'):
+                    del sys.modules[key]
+            sys.modules.update(saved_modules)
 
     def test_fallback_to_hash_embeddings_when_nothing_available(self, _hide_torch_and_onnx):
         """With no backends available, must fall back to hash embeddings."""
