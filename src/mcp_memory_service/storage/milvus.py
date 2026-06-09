@@ -39,10 +39,8 @@ import json
 import logging
 import math
 import os
-import threading
 import time
 import traceback
-from collections import OrderedDict
 from datetime import datetime, timezone, timedelta, date
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -89,6 +87,11 @@ except ImportError:
     SentenceTransformer = None  # type: ignore
 
 from .base import MemoryStorage
+from .shared import (
+    _embedding_cache_get, _embedding_cache_put, _embedding_cache_size,
+    _sanitize_log_value, _escape_like, _tags_to_string, _string_to_tags,
+    _safe_json_loads,
+)
 from ..models.memory import Memory, MemoryQueryResult
 
 logger = logging.getLogger(__name__)
@@ -101,41 +104,6 @@ logger = logging.getLogger(__name__)
 # don't reload a multi-hundred-MB model.
 _MODEL_CACHE: Dict[str, Any] = {}
 _DIMENSION_CACHE: Dict[str, int] = {}
-
-# Bounded LRU embedding cache. Keyed by ``f"{model_name}::{text}"`` so different
-# models don't collide, and the full text is stored rather than ``hash(text)``
-# (Python's 64-bit hash can collide and silently return a wrong embedding,
-# corrupting retrieval). The cache is capped to prevent unbounded growth in
-# long-lived processes. asyncio is single-threaded, but the underlying
-# embedding call runs via ``asyncio.to_thread`` so we guard with a Lock.
-_EMBEDDING_CACHE_MAX = 1024
-_EMBEDDING_CACHE: "OrderedDict[str, List[float]]" = OrderedDict()
-_EMBEDDING_CACHE_LOCK = threading.Lock()
-
-
-def _embedding_cache_get(key: str) -> Optional[List[float]]:
-    with _EMBEDDING_CACHE_LOCK:
-        value = _EMBEDDING_CACHE.get(key)
-        if value is None:
-            return None
-        _EMBEDDING_CACHE.move_to_end(key)
-        return value
-
-
-def _embedding_cache_put(key: str, value: List[float]) -> None:
-    with _EMBEDDING_CACHE_LOCK:
-        if key in _EMBEDDING_CACHE:
-            _EMBEDDING_CACHE.move_to_end(key)
-            _EMBEDDING_CACHE[key] = value
-            return
-        _EMBEDDING_CACHE[key] = value
-        while len(_EMBEDDING_CACHE) > _EMBEDDING_CACHE_MAX:
-            _EMBEDDING_CACHE.popitem(last=False)
-
-
-def _embedding_cache_size() -> int:
-    with _EMBEDDING_CACHE_LOCK:
-        return len(_EMBEDDING_CACHE)
 
 # Milvus VARCHAR hard cap. We leave a small safety margin so overhead fields
 # (metadata JSON keys etc.) don't push past the Milvus-side limit.
@@ -155,58 +123,6 @@ RRF_RANKER_K = 60
 
 # Defensive caps — mirror sqlite_vec semantics to prevent DoS-style large requests.
 _MAX_TAGS_FOR_SEARCH = 100
-
-
-def _sanitize_log_value(value: object) -> str:
-    """Sanitize a user-provided value for safe inclusion in log messages."""
-    return str(value).replace("\n", "\\n").replace("\r", "\\r").replace("\x1b", "\\x1b")
-
-
-def _escape_like(value: str) -> str:
-    """Strip Milvus ``like`` wildcard characters from a user-supplied tag.
-
-    Milvus uses ``%`` and ``_`` as wildcards in ``like`` expressions and does
-    not support escape characters. We drop these so that a malicious or noisy
-    tag like ``"a%b"`` cannot cause unintended cross-matches. Tag names in
-    practice don't contain these characters.
-    """
-    return value.replace("%", "").replace("_", "")
-
-
-def _tags_to_string(tags: Optional[List[str]]) -> str:
-    """Encode a tag list as a comma-delimited string with leading/trailing commas.
-
-    Leading/trailing commas let us match an exact tag with
-    ``tags like "%,<tag>,%"`` rather than a substring match.
-    """
-    if not tags:
-        return ""
-    clean = [t.strip() for t in tags if isinstance(t, str) and t.strip()]
-    if not clean:
-        return ""
-    return "," + ",".join(clean) + ","
-
-
-def _string_to_tags(raw: Optional[str]) -> List[str]:
-    """Decode the comma-delimited tag string back into a list."""
-    if not raw:
-        return []
-    return [t.strip() for t in raw.split(",") if t.strip()]
-
-
-def _safe_json_loads(text: str, context: str = "") -> Dict[str, Any]:
-    """Parse JSON with defensive fallbacks; always return a dict."""
-    if not text:
-        return {}
-    try:
-        parsed = json.loads(text)
-    except (json.JSONDecodeError, TypeError) as exc:
-        logger.error("JSON decode error in %s: %s", context, exc)
-        return {}
-    if not isinstance(parsed, dict):
-        logger.warning("Non-dict JSON in %s: %s", context, type(parsed).__name__)
-        return {}
-    return parsed
 
 
 # -- Storage implementation --------------------------------------------------
