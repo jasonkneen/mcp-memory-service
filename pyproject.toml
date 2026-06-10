@@ -72,6 +72,7 @@ dev = [
     "pytest-subtests>=0.10.0",
     "black>=26.3.1",
     "ruff>=0.1.0",
+    "sentence-transformers>=2.2.0",
 ]
 # Machine learning dependencies for semantic search and embeddings
 ml = [
