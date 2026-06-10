@@ -8,13 +8,8 @@ and automatic AVOID rule promotion.
 import json
 import pytest
 from mcp_memory_service.server import MemoryServer
-from mcp_memory_service.storage.mixins.embeddings import SENTENCE_TRANSFORMERS_AVAILABLE
 
 
-@pytest.mark.skipif(
-    not SENTENCE_TRANSFORMERS_AVAILABLE,
-    reason="Requires real embedding model for semantic similarity"
-)
 class TestNegativeLearning:
     """P4: Confidence + frustration on mistake notes."""
 

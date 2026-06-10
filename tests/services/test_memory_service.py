@@ -11,12 +11,6 @@ os.environ['MCP_SEMANTIC_DEDUP_ENABLED'] = 'false'  # off by default; tests over
 
 from mcp_memory_service.services.memory_service import MemoryService
 from mcp_memory_service.storage.sqlite_vec import SqliteVecMemoryStorage
-from mcp_memory_service.storage.mixins.embeddings import SENTENCE_TRANSFORMERS_AVAILABLE
-
-_skip_no_embeddings = pytest.mark.skipif(
-    not SENTENCE_TRANSFORMERS_AVAILABLE,
-    reason="Requires real embedding model for semantic similarity"
-)
 
 
 @pytest.fixture
@@ -33,7 +27,6 @@ async def memory_service(tmp_path):
 class TestStoreMemory:
     """Tests for MemoryService.store_memory()."""
 
-    @_skip_no_embeddings
     @pytest.mark.asyncio
     async def test_conversation_id_bypasses_semantic_dedup(self, memory_service):
         """Storing with conversation_id skips semantic dedup."""
@@ -112,7 +105,6 @@ class TestStoreMemory:
             f"Expected session to bypass semantic dedup, got: {result2.get('error')}"
         )
 
-    @_skip_no_embeddings
     @pytest.mark.asyncio
     async def test_non_session_still_blocked_by_semantic_dedup(self, memory_service):
         """Non-session memories with similar content are still blocked."""

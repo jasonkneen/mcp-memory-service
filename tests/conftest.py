@@ -60,13 +60,16 @@ def _clear_embedding_caches():
     from mcp_memory_service.storage.mixins.embeddings import (
         _MODEL_CACHE, _DIMENSION_CACHE, _EMBEDDING_CACHE
     )
+    import mcp_memory_service.storage.mixins.embeddings as emb_mod
     _MODEL_CACHE.clear()
     _DIMENSION_CACHE.clear()
     _EMBEDDING_CACHE.clear()
+    emb_mod._HASH_FALLBACK_WARNED = False
     yield
     _MODEL_CACHE.clear()
     _DIMENSION_CACHE.clear()
     _EMBEDDING_CACHE.clear()
+    emb_mod._HASH_FALLBACK_WARNED = False
 
 
 @pytest.fixture
