@@ -56,16 +56,16 @@ def _disable_plugins(request, monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _clear_embedding_caches():
-    """Reset module-level embedding caches between every test for isolation."""
+    """Reset embedding caches after each test for isolation."""
+    import mcp_memory_service.storage.mixins.embeddings as emb_mod
     from mcp_memory_service.storage.mixins.embeddings import (
         _MODEL_CACHE, _DIMENSION_CACHE, _EMBEDDING_CACHE
     )
-    import mcp_memory_service.storage.mixins.embeddings as emb_mod
-    _MODEL_CACHE.clear()
-    _DIMENSION_CACHE.clear()
-    _EMBEDDING_CACHE.clear()
+    # SETUP: only reset warning flag (allow model reuse like main)
     emb_mod._HASH_FALLBACK_WARNED = False
+    _EMBEDDING_CACHE.clear()
     yield
+    # TEARDOWN: full cleanup (prevent ONNX/ST leak to next test)
     _MODEL_CACHE.clear()
     _DIMENSION_CACHE.clear()
     _EMBEDDING_CACHE.clear()
