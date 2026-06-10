@@ -34,6 +34,15 @@ context in 5ms — without cloud lock-in or API costs.
 
 ---
 
+## 📰 In the Media
+
+**[Agents Overdrawn at the Memory Bank](https://www.linkedin.com/pulse/humans-loop-deep-dive-agents-overdrawn-rbrcc/)** — Heavybit's *Humans in the Loop* deep dive talks to maintainer Heinrich Krupp about agent amnesia, why persistent memory is the missing infrastructure layer for agentic systems, and how mcp-memory-service closes the gap with local vector storage, ONNX embeddings, and typed knowledge graphs.
+
+> "Your project has inspired me in many ways. In my view, it's the best implementation of MCP memory I've found so far."
+> — **Michał Zubkowicz**
+
+---
+
 ## 🌐 Works with claude.ai (Browser)
 
 Unlike desktop-only MCP servers, **mcp-memory-service supports Remote MCP** for native claude.ai integration.
