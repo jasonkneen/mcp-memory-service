@@ -421,7 +421,8 @@ class MemoryStorage(ABC):
         tag_match: str = "any",
         before: Optional[str] = None,
         after: Optional[str] = None,
-        dry_run: bool = False
+        dry_run: bool = False,
+        store: Optional[str] = "default",
     ) -> Dict[str, Any]:
         """
         Unified memory deletion with flexible filtering.
@@ -829,6 +830,7 @@ class MemoryStorage(ABC):
         tag_match: str = "any",
         stale_days: Optional[int] = None,
         include_embeddings: bool = False,
+        store: Optional[str] = "default",
     ) -> List[Memory]:
         """
         Get all memories in storage ordered by creation time (newest first).
@@ -853,7 +855,7 @@ class MemoryStorage(ABC):
         """
         return []
     
-    async def count_all_memories(self, memory_type: Optional[str] = None, tags: Optional[List[str]] = None, tag_match: str = "any", stale_days: Optional[int] = None) -> int:
+    async def count_all_memories(self, memory_type: Optional[str] = None, tags: Optional[List[str]] = None, tag_match: str = "any", stale_days: Optional[int] = None, store: Optional[str] = "default") -> int:
         """
         Get total count of memories in storage.
 
@@ -1002,6 +1004,7 @@ class MemoryStorage(ABC):
         include_debug: bool = False,
         include_superseded: bool = False,
         ranking_weights: Optional[Dict[str, float]] = None,
+        store: Optional[str] = "default",
     ) -> Dict[str, Any]:
         """
         Unified memory search with flexible modes and filters.
@@ -1176,6 +1179,7 @@ class MemoryStorage(ABC):
                 candidates = await self.retrieve(
                     query, n_results=oversample,
                     include_superseded=include_superseded,
+                    store=store,
                 )
                 if candidates:
                     weights = RankedSearchWeights.from_dict(ranking_weights)
@@ -1248,7 +1252,7 @@ class MemoryStorage(ABC):
                                     include_superseded=include_superseded
                                 )
                             else:
-                                results = await self.retrieve(query, n_results=fetch_limit, tags=tags, include_superseded=include_superseded, start_time=start_time, end_time=end_time)
+                                results = await self.retrieve(query, n_results=fetch_limit, tags=tags, include_superseded=include_superseded, start_time=start_time, end_time=end_time, store=store)
                     elif quality_boost > 0:
                         # Use quality-boosted retrieval
                         results = await self.retrieve_with_quality_boost(
@@ -1261,7 +1265,7 @@ class MemoryStorage(ABC):
                         )
                     else:
                         # Standard semantic search
-                        results = await self.retrieve(query, n_results=fetch_limit, tags=tags, include_superseded=include_superseded, start_time=start_time, end_time=end_time)
+                        results = await self.retrieve(query, n_results=fetch_limit, tags=tags, include_superseded=include_superseded, start_time=start_time, end_time=end_time, store=store)
 
                     pre_filter_count = len(results)
                 else:

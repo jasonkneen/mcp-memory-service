@@ -55,7 +55,8 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "python-multipart>=0.0.22",
     "requests>=2.32.4",
-    "sqlite-vec>=0.1.0",
+    "sqlite-vec>=0.1.6",
+    "sqlite-vec>=0.1.6",
     "sse-starlette>=2.1.0",
     "typing-extensions>=4.0.0; python_version < '3.11'",
     "uvicorn>=0.30.0",
@@ -93,6 +94,7 @@ sqlite = [
 ]
 # SQLite-vec with full ML capabilities (for advanced features)
 sqlite-ml = [
+    "sentence-transformers>=2.2.2",
     "mcp-memory-service[sqlite,ml]"
 ]
 # Milvus backend — Milvus Lite (single file), self-hosted Milvus, or Zilliz Cloud.

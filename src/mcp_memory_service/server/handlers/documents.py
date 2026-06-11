@@ -83,6 +83,7 @@ async def handle_ingest_document(server, arguments: dict) -> List[types.TextCont
         chunk_size = arguments.get("chunk_size", 1000)
         chunk_overlap = arguments.get("chunk_overlap", 200)
         memory_type = arguments.get("memory_type", "document")
+        store = arguments.get("store", "default")
 
         logger.info("Starting document ingestion: %s", _sanitize_log_value(file_path))
         start_time = time.time()
@@ -137,7 +138,7 @@ async def handle_ingest_document(server, arguments: dict) -> List[types.TextCont
                 )
 
                 # Store the memory
-                success, error = await storage.store(memory)
+                success, error = await storage.store(memory, store=store)
                 if success:
                     chunks_stored += 1
                 else:
@@ -235,7 +236,8 @@ async def handle_ingest_directory(server, arguments: dict) -> List[types.TextCon
         processor = FileIngestionProcessor(
             storage=storage,
             chunk_size=chunk_size,
-            base_tags=tags
+            base_tags=tags,
+            store=arguments.get("store", "default"),
         )
 
         for index, file_path in enumerate(files_to_process, start=1):
