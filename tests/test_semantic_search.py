@@ -10,6 +10,12 @@ import pytest
 import pytest_asyncio
 import asyncio
 from mcp_memory_service.server import MemoryServer
+from mcp_memory_service.storage.mixins.embeddings import SENTENCE_TRANSFORMERS_AVAILABLE
+
+pytestmark = pytest.mark.skipif(
+    not SENTENCE_TRANSFORMERS_AVAILABLE,
+    reason="Requires real embedding model for semantic similarity"
+)
 
 @pytest_asyncio.fixture
 async def memory_server():
