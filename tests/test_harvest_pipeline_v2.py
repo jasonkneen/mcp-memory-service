@@ -4,6 +4,11 @@ import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from pathlib import Path
 
+try:
+    from mcp_memory_service.storage.mixins.embeddings import SENTENCE_TRANSFORMERS_AVAILABLE
+except ImportError:
+    SENTENCE_TRANSFORMERS_AVAILABLE = False
+
 
 @pytest.fixture(autouse=True)
 def set_harvest_locale(monkeypatch):
@@ -80,6 +85,10 @@ class TestContextAccumulated:
             "rewrite_sync() deve aceitar parâmetro 'already_extracted'"
 
 
+@pytest.mark.skipif(
+    not SENTENCE_TRANSFORMERS_AVAILABLE,
+    reason="Requires real embedding model for semantic consolidation"
+)
 class TestBugConsolidation:
     """Passo 3: bugs similares na mesma sessão são consolidados."""
 
@@ -119,6 +128,10 @@ class TestBugConsolidation:
         assert len(result) == 2
 
 
+@pytest.mark.skipif(
+    not SENTENCE_TRANSFORMERS_AVAILABLE,
+    reason="Requires real embedding model for semantic dedup"
+)
 class TestDedupSemantic:
     """Passo 4: dedup com memórias existentes no banco."""
 
