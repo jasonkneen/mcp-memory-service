@@ -2900,6 +2900,7 @@ class MilvusMemoryStorage(MemoryStorage):
         tag_match: str = "any",
         stale_days: Optional[int] = None,
         include_embeddings: bool = False,
+        store: str = "default",
     ) -> List[Memory]:
         if not self._ensure_initialized():
             return []

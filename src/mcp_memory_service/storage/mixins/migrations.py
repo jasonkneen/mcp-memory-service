@@ -144,6 +144,60 @@ class MigrationsMixin:
                     except Exception as e:
                         logger.warning(f"Migration check for deleted_at (non-fatal): {e}")
 
+                    # Multi-store migration: add store partition key to vec0 and store column to memories
+                    try:
+                        def _migrate_multi_store():
+                            # Check if vec0 table already has partition key
+                            cursor = self.conn.execute(
+                                "SELECT COUNT(*) FROM sqlite_master WHERE name='memory_embeddings' AND sql LIKE '%partition%'"
+                            )
+                            has_partition = cursor.fetchone()[0] > 0
+                            if not has_partition:
+                                logger.info("Migrating memory_embeddings to add store partition key...")
+                                # Read existing embeddings
+                                rows = self.conn.execute(
+                                    "SELECT rowid, content_embedding FROM memory_embeddings"
+                                ).fetchall()
+                                # Drop and recreate with partition key
+                                self.conn.execute("DROP TABLE IF EXISTS memory_embeddings")
+                                embedding_dim_val = self.embedding_dimension
+                                self.conn.execute(f'''
+                                    CREATE VIRTUAL TABLE memory_embeddings USING vec0(
+                                        content_embedding FLOAT[{embedding_dim_val}] distance_metric=cosine,
+                                        store TEXT partition key
+                                    )
+                                ''')
+                                # Re-insert with store='default'
+                                for row in rows:
+                                    self.conn.execute(
+                                        "INSERT INTO memory_embeddings (rowid, content_embedding, store) VALUES (?, ?, ?)",
+                                        (row[0], row[1], 'default')
+                                    )
+                                self.conn.commit()
+                                logger.info(f"Multi-store migration complete: {len(rows)} embeddings migrated")
+                                return True
+                            return False
+
+                        migrated = await self._execute_with_retry(_migrate_multi_store)
+                        if migrated:
+                            logger.info("Migration complete: store partition key added to memory_embeddings")
+                    except Exception as e:
+                        logger.warning(f"Multi-store migration (non-fatal): {e}")
+
+                    # Add store column to memories table
+                    try:
+                        def _add_store_column():
+                            try:
+                                self.conn.execute("ALTER TABLE memories ADD COLUMN store TEXT DEFAULT 'default'")
+                                self.conn.commit()
+                                return True
+                            except Exception:
+                                return False
+
+                        await self._execute_with_retry(_add_store_column)
+                    except Exception as e:
+                        logger.warning(f"Add store column (non-fatal): {e}")
+
                     await self._run_in_thread(self._run_schema_migrations)
                     await self._run_in_thread(self._ensure_fts5_initialized)
 
@@ -280,7 +334,8 @@ class MigrationsMixin:
             def _create_virtual_table_and_indexes():
                 self.conn.execute(f'''
                     CREATE VIRTUAL TABLE IF NOT EXISTS memory_embeddings USING vec0(
-                        content_embedding FLOAT[{embedding_dim}] distance_metric=cosine
+                        content_embedding FLOAT[{embedding_dim}] distance_metric=cosine,
+                        store TEXT partition key
                     )
                 ''')
                 self.conn.execute("""
@@ -290,6 +345,12 @@ class MigrationsMixin:
                 self.conn.execute('CREATE INDEX IF NOT EXISTS idx_created_at ON memories(created_at)')
                 self.conn.execute('CREATE INDEX IF NOT EXISTS idx_memory_type ON memories(memory_type)')
                 self.conn.execute('CREATE INDEX IF NOT EXISTS idx_deleted_at ON memories(deleted_at)')
+
+                # Add store column to memories table
+                try:
+                    self.conn.execute("ALTER TABLE memories ADD COLUMN store TEXT DEFAULT 'default'")
+                except Exception:
+                    pass  # Column already exists
 
             await self._execute_with_retry(_create_virtual_table_and_indexes)
 

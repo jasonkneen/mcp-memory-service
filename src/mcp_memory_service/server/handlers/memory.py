@@ -198,6 +198,7 @@ async def handle_store_memory(server, arguments: dict) -> List[types.TextContent
         memory_type = metadata.get("type", "note")  # HTTP server uses metadata.type
         client_hostname = arguments.get("client_hostname")
         conversation_id = arguments.get("conversation_id")
+        store = arguments.get("store", "default")
 
         # Call shared MemoryService business logic
         result = await server.memory_service.store_memory(
@@ -207,6 +208,7 @@ async def handle_store_memory(server, arguments: dict) -> List[types.TextContent
             metadata=metadata,
             client_hostname=client_hostname,
             conversation_id=conversation_id,
+            store=store,
         )
 
         # Convert MemoryService result to MCP response format
@@ -392,6 +394,7 @@ async def handle_store_session(server, arguments: dict) -> List[types.TextConten
     extra_tags = arguments.get("tags", [])
     if isinstance(extra_tags, str):
         extra_tags = [t.strip() for t in extra_tags.split(",") if t.strip()]
+    store = arguments.get("store", "default")
 
     lines = []
     for turn in turns:
@@ -423,6 +426,7 @@ async def handle_store_session(server, arguments: dict) -> List[types.TextConten
                 memory_type="session",
                 metadata=arguments.get("metadata", {}),
                 client_hostname=arguments.get("client_hostname"),
+                store=store,
             )
             if not result.get("success"):
                 return [types.TextContent(type="text", text=f"Error storing session: {result.get('error', 'Unknown error')}")]
@@ -445,6 +449,7 @@ async def handle_store_session(server, arguments: dict) -> List[types.TextConten
                 memory_type="session",
                 metadata=arguments.get("metadata", {}),
                 client_hostname=arguments.get("client_hostname"),
+                store=store,
             )
             if not result.get("success"):
                 error = result.get("error", "Unknown error")
@@ -686,6 +691,9 @@ async def handle_memory_list(server, arguments: dict) -> List[types.TextContent]
         tag_match = arguments.get("tag_match", "any")
         memory_type = arguments.get("memory_type")
         stale_days = arguments.get("stale_days")
+        store = arguments.get("store", "default")
+        if store == "all":
+            store = None
 
         # Normalize tags if provided
         if tags:
@@ -699,6 +707,7 @@ async def handle_memory_list(server, arguments: dict) -> List[types.TextContent]
             tag_match=tag_match,
             memory_type=memory_type,
             stale_days=stale_days,
+            store=store,
         )
 
         # Check for errors
@@ -907,6 +916,10 @@ async def handle_memory_delete(server, arguments: dict) -> List[types.TextConten
         if tags:
             tags = normalize_tags(tags)
 
+        store = arguments.get("store", "default")
+        if store == "all":
+            store = None
+
         # Call unified delete_memories method
         result = await storage.delete_memories(
             content_hash=arguments.get("content_hash"),
@@ -914,7 +927,8 @@ async def handle_memory_delete(server, arguments: dict) -> List[types.TextConten
             tag_match=arguments.get("tag_match", "any"),
             before=arguments.get("before"),
             after=arguments.get("after"),
-            dry_run=arguments.get("dry_run", False)
+            dry_run=arguments.get("dry_run", False),
+            store=store,
         )
 
         # Format response
@@ -991,6 +1005,11 @@ async def handle_memory_search(server, arguments: dict) -> List[types.TextConten
         # Get max_response_chars for truncation
         max_response_chars = _get_max_response_chars(arguments)
 
+        # Extract store param
+        store = arguments.get("store", "default")
+        if store == "all":
+            store = None
+
         # Call unified search_memories method
         query = arguments.get("query")
         limit = arguments.get("limit", 10)
@@ -1007,6 +1026,7 @@ async def handle_memory_search(server, arguments: dict) -> List[types.TextConten
             include_debug=arguments.get("include_debug", False),
             include_superseded=arguments.get("include_superseded", False),
             ranking_weights=arguments.get("ranking_weights"),
+            store=store,
         )
 
         # Check for errors

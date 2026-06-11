@@ -37,7 +37,7 @@ def _escape_like(value: str) -> str:
 class RetrieveMixin:
     """Mixin providing memory retrieval and search operations."""
 
-    async def retrieve(self, query: str, n_results: int = 5, tags: Optional[List[str]] = None, min_confidence: float = 0.0, include_superseded: bool = False, start_time: Optional[float] = None, end_time: Optional[float] = None) -> List[MemoryQueryResult]:
+    async def retrieve(self, query: str, n_results: int = 5, tags: Optional[List[str]] = None, min_confidence: float = 0.0, include_superseded: bool = False, start_time: Optional[float] = None, end_time: Optional[float] = None, store: Optional[str] = 'default') -> List[MemoryQueryResult]:
         """Retrieve memories using semantic search."""
         try:
             if not self.conn:
@@ -78,6 +78,12 @@ class RetrieveMixin:
                 tag_conditions = ""
                 params = [serialize_float32(query_embedding), k_value]
 
+                # Add store filter to vec0 query
+                store_condition = ""
+                if store is not None:
+                    store_condition = " AND store = ?"
+                    params.append(store)
+
                 if tags:
                     tag_clauses = []
                     for tag in tags:
@@ -114,7 +120,7 @@ class RetrieveMixin:
                     INNER JOIN (
                         SELECT rowid, distance
                         FROM memory_embeddings
-                        WHERE content_embedding MATCH ? AND k = ?
+                        WHERE content_embedding MATCH ? AND k = ?{store_condition}
                     ) e ON m.id = e.rowid
                     WHERE m.deleted_at IS NULL{superseded_filter}{tag_conditions}{time_conditions}
                     ORDER BY e.distance
@@ -532,6 +538,7 @@ class RetrieveMixin:
         tag_match: str = "any",
         stale_days: Optional[int] = None,
         include_embeddings: bool = False,
+        store: Optional[str] = "default",
     ) -> List[Memory]:
         """Get all memories in storage ordered by creation time (newest first)."""
         try:
@@ -549,6 +556,10 @@ class RetrieveMixin:
             where_conditions = []
 
             where_conditions.append('m.deleted_at IS NULL')
+
+            if store is not None:
+                where_conditions.append('m.store = ?')
+                params.append(store)
 
             if memory_type is not None:
                 where_conditions.append('m.memory_type = ?')
@@ -678,13 +689,17 @@ class RetrieveMixin:
             logger.error(f"Error getting memory timestamps: {e}")
             return []
 
-    async def count_all_memories(self, memory_type: Optional[str] = None, tags: Optional[List[str]] = None, tag_match: str = "any", stale_days: Optional[int] = None) -> int:
+    async def count_all_memories(self, memory_type: Optional[str] = None, tags: Optional[List[str]] = None, tag_match: str = "any", stale_days: Optional[int] = None, store: Optional[str] = "default") -> int:
         """Get total count of memories in storage."""
         try:
             await self.initialize()
 
             conditions = []
             params = []
+
+            if store is not None:
+                conditions.append('store = ?')
+                params.append(store)
 
             if memory_type is not None:
                 conditions.append('memory_type = ?')

@@ -63,7 +63,7 @@ class StoreMixin:
 
         return False, None
 
-    async def store(self, memory: Memory, skip_semantic_dedup: bool = False) -> Tuple[bool, str]:
+    async def store(self, memory: Memory, skip_semantic_dedup: bool = False, store: str = 'default') -> Tuple[bool, str]:
         """Store a memory in the SQLite-vec database."""
         try:
             if not self.conn:
@@ -104,8 +104,8 @@ class StoreMixin:
                     cursor = self.conn.execute('''
                         INSERT INTO memories (
                             content_hash, content, tags, memory_type,
-                            metadata, created_at, updated_at, created_at_iso, updated_at_iso
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            metadata, created_at, updated_at, created_at_iso, updated_at_iso, store
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ''', (
                         memory.content_hash,
                         memory.content,
@@ -115,16 +115,18 @@ class StoreMixin:
                         memory.created_at,
                         memory.updated_at,
                         memory.created_at_iso,
-                        memory.updated_at_iso
+                        memory.updated_at_iso,
+                        store
                     ))
                     memory_rowid = cursor.lastrowid
 
                     self.conn.execute('''
-                        INSERT INTO memory_embeddings (rowid, content_embedding)
-                        VALUES (?, ?)
+                        INSERT INTO memory_embeddings (rowid, content_embedding, store)
+                        VALUES (?, ?, ?)
                     ''', (
                         memory_rowid,
-                        serialize_float32(embedding)
+                        serialize_float32(embedding),
+                        store
                     ))
                     self.conn.execute(f'RELEASE SAVEPOINT {_sp_name}')
                 except Exception:
@@ -159,7 +161,7 @@ class StoreMixin:
             logger.error(traceback.format_exc())
             return False, error_msg
 
-    async def store_batch(self, memories: List[Memory]) -> List[Tuple[bool, str]]:
+    async def store_batch(self, memories: List[Memory], store: str = 'default') -> List[Tuple[bool, str]]:
         """Store multiple memories in a single transaction with batched embedding generation."""
         if not memories:
             return []
@@ -206,20 +208,20 @@ class StoreMixin:
                     cur = self.conn.execute('''
                         INSERT INTO memories (
                             content_hash, content, tags, memory_type,
-                            metadata, created_at, updated_at, created_at_iso, updated_at_iso
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            metadata, created_at, updated_at, created_at_iso, updated_at_iso, store
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ''', (
                         memory.content_hash, memory.content, tags_str,
                         memory.memory_type, metadata_str,
                         memory.created_at, memory.updated_at,
-                        memory.created_at_iso, memory.updated_at_iso
+                        memory.created_at_iso, memory.updated_at_iso, store
                     ))
                     rowid = cur.lastrowid
 
                     self.conn.execute('''
-                        INSERT INTO memory_embeddings (rowid, content_embedding)
-                        VALUES (?, ?)
-                    ''', (rowid, serialize_float32(embedding_list)))
+                        INSERT INTO memory_embeddings (rowid, content_embedding, store)
+                        VALUES (?, ?, ?)
+                    ''', (rowid, serialize_float32(embedding_list), store))
 
                     self.conn.execute(f'RELEASE SAVEPOINT {sp}')
                     local_results[j] = (True, "Memory stored successfully")

@@ -281,6 +281,7 @@ class MemoryService:
         tag_match: str = "any",
         memory_type: Optional[str] = None,
         stale_days: Optional[int] = None,
+        store: Optional[str] = "default",
     ) -> Union[ListMemoriesSuccess, ListMemoriesError]:
         """
         List memories with pagination and optional filtering.
@@ -315,6 +316,7 @@ class MemoryService:
                 tags=tags_list,
                 tag_match=tag_match,
                 stale_days=stale_days,
+                store=store,
             )
 
             # Get accurate total count for pagination
@@ -323,6 +325,7 @@ class MemoryService:
                 tags=tags_list,
                 tag_match=tag_match,
                 stale_days=stale_days,
+                store=store,
             )
 
             # Format results for API response
@@ -361,7 +364,8 @@ class MemoryService:
         memory_type: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
         client_hostname: Optional[str] = None,
-        conversation_id: Optional[str] = None
+        conversation_id: Optional[str] = None,
+        store: str = "default",
     ) -> Union[StoreMemorySingleSuccess, StoreMemoryChunkedSuccess, StoreMemoryFailure]:
         """
         Store a new memory with validation and content processing.
@@ -444,7 +448,7 @@ class MemoryService:
                         metadata=chunk_metadata
                     )
 
-                    success, message = await self.storage.store(memory, skip_semantic_dedup=skip_dedup)
+                    success, message = await self.storage.store(memory, skip_semantic_dedup=skip_dedup, store=store)
                     if success:
                         stored_memories.append(self._format_memory_response(memory))
                         # Queue chunk for AI quality scoring if enabled
@@ -485,7 +489,7 @@ class MemoryService:
                     metadata=final_metadata
                 )
 
-                success, message = await self.storage.store(memory, skip_semantic_dedup=skip_dedup)
+                success, message = await self.storage.store(memory, skip_semantic_dedup=skip_dedup, store=store)
 
                 if success:
                     # Queue for AI quality scoring if enabled

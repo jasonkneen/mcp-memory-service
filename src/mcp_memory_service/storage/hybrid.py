@@ -1374,7 +1374,7 @@ class HybridMemoryStorage(MemoryStorage):
             "progress_percentage": round((self.initial_sync_completed / max(self.initial_sync_total, 1)) * 100, 1) if self.initial_sync_total > 0 else 0
         }
 
-    async def store(self, memory: Memory, skip_semantic_dedup: bool = False) -> Tuple[bool, str]:
+    async def store(self, memory: Memory, skip_semantic_dedup: bool = False, store: str = "default") -> Tuple[bool, str]:
         """Store a memory in primary storage and queue for secondary sync.
 
         Args:
@@ -1392,7 +1392,7 @@ class HybridMemoryStorage(MemoryStorage):
 
         return success, message
 
-    async def retrieve(self, query: str, n_results: int = 5, tags: Optional[List[str]] = None, min_confidence: float = 0.0, include_superseded: bool = False, start_time: Optional[float] = None, end_time: Optional[float] = None) -> List[MemoryQueryResult]:
+    async def retrieve(self, query: str, n_results: int = 5, tags: Optional[List[str]] = None, min_confidence: float = 0.0, include_superseded: bool = False, start_time: Optional[float] = None, end_time: Optional[float] = None, store: str = "default") -> List[MemoryQueryResult]:
         """Retrieve memories from primary storage (fast)."""
         return await self.primary.retrieve(query, n_results, tags, min_confidence=min_confidence, include_superseded=include_superseded)
 
@@ -1709,6 +1709,7 @@ class HybridMemoryStorage(MemoryStorage):
         tag_match: str = "any",
         stale_days: Optional[int] = None,
         include_embeddings: bool = False,
+        store: str = "default",
     ) -> List[Memory]:
         """Get all memories from primary storage.
 
@@ -1729,7 +1730,7 @@ class HybridMemoryStorage(MemoryStorage):
         """Get a memory by its content hash from primary storage."""
         return await self.primary.get_by_hash(content_hash)
 
-    async def count_all_memories(self, memory_type: Optional[str] = None, tags: Optional[List[str]] = None, tag_match: str = "any", stale_days: Optional[int] = None) -> int:
+    async def count_all_memories(self, memory_type: Optional[str] = None, tags: Optional[List[str]] = None, tag_match: str = "any", stale_days: Optional[int] = None, store: str = "default") -> int:
         """Get total count of memories from primary storage."""
         return await self.primary.count_all_memories(memory_type=memory_type, tags=tags, tag_match=tag_match, stale_days=stale_days)
 
