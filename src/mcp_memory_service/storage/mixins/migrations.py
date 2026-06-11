@@ -149,17 +149,23 @@ class MigrationsMixin:
                         def _migrate_multi_store():
                             # Check if vec0 table already has partition key
                             cursor = self.conn.execute(
-                                "SELECT COUNT(*) FROM sqlite_master WHERE name='memory_embeddings' AND sql LIKE '%partition%'"
+                                "SELECT sql FROM sqlite_master WHERE name='memory_embeddings'"
                             )
-                            has_partition = cursor.fetchone()[0] > 0
-                            if not has_partition:
-                                logger.info("Migrating memory_embeddings to add store partition key...")
-                                # Read existing embeddings
-                                rows = self.conn.execute(
-                                    "SELECT rowid, content_embedding FROM memory_embeddings"
-                                ).fetchall()
-                                # Drop and recreate with partition key
-                                self.conn.execute("DROP TABLE IF EXISTS memory_embeddings")
+                            row = cursor.fetchone()
+                            if row and 'partition' in (row[0] or '').lower():
+                                return False  # Already migrated
+
+                            logger.info("Migrating memory_embeddings to add store partition key...")
+                            # Read existing embeddings
+                            existing = self.conn.execute(
+                                "SELECT rowid, content_embedding FROM memory_embeddings"
+                            ).fetchall()
+
+                            # Rename old table
+                            self.conn.execute("ALTER TABLE memory_embeddings RENAME TO memory_embeddings_old")
+
+                            try:
+                                # Create new table with partition key
                                 embedding_dim_val = self.embedding_dimension
                                 self.conn.execute(f'''
                                     CREATE VIRTUAL TABLE memory_embeddings USING vec0(
@@ -168,21 +174,35 @@ class MigrationsMixin:
                                     )
                                 ''')
                                 # Re-insert with store='default'
-                                for row in rows:
+                                for row in existing:
                                     self.conn.execute(
                                         "INSERT INTO memory_embeddings (rowid, content_embedding, store) VALUES (?, ?, ?)",
                                         (row[0], row[1], 'default')
                                     )
+                                # Verify row count
+                                new_count = self.conn.execute("SELECT COUNT(*) FROM memory_embeddings").fetchone()[0]
+                                if new_count != len(existing):
+                                    raise RuntimeError(
+                                        f"Migration verification failed: expected {len(existing)}, got {new_count}"
+                                    )
+                                # Drop old table
+                                self.conn.execute("DROP TABLE memory_embeddings_old")
                                 self.conn.commit()
-                                logger.info(f"Multi-store migration complete: {len(rows)} embeddings migrated")
-                                return True
-                            return False
+                                logger.info(f"Multi-store migration complete: {new_count} embeddings migrated")
+                            except Exception as e:
+                                # Rollback: drop new, rename old back
+                                logger.error(f"Multi-store migration failed, rolling back: {e}")
+                                self.conn.execute("DROP TABLE IF EXISTS memory_embeddings")
+                                self.conn.execute("ALTER TABLE memory_embeddings_old RENAME TO memory_embeddings")
+                                self.conn.commit()
+                                raise
+                            return True
 
                         migrated = await self._execute_with_retry(_migrate_multi_store)
                         if migrated:
                             logger.info("Migration complete: store partition key added to memory_embeddings")
                     except Exception as e:
-                        logger.warning(f"Multi-store migration (non-fatal): {e}")
+                        raise RuntimeError(f"Multi-store vec0 migration failed (aborting): {e}") from e
 
                     # Add store column to memories table
                     try:

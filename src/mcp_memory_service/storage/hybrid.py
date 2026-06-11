@@ -1383,7 +1383,7 @@ class HybridMemoryStorage(MemoryStorage):
                 Exact hash deduplication is always enforced.
         """
         # Always store in primary first for immediate availability
-        success, message = await self.primary.store(memory, skip_semantic_dedup=skip_semantic_dedup)
+        success, message = await self.primary.store(memory, skip_semantic_dedup=skip_semantic_dedup, store=store)
 
         if success and self.sync_service:
             # Queue for background sync to secondary
@@ -1394,7 +1394,7 @@ class HybridMemoryStorage(MemoryStorage):
 
     async def retrieve(self, query: str, n_results: int = 5, tags: Optional[List[str]] = None, min_confidence: float = 0.0, include_superseded: bool = False, start_time: Optional[float] = None, end_time: Optional[float] = None, store: str = "default") -> List[MemoryQueryResult]:
         """Retrieve memories from primary storage (fast)."""
-        return await self.primary.retrieve(query, n_results, tags, min_confidence=min_confidence, include_superseded=include_superseded)
+        return await self.primary.retrieve(query, n_results, tags, min_confidence=min_confidence, include_superseded=include_superseded, store=store)
 
     async def search(self, query: str, n_results: int = 5, min_similarity: float = 0.0) -> List[MemoryQueryResult]:
         """Search memories in primary storage."""
@@ -1724,6 +1724,7 @@ class HybridMemoryStorage(MemoryStorage):
             tag_match=tag_match,
             stale_days=stale_days,
             include_embeddings=include_embeddings,
+            store=store,
         )
 
     async def get_by_hash(self, content_hash: str) -> Optional[Memory]:
@@ -1732,7 +1733,7 @@ class HybridMemoryStorage(MemoryStorage):
 
     async def count_all_memories(self, memory_type: Optional[str] = None, tags: Optional[List[str]] = None, tag_match: str = "any", stale_days: Optional[int] = None, store: str = "default") -> int:
         """Get total count of memories from primary storage."""
-        return await self.primary.count_all_memories(memory_type=memory_type, tags=tags, tag_match=tag_match, stale_days=stale_days)
+        return await self.primary.count_all_memories(memory_type=memory_type, tags=tags, tag_match=tag_match, stale_days=stale_days, store=store)
 
     async def get_memories_by_time_range(
         self,
