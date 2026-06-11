@@ -5,6 +5,7 @@ import logging
 import math
 import os
 import struct
+import sys
 import traceback
 from typing import List, Optional
 
@@ -12,6 +13,7 @@ try:
     from sentence_transformers import SentenceTransformer
     SENTENCE_TRANSFORMERS_AVAILABLE = True
 except ImportError:
+    SentenceTransformer = None
     SENTENCE_TRANSFORMERS_AVAILABLE = False
 
 from ...utils.system_detection import get_torch_device
@@ -23,17 +25,21 @@ _MODEL_CACHE = {}
 _DIMENSION_CACHE = {}
 _EMBEDDING_CACHE = {}
 
+# Module-level flag: emit hash-fallback warning only once per process
+_HASH_FALLBACK_WARNED = False
+
 
 def clear_model_caches() -> dict:
     """Clear embedding model caches to free memory."""
     import gc
 
-    global _MODEL_CACHE, _EMBEDDING_CACHE
+    global _MODEL_CACHE, _EMBEDDING_CACHE, _DIMENSION_CACHE
 
     model_count = len(_MODEL_CACHE)
     embedding_count = len(_EMBEDDING_CACHE)
 
     _MODEL_CACHE.clear()
+    _DIMENSION_CACHE.clear()
     _EMBEDDING_CACHE.clear()
 
     collected = gc.collect()
@@ -123,9 +129,9 @@ class EmbeddingsMixin:
 
     async def _initialize_embedding_model(self):
         """Initialize the embedding model (ONNX or SentenceTransformer based on configuration)."""
-        global _MODEL_CACHE
+        global _MODEL_CACHE, _HASH_FALLBACK_WARNED
 
-        is_docker = self._is_docker_environment()
+        is_docker = getattr(self, '_is_docker_environment', lambda: False)()
         if is_docker:
             logger.info("🐳 Docker environment detected - adjusting model loading strategy")
 
@@ -192,24 +198,24 @@ class EmbeddingsMixin:
                         f" Ensure your embedding service is running before starting mcp-memory-service."
                     ) from e
 
-            use_onnx = os.environ.get('MCP_MEMORY_USE_ONNX', '').lower() in ('1', 'true', 'yes')
+            use_onnx = os.environ.get('MCP_MEMORY_USE_ONNX', '').lower() not in ('0', 'false', 'no')
 
             if use_onnx:
                 logger.info("Attempting to use ONNX embeddings (PyTorch-free)")
                 try:
                     from ...embeddings import get_onnx_embedding_model
+                    from ...embeddings.onnx_embeddings import ONNX_AVAILABLE as _onnx_ok
 
                     cache_key = f"onnx_{self.embedding_model_name}"
-                    if cache_key in _MODEL_CACHE:
+                    if _onnx_ok and cache_key in _MODEL_CACHE:
                         self.embedding_model = _MODEL_CACHE[cache_key]
                         if cache_key in _DIMENSION_CACHE:
                             self.embedding_dimension = _DIMENSION_CACHE[cache_key]
                         elif hasattr(self.embedding_model, 'embedding_dimension'):
                             self.embedding_dimension = self.embedding_model.embedding_dimension
                             _DIMENSION_CACHE[cache_key] = self.embedding_dimension
-                        logger.info(f"Using cached ONNX embedding model: {self.embedding_model_name}")
+                        logger.info("Using cached ONNX embedding model")
                         return
-
                     onnx_model = get_onnx_embedding_model(self.embedding_model_name)
                     if onnx_model:
                         self.embedding_model = onnx_model
@@ -225,20 +231,19 @@ class EmbeddingsMixin:
                 except Exception as e:
                     logger.warning(f"Failed to initialize ONNX embeddings: {e}")
 
-            # Check availability via late import to respect test patches on the parent module.
-            # Tests may patch 'src.mcp_memory_service.storage.sqlite_vec.SENTENCE_TRANSFORMERS_AVAILABLE'
-            # or 'mcp_memory_service.storage.sqlite_vec.SENTENCE_TRANSFORMERS_AVAILABLE'.
-            import sys
-            _st_available = SENTENCE_TRANSFORMERS_AVAILABLE
-            for _mod_name in ('mcp_memory_service.storage.sqlite_vec', 'src.mcp_memory_service.storage.sqlite_vec'):
-                _sv_mod = sys.modules.get(_mod_name)
-                if _sv_mod is not None and hasattr(_sv_mod, 'SENTENCE_TRANSFORMERS_AVAILABLE'):
-                    _st_available = _sv_mod.SENTENCE_TRANSFORMERS_AVAILABLE
-                    break
+            # Check SentenceTransformer availability
+            # Use sys.modules introspection to allow test patches on SENTENCE_TRANSFORMERS_AVAILABLE
+            _st_mod = sys.modules.get(__name__, None)
+            _st_flag = getattr(_st_mod, 'SENTENCE_TRANSFORMERS_AVAILABLE', False) if _st_mod else SENTENCE_TRANSFORMERS_AVAILABLE
+            _st_available = _st_flag or SentenceTransformer is not None
             if not _st_available:
-                logger.warning(
-                    "Neither ONNX nor sentence-transformers available; using pure-Python hash embeddings (quality reduced)."
-                )
+                if not getattr(self, '_hash_fallback_warned', False):
+                    logger.warning(
+                        "No embedding backend available; using hash embeddings (reduced quality). "
+                        "Install ML dependencies for semantic search: pip install mcp-memory-service[ml]"
+                    )
+                    _HASH_FALLBACK_WARNED = True
+                    self._hash_fallback_warned = True
                 await self._initialize_hash_embedding_fallback()
                 return
 
@@ -341,9 +346,13 @@ class EmbeddingsMixin:
         except Exception as e:
             logger.error(f"Failed to initialize embedding model: {str(e)}")
             logger.error(traceback.format_exc())
-            logger.warning(
-                "Falling back to pure-Python hash embeddings due to embedding init failure (quality reduced)."
-            )
+            if not getattr(self, '_hash_fallback_warned', False):
+                logger.warning(
+                    "No embedding backend available; using hash embeddings (reduced quality). "
+                    "Install ML dependencies for semantic search: pip install mcp-memory-service[ml]"
+                )
+                _HASH_FALLBACK_WARNED = True
+                self._hash_fallback_warned = True
             await self._initialize_hash_embedding_fallback()
 
     async def _initialize_hash_embedding_fallback(self):
