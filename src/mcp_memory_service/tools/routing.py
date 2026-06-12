@@ -33,6 +33,8 @@ _PRIMARY: dict[str, tuple[str, str]] = {
     "memory_harvest": ("__self__", "handle_memory_harvest"),
     "memory_quality": _handler("quality", "handle_memory_quality"),
     "memory_graph": _handler("graph", "handle_memory_graph"),
+    "memory_explore": _handler("graph", "handle_memory_explore"),
+    "memory_detail": _handler("graph", "handle_memory_detail"),
     "memory_conflicts": _handler("quality", "handle_memory_conflicts"),
     "memory_resolve": _handler("quality", "handle_memory_resolve"),
     "mistake_note_add": _handler("mistake_notes", "handle_mistake_note_add"),
