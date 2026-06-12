@@ -104,24 +104,30 @@ MCP_ALLOW_ANONYMOUS_ACCESS=true memory server --http
 ```
 
 ```python
+import asyncio
 import httpx
 
 BASE_URL = "http://localhost:8000"
 
-# Store — auto-tag with X-Agent-ID header
-async with httpx.AsyncClient() as client:
-    await client.post(f"{BASE_URL}/api/memories", json={
-        "content": "API rate limit is 100 req/min",
-        "tags": ["api", "limits"],
-    }, headers={"X-Agent-ID": "researcher"})
-    # Stored with tags: ["api", "limits", "agent:researcher"]
 
-# Search — scope to a specific agent
-    results = await client.post(f"{BASE_URL}/api/memories/search", json={
-        "query": "API rate limits",
-        "tags": ["agent:researcher"],
-    })
-    print(results.json()["memories"])
+async def main():
+    async with httpx.AsyncClient() as client:
+        # Store — auto-tag with X-Agent-ID header
+        await client.post(f"{BASE_URL}/api/memories", json={
+            "content": "API rate limit is 100 req/min",
+            "tags": ["api", "limits"],
+        }, headers={"X-Agent-ID": "researcher"})
+        # Stored with tags: ["api", "limits", "agent:researcher"]
+
+        # Search — scope to a specific agent
+        results = await client.post(f"{BASE_URL}/api/memories/search", json={
+            "query": "API rate limits",
+            "tags": ["agent:researcher"],
+        })
+        print(results.json()["memories"])
+
+
+asyncio.run(main())
 ```
 
 **Framework-specific guides:** [docs/agents/](docs/agents/)
