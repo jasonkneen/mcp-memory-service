@@ -456,7 +456,7 @@ export MCP_EXTERNAL_EMBEDDING_API_KEY=sk-xxx  # Optional
 1. Add a handler function (or method) — these live in `src/mcp_memory_service/server/handlers/*.py` and follow the `async def handle_X(server, arguments) -> List[types.TextContent]` shape.
 2. Add a `types.Tool(...)` entry to `MemoryServer.list_tools()` in `src/mcp_memory_service/server_impl.py` with name, description, `inputSchema`, and `annotations`. Set `annotations=types.ToolAnnotations(readOnlyHint=True, ...)` if the tool does not mutate state — otherwise the HTTP `/mcp` layer will treat it as a write tool and require the OAuth `write` scope to call it (GHSA-2r68-g678-7qr3).
 3. Add a dispatch branch in `MemoryServer.call_tool()` routing the tool name to your handler.
-4. If you're renaming an existing tool, register the old name in `compat.DEPRECATED_TOOLS` so deprecated callers keep working.
+4. Renaming an existing tool is a **breaking change**. As of V11 there is no legacy tool-name alias layer (`compat.DEPRECATED_TOOLS` was removed in Issue #53), so a rename drops the old name outright. Avoid renames; if unavoidable, treat it as a major-version change and document the migration in `docs/MIGRATION.md`.
 5. Add tests in `tests/server/test_handlers.py`.
 
 **Add a new storage backend:**

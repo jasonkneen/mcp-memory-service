@@ -114,13 +114,13 @@ class TestRoutingTable:
         missing = registry_names - routing_names
         assert not missing, f"Tools in registry but not in routing: {missing}"
 
-    def test_routing_covers_legacy_aliases(self):
-        """Legacy/alias tool names in call_tool must also route."""
+    def test_legacy_aliases_removed_in_v11(self):
+        """The v10 deprecated tool-name aliases must NOT route in V11 (Issue #53)."""
         from mcp_memory_service.tools.routing import ROUTING_TABLE
-        # Some critical legacy names that call_tool handles
-        legacy = ["retrieve_memory", "recall_memory", "delete_by_tag", "search_by_tag"]
-        for name in legacy:
-            assert name in ROUTING_TABLE, f"Legacy alias missing: {name}"
+        removed = ["retrieve_memory", "recall_memory", "delete_by_tag", "search_by_tag",
+                   "store_memory", "ingest_document", "consolidate_memories"]
+        for name in removed:
+            assert name not in ROUTING_TABLE, f"Deprecated alias still present in V11: {name}"
 
     def test_routing_values_are_callable_or_tuple(self):
         from mcp_memory_service.tools.routing import ROUTING_TABLE
