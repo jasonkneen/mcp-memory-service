@@ -261,6 +261,16 @@ OAUTH_REFRESH_TOKEN_EXPIRE_DAYS = safe_get_int_env('MCP_OAUTH_REFRESH_TOKEN_EXPI
 # OAuth security configuration
 ALLOW_ANONYMOUS_ACCESS = safe_get_bool_env('MCP_ALLOW_ANONYMOUS_ACCESS', False)
 
+# Rate limiting + concurrency caps for the auth endpoints (/oauth/authorize,
+# /oauth/token, /oauth/register). In-process, per-client-IP — protects a single
+# instance against credential-stuffing / brute force / request floods.
+OAUTH_RATE_LIMIT_PER_MINUTE = safe_get_int_env(
+    'MCP_OAUTH_RATE_LIMIT_PER_MINUTE', 60, min_value=1, max_value=100000
+)
+OAUTH_RATE_LIMIT_MAX_CONCURRENT = safe_get_int_env(
+    'MCP_OAUTH_RATE_LIMIT_MAX_CONCURRENT', 20, min_value=1, max_value=10000
+)
+
 if OAUTH_ENABLED:
     logger.debug("OAuth is enabled")
 
