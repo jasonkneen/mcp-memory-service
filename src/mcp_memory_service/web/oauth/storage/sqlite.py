@@ -37,7 +37,7 @@ from typing import Dict, Optional
 
 import aiosqlite
 
-from .base import OAuthStorage
+from .base import OAuthStorage, hash_client_secret, is_hashed_secret, verify_client_secret
 from ..models import RegisteredClient
 from ....config import (
     OAUTH_ACCESS_TOKEN_EXPIRE_MINUTES,
@@ -266,6 +266,14 @@ class SQLiteOAuthStorage(OAuthStorage):
             response_types_json = json.dumps(client.response_types)
             grant_types_json = json.dumps(client.grant_types)
 
+            # Hash the secret at rest unless it is already hashed (e.g. a row
+            # being re-stored during a legacy upgrade).
+            stored_secret = (
+                client.client_secret
+                if is_hashed_secret(client.client_secret)
+                else hash_client_secret(client.client_secret)
+            )
+
             await self._execute(
                 """
                 INSERT OR REPLACE INTO oauth_clients
@@ -275,7 +283,7 @@ class SQLiteOAuthStorage(OAuthStorage):
                 """,
                 (
                     client.client_id,
-                    client.client_secret,
+                    stored_secret,
                     client.client_name,
                     redirect_uris_json,
                     response_types_json,
@@ -345,7 +353,16 @@ class SQLiteOAuthStorage(OAuthStorage):
         client = await self.get_client(client_id)
         if not client:
             return False
-        return client.client_secret == client_secret
+        if not verify_client_secret(client.client_secret, client_secret):
+            return False
+        # Transparently upgrade legacy plaintext rows to a hash on next use.
+        if not is_hashed_secret(client.client_secret):
+            upgraded = client.model_copy(
+                update={"client_secret": hash_client_secret(client_secret)}
+            )
+            await self.store_client(upgraded)
+            logger.debug("Upgraded legacy plaintext client secret to hash")
+        return True
 
     async def store_authorization_code(
         self,
