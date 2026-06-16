@@ -1,0 +1,361 @@
+# Copyright 2024 Heinrich Krupp
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+Security-hardening tests for the OAuth endpoints.
+
+Covers: reflected-XSS fix on /authorize, PKCE enforcement for public clients,
+code_challenge_method validation, input length caps (code_verifier, code,
+client_secret, refresh_token), JWT/api-key length guards, client_secret hashing
+at rest, the consolidated redirect-URI validator, the request body-size cap,
+and the in-process auth rate limiter.
+"""
+
+import pytest
+from unittest.mock import patch
+
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.testclient import TestClient
+
+from mcp_memory_service.web.oauth.authorization import (
+    authorize_get,
+    _handle_authorization_code_grant,
+    token as token_endpoint,
+)
+from mcp_memory_service.web.oauth.models import RegisteredClient
+from mcp_memory_service.web.oauth.storage.memory import MemoryOAuthStorage
+from mcp_memory_service.web.oauth import redirect as redirect_mod
+from mcp_memory_service.web.oauth import limits
+from mcp_memory_service.web.oauth import rate_limit
+from mcp_memory_service.web.oauth.storage.base import (
+    hash_client_secret,
+    is_hashed_secret,
+    verify_client_secret,
+)
+from mcp_memory_service.web.body_limit import BodySizeLimitMiddleware, _limit_for_path
+
+
+AUTH_PATCH = "mcp_memory_service.web.oauth.authorization.get_oauth_storage"
+
+
+async def _store_public_client(storage, client_id="pub", auth_method="none"):
+    await storage.store_client(
+        RegisteredClient(
+            client_id=client_id,
+            client_secret="unused",
+            redirect_uris=["http://127.0.0.1/cb"],
+            grant_types=["authorization_code"],
+            response_types=["code"],
+            token_endpoint_auth_method=auth_method,
+            client_name="C",
+            created_at=0,
+        )
+    )
+
+
+# ---------------------------------------------------------------------------
+# Reflected XSS on /authorize (issue #4 / Claude #1)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_authorize_page_does_not_reflect_raw_query_xss():
+    storage = MemoryOAuthStorage()
+    await _store_public_client(storage, auth_method="client_secret_basic")
+    payload = '"><script>alert(1)</script>'
+    with patch(AUTH_PATCH, return_value=storage):
+        resp = await authorize_get(
+            request=None,
+            response_type="code",
+            client_id="pub",
+            redirect_uri=None,
+            scope=payload,
+            state=payload,
+            code_challenge=None,
+            code_challenge_method=None,
+        )
+    body = resp.body.decode()
+    # The injected markup must never appear unescaped in the rendered page.
+    assert "<script>alert(1)</script>" not in body
+    assert "&lt;script&gt;" in body or "%3Cscript%3E" in body
+
+
+# ---------------------------------------------------------------------------
+# PKCE mandatory for public clients (Claude #3) + method validation (Claude #4)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_authorize_rejects_public_client_without_pkce():
+    storage = MemoryOAuthStorage()
+    await _store_public_client(storage, auth_method="none")
+    with patch(AUTH_PATCH, return_value=storage):
+        with pytest.raises(HTTPException) as exc:
+            await authorize_get(
+                request=None, response_type="code", client_id="pub",
+                redirect_uri=None, scope=None, state=None,
+                code_challenge=None, code_challenge_method=None,
+            )
+    assert exc.value.status_code == 400
+    assert "code_challenge" in exc.value.detail["error_description"]
+
+
+@pytest.mark.asyncio
+async def test_authorize_allows_confidential_client_without_pkce():
+    storage = MemoryOAuthStorage()
+    await _store_public_client(storage, auth_method="client_secret_basic")
+    with patch(AUTH_PATCH, return_value=storage):
+        resp = await authorize_get(
+            request=None, response_type="code", client_id="pub",
+            redirect_uri=None, scope=None, state=None,
+            code_challenge=None, code_challenge_method=None,
+        )
+    assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_authorize_rejects_non_s256_challenge_method():
+    storage = MemoryOAuthStorage()
+    await _store_public_client(storage, auth_method="none")
+    challenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+    with patch(AUTH_PATCH, return_value=storage):
+        with pytest.raises(HTTPException) as exc:
+            await authorize_get(
+                request=None, response_type="code", client_id="pub",
+                redirect_uri=None, scope=None, state=None,
+                code_challenge=challenge, code_challenge_method="plain",
+            )
+    assert exc.value.status_code == 400
+    assert "S256" in exc.value.detail["error_description"]
+
+
+# ---------------------------------------------------------------------------
+# code_verifier length (issue #3)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("verifier", ["short", "x" * 5000])
+async def test_token_grant_rejects_bad_code_verifier_length(verifier):
+    storage = MemoryOAuthStorage()
+    await _store_public_client(storage, auth_method="none")
+    with patch(AUTH_PATCH, return_value=storage):
+        with pytest.raises(HTTPException) as exc:
+            await _handle_authorization_code_grant(
+                final_client_id="pub", final_client_secret=None,
+                code="somecode", redirect_uri=None, code_verifier=verifier,
+            )
+    assert exc.value.status_code == 400
+    assert "code_verifier" in exc.value.detail["error_description"]
+
+
+# ---------------------------------------------------------------------------
+# Opaque-input length caps on /token (issue #3)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "field,value,max_len",
+    [
+        ("refresh_token", "r" * (limits.MAX_REFRESH_TOKEN_LEN + 1), limits.MAX_REFRESH_TOKEN_LEN),
+        ("client_secret", "s" * (limits.MAX_CLIENT_SECRET_LEN + 1), limits.MAX_CLIENT_SECRET_LEN),
+        ("code", "c" * (limits.MAX_AUTHORIZATION_CODE_LEN + 1), limits.MAX_AUTHORIZATION_CODE_LEN),
+    ],
+)
+async def test_token_endpoint_rejects_oversized_inputs(field, value, max_len):
+    storage = MemoryOAuthStorage()
+
+    class _Req:
+        headers = {}
+
+    kwargs = dict(
+        request=_Req(), grant_type="authorization_code", code="c", redirect_uri=None,
+        client_id="pub", client_secret=None, code_verifier=None,
+        refresh_token=None, scope=None,
+    )
+    kwargs[field] = value
+    with patch(AUTH_PATCH, return_value=storage):
+        with pytest.raises(HTTPException) as exc:
+            await token_endpoint(**kwargs)
+    assert exc.value.status_code == 400
+    assert field in exc.value.detail["error_description"]
+
+
+# ---------------------------------------------------------------------------
+# JWT / API-key length guards in middleware (issue #5)
+# ---------------------------------------------------------------------------
+
+def test_validate_jwt_token_rejects_oversized():
+    from mcp_memory_service.web.oauth.middleware import validate_jwt_token
+    oversized = "a." + "b" * (limits.MAX_JWT_LEN) + ".c"
+    assert validate_jwt_token(oversized) is None
+
+
+def test_authenticate_api_key_rejects_oversized():
+    from mcp_memory_service.web.oauth import middleware
+    with patch.object(middleware, "API_KEY", "real-key"):
+        result = middleware.authenticate_api_key("x" * (limits.MAX_API_KEY_LEN + 1))
+    assert result.authenticated is False
+
+
+# ---------------------------------------------------------------------------
+# client_secret hashing at rest (Claude #2)
+# ---------------------------------------------------------------------------
+
+def test_secret_hash_helpers():
+    h = hash_client_secret("topsecret")
+    assert is_hashed_secret(h)
+    assert not is_hashed_secret("topsecret")
+    assert verify_client_secret(h, "topsecret")
+    assert not verify_client_secret(h, "wrong")
+    # Legacy plaintext rows still verify (constant-time) pending upgrade.
+    assert verify_client_secret("legacyplain", "legacyplain")
+    assert not verify_client_secret("legacyplain", "other")
+
+
+@pytest.mark.asyncio
+async def test_legacy_plaintext_secret_upgraded_on_authenticate():
+    storage = MemoryOAuthStorage()
+    # Simulate a pre-existing plaintext row by writing directly past store_client.
+    storage._clients["legacy"] = RegisteredClient(
+        client_id="legacy", client_secret="plainsecret",
+        redirect_uris=[], token_endpoint_auth_method="client_secret_basic",
+        created_at=0,
+    )
+    assert await storage.authenticate_client("legacy", "plainsecret") is True
+    # After a successful auth the stored secret must be hashed.
+    assert is_hashed_secret(storage._clients["legacy"].client_secret)
+
+
+# ---------------------------------------------------------------------------
+# Consolidated redirect-URI validator (issue #1)
+# ---------------------------------------------------------------------------
+
+def test_registration_validator_rejects_dangerous_scheme():
+    with pytest.raises(HTTPException):
+        redirect_mod.validate_registration_redirect_uris(["javascript:alert(1)"])
+
+
+def test_registration_validator_accepts_custom_and_https():
+    redirect_mod.validate_registration_redirect_uris(
+        ["cursor://callback", "https://app.example.com/cb", "http://localhost/cb"]
+    )
+
+
+def test_resolve_redirect_uri_returns_stored_value_and_rejects_unregistered():
+    registered = ["https://app.example.com/cb"]
+    assert (
+        redirect_mod.resolve_registered_redirect_uri(registered, "https://app.example.com/cb")
+        == "https://app.example.com/cb"
+    )
+    with pytest.raises(HTTPException):
+        redirect_mod.resolve_registered_redirect_uri(registered, "https://evil.example/cb")
+
+
+def test_build_redirect_url_no_longer_rejects_schemes():
+    # The dead denylist pass was removed; building from an already-validated URI
+    # just assembles the query string.
+    url = redirect_mod.build_redirect_url("myapp://cb", {"code": "abc"})
+    assert url == "myapp://cb?code=abc"
+
+
+# ---------------------------------------------------------------------------
+# Body size cap (issues #2 and #6)
+# ---------------------------------------------------------------------------
+
+def test_limit_for_path_tiers():
+    from mcp_memory_service.config import HTTP_MAX_BODY_BYTES, OAUTH_MAX_BODY_BYTES
+    assert _limit_for_path("/oauth/token") == OAUTH_MAX_BODY_BYTES
+    assert _limit_for_path("/api/memories") == HTTP_MAX_BODY_BYTES
+    assert _limit_for_path("/api/documents/upload") is None  # exempt
+
+
+def _body_limit_client():
+    app = FastAPI()
+    app.add_middleware(BodySizeLimitMiddleware)
+
+    @app.post("/oauth/echo")
+    async def oauth_echo(request: Request):
+        return {"len": len(await request.body())}
+
+    @app.post("/api/documents/echo")
+    async def docs_echo(request: Request):
+        return {"len": len(await request.body())}
+
+    @app.post("/api/other")
+    async def other_echo(request: Request):
+        return {"len": len(await request.body())}
+
+    return TestClient(app)
+
+
+def test_body_limit_rejects_oversized_oauth_body():
+    client = _body_limit_client()
+    from mcp_memory_service.config import OAUTH_MAX_BODY_BYTES
+    big = b"x" * (OAUTH_MAX_BODY_BYTES + 1)
+    resp = client.post("/oauth/echo", content=big)
+    assert resp.status_code == 413
+    small = client.post("/oauth/echo", content=b"x" * 100)
+    assert small.status_code == 200
+
+
+def test_body_limit_exempts_documents():
+    client = _body_limit_client()
+    from mcp_memory_service.config import HTTP_MAX_BODY_BYTES
+    big = b"x" * (HTTP_MAX_BODY_BYTES + 1024)
+    resp = client.post("/api/documents/echo", content=big)
+    assert resp.status_code == 200
+
+
+def test_body_limit_global_cap():
+    client = _body_limit_client()
+    from mcp_memory_service.config import HTTP_MAX_BODY_BYTES
+    big = b"x" * (HTTP_MAX_BODY_BYTES + 1)
+    resp = client.post("/api/other", content=big)
+    assert resp.status_code == 413
+
+
+# ---------------------------------------------------------------------------
+# Rate limiting + concurrency (issue #8)
+# ---------------------------------------------------------------------------
+
+def test_sliding_window_rate_limiter():
+    limiter = rate_limit._SlidingWindowRateLimiter(max_per_window=3, window_seconds=60)
+    assert limiter.check("ip", now=100.0)
+    assert limiter.check("ip", now=100.1)
+    assert limiter.check("ip", now=100.2)
+    assert not limiter.check("ip", now=100.3)  # 4th in window blocked
+    # After the window slides, requests are allowed again.
+    assert limiter.check("ip", now=200.0)
+
+
+@pytest.mark.asyncio
+async def test_auth_rate_limit_dependency_raises_429_over_limit():
+    rate_limit._reset_for_tests()
+
+    class _Req:
+        class client:
+            host = "1.2.3.4"
+
+    with patch.object(rate_limit, "_rate_limiter",
+                      rate_limit._SlidingWindowRateLimiter(max_per_window=2)):
+        # First two acquire/release cleanly.
+        for _ in range(2):
+            gen = rate_limit.auth_rate_limit(_Req())
+            await gen.__anext__()
+            await gen.aclose()
+        # Third is over the limit -> 429.
+        gen = rate_limit.auth_rate_limit(_Req())
+        with pytest.raises(HTTPException) as exc:
+            await gen.__anext__()
+        assert exc.value.status_code == 429
+
+    rate_limit._reset_for_tests()
