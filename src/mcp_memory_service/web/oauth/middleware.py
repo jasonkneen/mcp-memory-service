@@ -34,6 +34,7 @@ from ...config import (
     get_jwt_algorithm,
     get_jwt_verification_key
 )
+from .limits import MAX_JWT_LEN, MAX_API_KEY_LEN
 
 def _www_authenticate_header() -> str:
     """Build WWW-Authenticate header with resource_metadata for RFC 9728 compliance."""
@@ -106,6 +107,12 @@ def validate_jwt_token(token: str) -> Optional[Dict[str, Any]]:
     token = token.strip()
     if not token:
         logger.debug("Invalid token: empty token after stripping")
+        return None
+
+    # Bound the token length before any splitting/decoding so an attacker
+    # cannot push an oversized string into jwt.decode (CPU/memory).
+    if len(token) > MAX_JWT_LEN:
+        logger.debug("Invalid token: exceeds maximum length")
         return None
 
     # JWT tokens should have 3 parts separated by dots
@@ -264,6 +271,16 @@ def authenticate_api_key(api_key: str) -> AuthenticationResult:
     api_key = api_key.strip()
     if not api_key:
         logger.debug("API key authentication failed: empty key")
+        return AuthenticationResult(
+            authenticated=False,
+            auth_method="api_key",
+            error="invalid_api_key"
+        )
+
+    # Bound the key length before constant-time comparison so a caller cannot
+    # submit an oversized value via header/query string.
+    if len(api_key) > MAX_API_KEY_LEN:
+        logger.debug("API key authentication failed: exceeds maximum length")
         return AuthenticationResult(
             authenticated=False,
             auth_method="api_key",
