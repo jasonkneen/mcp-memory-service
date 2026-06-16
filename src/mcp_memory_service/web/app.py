@@ -286,7 +286,13 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    
+
+    # Request body-size cap (disk/memory exhaustion + buffer-overflow guard).
+    # Global cap for all routes, tighter cap for /oauth/*, document ingestion
+    # exempt. Added last so it runs first (outermost) on the inbound path.
+    from .body_limit import BodySizeLimitMiddleware
+    app.add_middleware(BodySizeLimitMiddleware)
+
     # Include API routers
     logger.info("Including API routers...")
     app.include_router(health_router, prefix="/api", tags=["health"])
