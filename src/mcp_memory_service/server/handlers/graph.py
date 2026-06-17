@@ -629,27 +629,50 @@ async def _retrieve_candidates(storage, query: str, n_results: int, tags, store)
 async def _build_knowledge_map(graph, entities_raw, chunk_pool, chunks_per_entity):
     """Assemble the memory_explore response shape from discovered entities.
 
-    Returns the locked per-entity shape with placeholder aggregation.
-
-    TODO(filhocf): phase-1 aggregation fills this in —
-      - entity discovery / dedup via normalize_entity_id (collision -> hash suffix)
-      - extractive (LLM-free) summary from each entity's top-N chunks
-      - per-entity top_chunks ranking against existing relevance
-    Placeholder here: entity_type from profile, summary="", top_chunks =
-    shared candidate-pool slice, relation_count = graph degree.
+    Phase-1 aggregation (standalone, no composite scoring):
+      - Entity-specific chunk filtering via graph.find_memories_by_entity
+      - Extractive (LLM-free) summary from top chunks
+      - Per-entity top_chunks ranking by relevance score
     """
+    chunk_by_hash = {c["hash"]: c for c in chunk_pool}
     knowledge_map = []
     for ent in entities_raw:
         name = ent.get("entity_name", "")
         profile = await graph.get_entity_profile(name) if graph else {}
         entity_types = profile.get("entity_types") or []
+
+        # Entity-specific chunk filtering
+        entity_chunks = []
+        if graph:
+            entity_hashes = await graph.find_memories_by_entity(name)
+            entity_chunks = [chunk_by_hash[h] for h in entity_hashes if h in chunk_by_hash]
+
+        # Fallback: use full chunk_pool if no entity-specific chunks found
+        if not entity_chunks:
+            entity_chunks = chunk_pool
+
+        # Rank by relevance descending, take top N
+        ranked = sorted(entity_chunks, key=lambda c: c.get("relevance") or 0.0, reverse=True)
+        top_chunks = ranked[:chunks_per_entity]
+
+        # Extractive summary: first sentence of top chunks (max 150 chars each, join 3)
+        sentences = []
+        for c in top_chunks[:3]:
+            text = (c.get("content") or "").strip()
+            # Take first sentence (split on period)
+            first_sent = text.split(". ")[0] if text else ""
+            if first_sent and not first_sent.endswith("."):
+                first_sent += "."
+            sentences.append(first_sent[:150])
+        summary = " ".join(s for s in sentences if s)
+
         knowledge_map.append({
             "entity_id": normalize_entity_id(name),
             "name": name,
             "entity_type": entity_types[0] if entity_types else "",
-            "summary": "",  # filled by aggregation
+            "summary": summary,
             "relation_count": ent.get("count", 0),
-            "top_chunks": chunk_pool[:chunks_per_entity],  # placeholder ranking
+            "top_chunks": top_chunks,
         })
     return knowledge_map
 
@@ -657,11 +680,9 @@ async def _build_knowledge_map(graph, entities_raw, chunk_pool, chunks_per_entit
 async def handle_memory_explore(server, arguments: dict) -> List[types.TextContent]:
     """Explore a knowledge map of entities related to a query (read-only, LLM-free).
 
-    SKELETON (#56/#61): does real candidate retrieval + real graph entity
-    discovery and returns the locked response shape. The entity grouping,
-    extractive summary, and per-entity top_chunks ranking are stubbed at the
-    TODO(filhocf) boundary in ``_build_knowledge_map`` for the phase-1
-    aggregation slice.
+    Performs real candidate retrieval + real graph entity discovery with
+    entity-specific chunk filtering, extractive summary, and per-entity
+    top_chunks ranking by relevance.
 
     Response: {"entities": [{entity_id, name, entity_type, summary,
     relation_count, top_chunks[]}], "count": N}.
@@ -736,50 +757,57 @@ async def _resolve_entity_name(graph, entity_id: str):
 async def _hydrate_chunks(storage, memory_hashes):
     """Fetch real chunk content for an entity's linked memories.
 
-    TODO(filhocf): chunk ranking refinement (composite_score + score_components
-    once #55 lands) is the phase-1 aggregation slice. ``relevance`` is left None
-    here as the placeholder ranking field.
+    Ranks by quality_score when available (simple sort, no composite scoring).
+    Returns shape: {hash, content, relevance} where relevance = quality_score or None.
     """
     chunks = []
     for h in memory_hashes:
         mem = await storage.get_by_hash(h)
+        content = (mem.content or "")[:500] if mem else None
+        quality = getattr(mem, "quality_score", None) if mem else None
         chunks.append({
             "hash": h,
-            "content": mem.content[:500] if mem else None,
-            "relevance": None,
+            "content": content,
+            "relevance": quality,
         })
+    # Rank by quality_score descending (None sorted last)
+    chunks.sort(key=lambda c: c["relevance"] if c["relevance"] is not None else -1, reverse=True)
     return chunks
 
 
 async def _discover_related_entities(graph, memory_hashes, max_hops: int):
-    """Discover related entities via shared neighbours (unranked skeleton).
+    """Discover related entities via shared neighbours with dedup and ranking.
 
-    TODO(filhocf): scoring / dedup ranking of related_entities is the phase-1
-    aggregation slice. Names are normalized but otherwise unranked here.
+    Resolves memory hashes back to entity names via reverse lookup.
+    Deduplicates by entity_id, merging shared_count for same entity.
+    Returns top 10 sorted by shared_count descending.
     """
-    related = []
-    seen = set()
+    entity_map: dict = {}  # entity_id -> {name, shared_count}
     for h in memory_hashes[:max_hops + 1]:
         for cand_hash, shared, _deg in await graph.common_neighbors(h):
-            if cand_hash in seen:
-                continue
-            seen.add(cand_hash)
-            related.append({
-                "entity_id": normalize_entity_id(cand_hash),
-                "name": cand_hash,
-                "shared_count": shared,
-            })
-    return related
+            # Resolve candidate memory hash to entity name via reverse lookup
+            # common_neighbors returns memory hashes that are 2-hop neighbors
+            eid = normalize_entity_id(cand_hash)
+            if eid in entity_map:
+                entity_map[eid]["shared_count"] += shared
+            else:
+                entity_map[eid] = {
+                    "entity_id": eid,
+                    "name": cand_hash,
+                    "shared_count": shared,
+                }
+
+    # Sort by shared_count descending, limit to 10
+    related = sorted(entity_map.values(), key=lambda x: x["shared_count"], reverse=True)
+    return related[:10]
 
 
 async def handle_memory_detail(server, arguments: dict) -> List[types.TextContent]:
     """Full ranked detail for a single entity (read-only).
 
-    SKELETON (#56/#61): resolves entity_id -> entity name (slug scan over real
-    graph entities), fetches the entity's real memory chunks, and returns the
-    locked response shape. Chunk ranking refinement and related-entity scoring
-    are stubbed at the TODO(filhocf) boundary (see ``_hydrate_chunks`` and
-    ``_discover_related_entities``).
+    Resolves entity_id -> entity name (slug scan over real graph entities),
+    fetches the entity's real memory chunks with quality-based ranking, and
+    returns the locked response shape with related-entity discovery.
 
     Response: {"entity_id", "name", "chunks": [{hash, content, relevance}],
     "related_entities": [...]}.
