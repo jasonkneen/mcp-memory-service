@@ -25,9 +25,10 @@ def load_config():
 
     The hooks config (``~/.claude/hooks/config.json``) takes precedence. When
     it lacks ``memoryService.endpoint`` / ``apiKey`` the values are filled from
-    the ``MCP_API_KEY`` / ``MCP_MEMORY_HTTP_ENDPOINT`` (or ``MCP_HTTP_HOST`` /
-    ``MCP_HTTP_PORT``) environment variables so ``--use-api`` works against an
-    API-key-protected server without a hooks config present.
+    the ``MCP_API_KEY`` / ``MCP_MEMORY_HTTP_ENDPOINT`` environment variables (or
+    derived from ``MCP_HTTPS_ENABLED`` / ``MCP_HTTP_HOST`` / ``MCP_HTTP_PORT`` /
+    ``MCP_HTTPS_PORT``) so ``--use-api`` works against an API-key-protected
+    server without a hooks config present.
     """
     config_path = Path.home() / '.claude' / 'hooks' / 'config.json'
     config = {}
@@ -35,15 +36,29 @@ def load_config():
         with open(config_path) as f:
             config = json.load(f)
 
-    ms = config.setdefault('memoryService', {})
+    # Guard against a malformed config file where ``memoryService`` is not a
+    # dict (e.g. a string or null) before calling dict methods on it.
+    ms = config.get('memoryService')
+    if not isinstance(ms, dict):
+        ms = {}
+        config['memoryService'] = ms
+
     if not ms.get('apiKey'):
         ms['apiKey'] = os.environ.get('MCP_API_KEY', '')
     if not ms.get('endpoint'):
         endpoint = os.environ.get('MCP_MEMORY_HTTP_ENDPOINT')
         if not endpoint:
             host = os.environ.get('MCP_HTTP_HOST', '127.0.0.1')
-            port = os.environ.get('MCP_HTTP_PORT', '8000')
-            endpoint = f"https://{host}:{port}"
+            # Derive the scheme from the server's TLS config instead of
+            # hardcoding https, so HTTP-only deployments work too.
+            https_on = os.environ.get('MCP_HTTPS_ENABLED', '').strip().lower() in ('1', 'true', 'yes', 'on')
+            if https_on:
+                scheme = 'https'
+                port = os.environ.get('MCP_HTTPS_PORT') or os.environ.get('MCP_HTTP_PORT', '8000')
+            else:
+                scheme = 'http'
+                port = os.environ.get('MCP_HTTP_PORT', '8000')
+            endpoint = f"{scheme}://{host}:{port}"
         ms['endpoint'] = endpoint
 
     # Return None only when nothing usable was found (preserves the existing
