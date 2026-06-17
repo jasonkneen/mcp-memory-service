@@ -10,6 +10,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- fix(maintenance): `improve_memory_ontology.py` and `find_duplicates.py --use-api` are now API-key aware. The ontology script sent no `Authorization` header and silently fetched 0 memories against an API-key-protected server; `find_duplicates.py --use-api` only read credentials from `~/.claude/hooks/config.json`. Both now fall back to the `MCP_API_KEY` environment variable (and `MCP_MEMORY_HTTP_ENDPOINT` / `MCP_HTTPS_ENABLED` / `MCP_HTTP_PORT` for the endpoint), so they work against a protected HTTP server without a hooks config (PR #76). These are developer maintenance scripts under `scripts/` — not part of the shipped package.
+- fix(maintenance): harden `find_duplicates.py` `load_config()` — type-guard a malformed, non-dict `memoryService` config value (avoids `AttributeError`), and derive the fallback endpoint scheme from `MCP_HTTPS_ENABLED` instead of hardcoding `https://`, so HTTP-only deployments resolve correctly (PR #82).
+
 ## [11.0.0] - 2026-06-13
 
 MAJOR release. The default install is now dramatically smaller and faster: torch and transformers are optional extras, ONNX is the primary embedding backend. The tool surface is cleaner too — 28 well-named tools, no legacy aliases cluttering clients that support tool discovery.
