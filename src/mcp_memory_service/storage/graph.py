@@ -803,6 +803,24 @@ class GraphStorage:
             logger.error(f"Failed to find memories by entity: {e}")
             return []
 
+    async def get_entities_for_memory(self, memory_hash: str) -> List[str]:
+        """Get entity names linked to a memory hash."""
+        if not memory_hash:
+            return []
+        try:
+            conn = await self._get_connection()
+            cursor = conn.cursor()
+            try:
+                cursor.execute(
+                    "SELECT target_hash FROM memory_graph WHERE source_hash = ? AND relationship_type = 'has_entity'",
+                    (memory_hash,)
+                )
+                return [row['target_hash'] for row in cursor.fetchall()]
+            finally:
+                cursor.close()
+        except Exception:
+            return []
+
     async def get_entity_profile(self, entity_name: str) -> Dict[str, Any]:
         """Get entity profile: memory count, entity types, last activity."""
         if not entity_name:

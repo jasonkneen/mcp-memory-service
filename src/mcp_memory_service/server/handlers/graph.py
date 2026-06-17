@@ -778,24 +778,25 @@ async def _hydrate_chunks(storage, memory_hashes):
 async def _discover_related_entities(graph, memory_hashes, max_hops: int):
     """Discover related entities via shared neighbours with dedup and ranking.
 
-    Resolves memory hashes back to entity names via reverse lookup.
+    Resolves memory hashes to linked entity names via graph.get_entities_for_memory.
     Deduplicates by entity_id, merging shared_count for same entity.
     Returns top 10 sorted by shared_count descending.
     """
     entity_map: dict = {}  # entity_id -> {name, shared_count}
     for h in memory_hashes[:max_hops + 1]:
         for cand_hash, shared, _deg in await graph.common_neighbors(h):
-            # Resolve candidate memory hash to entity name via reverse lookup
-            # common_neighbors returns memory hashes that are 2-hop neighbors
-            eid = normalize_entity_id(cand_hash)
-            if eid in entity_map:
-                entity_map[eid]["shared_count"] += shared
-            else:
-                entity_map[eid] = {
-                    "entity_id": eid,
-                    "name": cand_hash,
-                    "shared_count": shared,
-                }
+            # Resolve candidate memory hash -> linked entity names
+            entity_names = await graph.get_entities_for_memory(cand_hash)
+            for entity_name in entity_names:
+                eid = normalize_entity_id(entity_name)
+                if eid in entity_map:
+                    entity_map[eid]["shared_count"] = max(entity_map[eid]["shared_count"], shared)
+                else:
+                    entity_map[eid] = {
+                        "entity_id": eid,
+                        "name": entity_name,
+                        "shared_count": shared,
+                    }
 
     # Sort by shared_count descending, limit to 10
     related = sorted(entity_map.values(), key=lambda x: x["shared_count"], reverse=True)
