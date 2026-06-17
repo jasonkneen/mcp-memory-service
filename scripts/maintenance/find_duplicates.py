@@ -7,6 +7,7 @@ Duplicates can occur when:
 3. Manual storage of similar content
 """
 
+import os
 import sqlite3
 import json
 import sys
@@ -19,12 +20,35 @@ from collections import defaultdict
 from datetime import datetime
 
 def load_config():
-    """Load configuration from Claude hooks config file."""
+    """Load memory-service config from the Claude hooks config file, falling
+    back to environment variables when the file is missing or incomplete.
+
+    The hooks config (``~/.claude/hooks/config.json``) takes precedence. When
+    it lacks ``memoryService.endpoint`` / ``apiKey`` the values are filled from
+    the ``MCP_API_KEY`` / ``MCP_MEMORY_HTTP_ENDPOINT`` (or ``MCP_HTTP_HOST`` /
+    ``MCP_HTTP_PORT``) environment variables so ``--use-api`` works against an
+    API-key-protected server without a hooks config present.
+    """
     config_path = Path.home() / '.claude' / 'hooks' / 'config.json'
+    config = {}
     if config_path.exists():
         with open(config_path) as f:
-            return json.load(f)
-    return None
+            config = json.load(f)
+
+    ms = config.setdefault('memoryService', {})
+    if not ms.get('apiKey'):
+        ms['apiKey'] = os.environ.get('MCP_API_KEY', '')
+    if not ms.get('endpoint'):
+        endpoint = os.environ.get('MCP_MEMORY_HTTP_ENDPOINT')
+        if not endpoint:
+            host = os.environ.get('MCP_HTTP_HOST', '127.0.0.1')
+            port = os.environ.get('MCP_HTTP_PORT', '8000')
+            endpoint = f"https://{host}:{port}"
+        ms['endpoint'] = endpoint
+
+    # Return None only when nothing usable was found (preserves the existing
+    # "no configuration" error path for callers relying on it).
+    return config if (ms.get('endpoint') or ms.get('apiKey')) else None
 
 def get_memories_from_api(endpoint, api_key):
     """Retrieve all memories from the API endpoint using pagination."""
