@@ -10,10 +10,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [11.1.0] - 2026-06-18
+
+MINOR release. Two-phase query API aggregation (#78, @filhocf) implementing RFC #56/#61: graph-aware composite scoring integrates semantic relevance, graph proximity, and entity centrality into memory retrieval. Maintenance script hardening (#76, #82). Landing page Codeberg migration (#74, #75).
+
+### Added
+
+- feat(graph): two-phase query API aggregation — `memory_explore` discovers related entities and builds a knowledge map; `memory_detail` hydrates chunks with graph context. New `src/mcp_memory_service/scoring/composite.py` implements composite scoring: semantic relevance + graph proximity + entity centrality. `storage/graph.py` gains `get_entities_for_memory()` resolving `has_entity` edges to entity names. Implements RFC #56/#61. Note: `related_entities` is populated only after entity extraction (`maintain`) seeds `has_entity` edges (PR #78, @filhocf).
+
 ### Fixed
 
 - fix(maintenance): `improve_memory_ontology.py` and `find_duplicates.py --use-api` are now API-key aware. The ontology script sent no `Authorization` header and silently fetched 0 memories against an API-key-protected server; `find_duplicates.py --use-api` only read credentials from `~/.claude/hooks/config.json`. Both now fall back to the `MCP_API_KEY` environment variable (and `MCP_MEMORY_HTTP_ENDPOINT` / `MCP_HTTPS_ENABLED` / `MCP_HTTP_PORT` for the endpoint), so they work against a protected HTTP server without a hooks config (PR #76). These are developer maintenance scripts under `scripts/` — not part of the shipped package.
 - fix(maintenance): harden `find_duplicates.py` `load_config()` — type-guard a malformed, non-dict `memoryService` config value (avoids `AttributeError`), and derive the fallback endpoint scheme from `MCP_HTTPS_ENABLED` instead of hardcoding `https://`, so HTTP-only deployments resolve correctly (PR #82).
+
+### Docs
+
+- docs(landing): repoint dead GitHub links to Codeberg, fix blog canonical URL (PR #74).
+- docs(landing): swap GitHub octocat logo and label for Codeberg on landing page buttons (PR #75).
 
 ## [11.0.0] - 2026-06-13
 

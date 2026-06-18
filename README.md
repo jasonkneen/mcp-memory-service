@@ -555,20 +555,19 @@ The `:quality-cpu` image pre-exports both models at build time and ships only `o
 ---
 
 
-## Latest Release: **v11.0.0** (June 13, 2026)
+## Latest Release: **v11.1.0** (June 18, 2026)
 
-**MAJOR: Legacy alias removal + optional ML dependencies**
-
-BREAKING CHANGE: the 34 legacy tool-name aliases deprecated in v10.x are removed. See docs/MIGRATION.md for the rename mapping before upgrading.
+**MINOR: Two-phase query API aggregation + maintenance script hardening**
 
 **What's New:**
-- `feat(deps)`: torch and transformers are now optional — the default install uses ONNX Runtime only, dramatically reducing install size and startup time (PR #49, @filhocf)
-- `feat(v11)!`: remove the full deprecation layer (DEPRECATED_TOOLS, transform_deprecated_call, MCP_SHOW_LEGACY_TOOLS, ToolDef.deprecated) and all 34 legacy tool-name aliases. mcp_memory_service.compat is retained for _sanitize_log_value() (PR #72, supersedes #60)
-- `docs`: README, architecture guide, quality guide, and wiki examples migrated to the current 28-tool registry names (PR #71)
+- `feat(graph)`: two-phase query aggregation — `memory_explore` builds a graph-aware knowledge map, `memory_detail` hydrates chunks with entity context. New composite scorer: semantic relevance + graph proximity + entity centrality (PR #78, @filhocf)
+- `fix(maintenance)`: maintenance scripts (`improve_memory_ontology.py`, `find_duplicates.py`) are now API-key aware and work against protected HTTP servers (PR #76)
+- `fix(maintenance)`: harden `find_duplicates.py` `load_config()` against malformed config and fix endpoint scheme derivation (PR #82)
 
 ---
 
 **Previous Releases**:
+- **v11.0.0** - MAJOR: legacy tool-name alias removal + optional ML dependencies / ONNX-first fallback (PR #72, #49, #71) (June 13, 2026)
 - **v10.74.1** - fix(harvest): OpenClaw preamble noise filter in PatternExtractor (PR #46, @filhocf) (June 6, 2026)
 - **v10.74.0** - §13 declarative dispatch registry + §10 sqlite_vec mixin decomposition (both @filhocf) (June 5, 2026)
 - **v10.73.0** - §3 Consolidation Engine v2, §4 Bootstrap Profile, §5 Session Legacy, §6 Belief-Aware Quarantine, §9 Config Refactor (all @filhocf) (June 5, 2026)
