@@ -21,42 +21,42 @@
  */
 const PATTERNS = {
     decision: {
-        regex: /(decided|chose|will use|let's go with|i'll use|we'll use|settled on|going with|picked|selected|opting for|entschieden|gewählt|nehmen wir|verwenden wir|machen wir|nutzen wir|ausgewählt)/i,
+        regex: /\b(decided|chose|will use|let's go with|i'll use|we'll use|settled on|going with|picked|selected|opting for|entschieden|gewählt|nehmen wir|verwenden wir|machen wir|nutzen wir|ausgewählt)/i,
         memoryType: 'Decision',
         priority: 1,
         confidence: 0.9,
         description: 'Decision-making statements'
     },
     error: {
-        regex: /(error|exception|failed|fixed|bug|issue|crash|broken|resolved|solved|debugging|debugged|patched|fehler|behoben|gefixt|problem|kaputt|gelöst|repariert|fehlerbehebung)/i,
+        regex: /\b(error|exception|failed|fixed|bug|issue|crash|broken|resolved|solved|debugging|debugged|patched|fehler|behoben|gefixt|problem|kaputt|gelöst|repariert|fehlerbehebung)/i,
         memoryType: 'Error',
         priority: 2,
         confidence: 0.85,
         description: 'Error reports and fixes'
     },
     learning: {
-        regex: /(learned|discovered|realized|found out|turns out|interestingly|til|understanding now|now i see|aha|insight|gelernt|entdeckt|herausgefunden|stellte sich heraus|interessanterweise|jetzt verstehe ich)/i,
+        regex: /\b(learned|discovered|realized|found out|turns out|interestingly|til|understanding now|now i see|aha|insight|gelernt|entdeckt|herausgefunden|stellte sich heraus|interessanterweise|jetzt verstehe ich)/i,
         memoryType: 'Learning',
         priority: 3,
         confidence: 0.85,
         description: 'New knowledge acquisition'
     },
     implementation: {
-        regex: /(implemented|created|built|added|refactored|set up|configured|deployed|developed|wrote|coding|programmed|implementiert|erstellt|gebaut|hinzugefügt|konfiguriert|eingerichtet|refaktoriert|entwickelt|programmiert)/i,
+        regex: /\b(implemented|created|built|added|refactored|set up|configured|deployed|developed|wrote|coding|programmed|implementiert|erstellt|gebaut|hinzugefügt|konfiguriert|eingerichtet|refaktoriert|entwickelt|programmiert)/i,
         memoryType: 'Learning',
         priority: 4,
         confidence: 0.8,
         description: 'Implementation work'
     },
     important: {
-        regex: /(critical|important|remember|note|key|essential|must|never|always|crucial|vital|significant|wichtig|merken|notiz|niemals|immer|kritisch|wesentlich|unbedingt|entscheidend)/i,
+        regex: /\b(critical|important|remember|note|key|essential|must|never|always|crucial|vital|significant|wichtig|merken|notiz|niemals|immer|kritisch|wesentlich|unbedingt|entscheidend)/i,
         memoryType: 'Context',
         priority: 5,
         confidence: 0.75,
         description: 'Important information markers'
     },
     code: {
-        regex: /(function|class|component|api|endpoint|database|schema|test|config|module|interface|method|funktion|klasse|komponente|datenbank|schnittstelle|konfiguration|modul)/i,
+        regex: /\b(function|class|component|api|endpoint|database|schema|test|config|module|interface|method|funktion|klasse|komponente|datenbank|schnittstelle|konfiguration|modul)/i,
         memoryType: 'Context',
         priority: 6,
         confidence: 0.7,
