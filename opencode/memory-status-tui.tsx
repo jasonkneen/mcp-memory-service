@@ -4,7 +4,8 @@ import path from "node:path"
 import { readFile } from "node:fs/promises"
 import type { TuiPlugin } from "@opencode-ai/plugin/dist/tui.js"
 
-const STATUS_FILE = path.join(homedir(), ".config", "opencode", ".memory-status.json")
+const STATUS_FILE = process.env.OPENCODE_MEMORY_STATUS_FILE
+  || path.join(homedir(), ".local", "state", "opencode", ".memory-status.json")
 const POLL_MS = 1500
 
 type Status = {

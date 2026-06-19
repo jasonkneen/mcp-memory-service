@@ -4,7 +4,8 @@ import http from "node:http"
 import https from "node:https"
 import path from "node:path"
 
-const STATUS_FILE = path.join(homedir(), ".config", "opencode", ".memory-status.json")
+const STATUS_FILE = process.env.OPENCODE_MEMORY_STATUS_FILE
+  || path.join(homedir(), ".local", "state", "opencode", ".memory-status.json")
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = process.env.NODE_TLS_REJECT_UNAUTHORIZED || "0"
 
