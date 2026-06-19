@@ -70,6 +70,8 @@ __pypackages__/
 .env.development
 .env.test
 .env.production
+# Timestamped .env backups (may contain real secrets/tokens)
+.env.bak*
 # But include template files
 !.env.example
 
