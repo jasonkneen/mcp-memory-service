@@ -254,8 +254,16 @@ async def check_for_updates(
     Returns number of commits behind and list of commit messages.
     Requires admin access.
     """
+    # The remote name and branch are configurable so installs whose remote is
+    # named differently (codeberg, upstream, ...) or tracks a non-main branch can
+    # still check for updates without editing the source. Defaults preserve the
+    # historical origin/main behavior.
+    remote = os.getenv('MCP_UPDATE_GIT_REMOTE', 'origin')
+    branch = os.getenv('MCP_UPDATE_GIT_BRANCH', 'main')
+    upstream_ref = f'{remote}/{branch}'
+
     # Try to fetch latest changes
-    fetch_output, fetch_success = _run_git_command(['fetch', 'origin'])
+    fetch_output, fetch_success = _run_git_command(['fetch', remote])
 
     if not fetch_success:
         return VersionCheckResponse(
@@ -268,8 +276,8 @@ async def check_for_updates(
             error=fetch_output
         )
 
-    # Count commits behind origin/main
-    count_output, count_success = _run_git_command(['rev-list', '--count', 'HEAD..origin/main'])
+    # Count commits behind the configured upstream ref
+    count_output, count_success = _run_git_command(['rev-list', '--count', f'HEAD..{upstream_ref}'])
 
     if not count_success:
         return VersionCheckResponse(
@@ -291,7 +299,7 @@ async def check_for_updates(
     latest_commits = []
     if commits_behind > 0:
         log_output, log_success = _run_git_command([
-            'log', '--oneline', '--no-decorate', f'HEAD..origin/main', '-n', '5'
+            'log', '--oneline', '--no-decorate', f'HEAD..{upstream_ref}', '-n', '5'
         ])
         if log_success and log_output:
             latest_commits = [line.strip() for line in log_output.split('\n') if line.strip()]
