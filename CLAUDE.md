@@ -559,6 +559,7 @@ memory.memory_type or ''
 | Pre-commit hook fails "Package not installed" | Hook uses system Python, not venv. Use `PATH=".venv/bin:$PATH" git commit -m "..."` for all commits |
 | Editable install replaced PyPI version | `uv pip install -e .` replaces PyPI package with local source. After commit, restore with `uv pip install mcp-memory-service==<version>` |
 | Cloudflare 401 after upgrade/restart | First search Memory (`cloudflare 401`), then verify `.env` token matches Cloudflare Dashboard. Token rotation in dashboard does NOT update local `.env` |
+| zeroconf DLL load fails / Symantec flags it as trojan (Windows) | False positive on the mDNS C extension. Set `MCP_MDNS_ENABLED=false` (core service works without mDNS). See [docs/troubleshooting/mdns-symantec-false-positive.md](docs/troubleshooting/mdns-symantec-false-positive.md) |
 
 **Comprehensive troubleshooting:** [docs/troubleshooting/hooks-quick-reference.md](docs/troubleshooting/hooks-quick-reference.md)
 

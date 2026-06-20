@@ -23,7 +23,24 @@ class StoreMixin:
     """Mixin providing memory storage operations."""
 
     def _purge_tombstone(self, content_hash: str) -> None:
-        """Remove a soft-deleted tombstone so the UNIQUE constraint allows re-insert."""
+        """Remove a soft-deleted tombstone so the UNIQUE constraint allows re-insert.
+
+        Also drops any embedding still attached to the tombstone's rowid. Hard-deleting
+        the memories row without this leaves an orphan embedding; since memories has no
+        AUTOINCREMENT, SQLite reuses that rowid later and the next store collides with a
+        "UNIQUE constraint failed: memory_embeddings".
+        """
+        rows = self.conn.execute(
+            'SELECT id FROM memories WHERE content_hash = ? AND deleted_at IS NOT NULL',
+            (content_hash,)
+        ).fetchall()
+        for (rowid,) in rows:
+            try:
+                self.conn.execute('DELETE FROM memory_embeddings WHERE rowid = ?', (rowid,))
+            except Exception as vec_err:
+                logger.warning(
+                    "Could not delete embedding rowid=%s during tombstone purge: %s", rowid, vec_err
+                )
         self.conn.execute(
             'DELETE FROM memories WHERE content_hash = ? AND deleted_at IS NOT NULL',
             (content_hash,)
@@ -120,6 +137,12 @@ class StoreMixin:
                     ))
                     memory_rowid = cursor.lastrowid
 
+                    # Defensive: clear any orphan embedding already sitting at this rowid.
+                    # memories has no AUTOINCREMENT, so a rowid freed by a hard-delete can be
+                    # reused; a leftover embedding there would raise UNIQUE constraint failed.
+                    self.conn.execute(
+                        'DELETE FROM memory_embeddings WHERE rowid = ?', (memory_rowid,)
+                    )
                     self.conn.execute('''
                         INSERT INTO memory_embeddings (rowid, content_embedding, store)
                         VALUES (?, ?, ?)
@@ -218,6 +241,10 @@ class StoreMixin:
                     ))
                     rowid = cur.lastrowid
 
+                    # Defensive: clear any orphan embedding at a reused rowid (see store()).
+                    self.conn.execute(
+                        'DELETE FROM memory_embeddings WHERE rowid = ?', (rowid,)
+                    )
                     self.conn.execute('''
                         INSERT INTO memory_embeddings (rowid, content_embedding, store)
                         VALUES (?, ?, ?)
