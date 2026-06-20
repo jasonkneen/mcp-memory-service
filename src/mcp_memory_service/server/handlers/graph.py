@@ -26,6 +26,7 @@ import logging
 from typing import List, Optional
 
 from mcp import types
+from ...scoring import composite_score, score_components
 from ...storage.graph import GraphStorage, normalize_entity_id
 from ...config import SQLITE_VEC_PATH, STORAGE_BACKEND
 
@@ -626,13 +627,16 @@ async def _retrieve_candidates(storage, query: str, n_results: int, tags, store)
     return await storage.retrieve(query, **kwargs)
 
 
-async def _build_knowledge_map(graph, entities_raw, chunk_pool, chunks_per_entity):
+async def _build_knowledge_map(graph, entities_raw, chunk_pool, chunks_per_entity, scoring=None):
     """Assemble the memory_explore response shape from discovered entities.
 
     Phase-1 aggregation (standalone, no composite scoring):
       - Entity-specific chunk filtering via graph.find_memories_by_entity
       - Extractive (LLM-free) summary from top chunks
       - Per-entity top_chunks ranking by relevance score
+
+    When scoring="composite": enrich chunks with composite_score + score_components
+    and re-rank by composite score (opt-in, Issue #55).
     """
     chunk_by_hash = {c["hash"]: c for c in chunk_pool}
     knowledge_map = []
@@ -654,6 +658,26 @@ async def _build_knowledge_map(graph, entities_raw, chunk_pool, chunks_per_entit
         # Rank by relevance descending, take top N
         ranked = sorted(entity_chunks, key=lambda c: c.get("relevance") or 0.0, reverse=True)
         top_chunks = ranked[:chunks_per_entity]
+
+        # Opt-in composite scoring (Issue #55)
+        if scoring == "composite":
+            entity_degree = ent.get("count", 0)
+            # Batch proximity: one find_connected per entity (not per chunk)
+            proximity_map = {}
+            if graph and top_chunks:
+                first_hash = top_chunks[0].get("hash")
+                if first_hash:
+                    try:
+                        connected = await graph.find_connected(first_hash, max_hops=3)
+                        proximity_map = {h: d for h, d in connected}
+                    except Exception:
+                        pass
+            for c in top_chunks:
+                rel = c.get("relevance") or 0.0
+                hop = proximity_map.get(c.get("hash"))
+                c["composite_score"] = composite_score(rel, hop, entity_degree)
+                c["score_components"] = score_components(rel, hop, entity_degree)
+            top_chunks.sort(key=lambda c: c.get("composite_score", 0), reverse=True)
 
         # Extractive summary: first sentence of top chunks (max 150 chars each, join 3)
         sentences = []
@@ -700,6 +724,7 @@ async def handle_memory_explore(server, arguments: dict) -> List[types.TextConte
     tags = arguments.get("tags")
     min_score = arguments.get("min_score", 0.0)
     store = arguments.get("store")  # forwarded to retrieve() when supported (now wired via #62)
+    scoring = arguments.get("scoring")  # opt-in: "composite" enables graph-aware scoring (#55)
 
     try:
         # 1. Candidate retrieval (real) — semantic search scoped by tags/store.
@@ -723,7 +748,7 @@ async def handle_memory_explore(server, arguments: dict) -> List[types.TextConte
         entities_raw = await graph.list_entities(limit=max_entities) if graph else []
 
         knowledge_map = await _build_knowledge_map(
-            graph, entities_raw, chunk_pool, chunks_per_entity
+            graph, entities_raw, chunk_pool, chunks_per_entity, scoring=scoring
         )
         knowledge_map = knowledge_map[:max_entities]
 
@@ -754,11 +779,14 @@ async def _resolve_entity_name(graph, entity_id: str):
     )
 
 
-async def _hydrate_chunks(storage, memory_hashes):
+async def _hydrate_chunks(storage, memory_hashes, scoring=None, graph=None, entity_degree=0):
     """Fetch real chunk content for an entity's linked memories.
 
     Ranks by quality_score when available (simple sort, no composite scoring).
     Returns shape: {hash, content, relevance} where relevance = quality_score or None.
+
+    When scoring="composite": enrich with composite_score + score_components,
+    re-rank by composite (opt-in, Issue #55).
     """
     chunks = []
     for h in memory_hashes:
@@ -772,6 +800,23 @@ async def _hydrate_chunks(storage, memory_hashes):
         })
     # Rank by quality_score descending (None sorted last)
     chunks.sort(key=lambda c: c["relevance"] if c["relevance"] is not None else -1, reverse=True)
+
+    if scoring == "composite" and chunks:
+        # Batch proximity from first chunk
+        proximity_map = {}
+        if graph:
+            try:
+                connected = await graph.find_connected(chunks[0]["hash"], max_hops=3)
+                proximity_map = {h: d for h, d in connected}
+            except Exception:
+                pass
+        for c in chunks:
+            rel = c["relevance"] if c["relevance"] is not None else 0.0
+            hop = proximity_map.get(c["hash"])
+            c["composite_score"] = composite_score(rel, hop, entity_degree)
+            c["score_components"] = score_components(rel, hop, entity_degree)
+        chunks.sort(key=lambda c: c.get("composite_score", 0), reverse=True)
+
     return chunks
 
 
@@ -824,6 +869,7 @@ async def handle_memory_detail(server, arguments: dict) -> List[types.TextConten
     limit = arguments.get("limit", 50)
     include_related = arguments.get("include_related", True)
     max_hops = arguments.get("max_hops", 1)
+    scoring = arguments.get("scoring")  # opt-in: "composite" (#55)
 
     graph = await get_graph_storage()
     if graph is None:
@@ -848,7 +894,10 @@ async def handle_memory_detail(server, arguments: dict) -> List[types.TextConten
             )]
 
         memory_hashes = await graph.find_memories_by_entity(name, limit=limit)
-        chunks = await _hydrate_chunks(server.storage, memory_hashes)
+        entity_degree = len(memory_hashes)  # proxy for centrality
+        chunks = await _hydrate_chunks(
+            server.storage, memory_hashes, scoring=scoring, graph=graph, entity_degree=entity_degree
+        )
         related_entities = (
             await _discover_related_entities(graph, memory_hashes, max_hops)
             if include_related else []

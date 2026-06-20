@@ -1162,6 +1162,11 @@ Examples:
                                 "maximum": 1.0,
                                 "description": "Minimum relevance score for candidate chunks"
                             },
+                            "scoring": {
+                                "type": "string",
+                                "enum": ["composite"],
+                                "description": "Opt-in ranking mode (#55). 'composite' re-ranks chunks by semantic relevance + graph proximity + entity centrality, adding composite_score and score_components fields. Omit for default relevance-only ranking."
+                            },
                             "store": {
                                 "type": "string",
                                 "description": "Optional store/namespace to scope retrieval (composes with multi-store support)"
@@ -1216,6 +1221,11 @@ Examples:
                                 "minimum": 1,
                                 "maximum": 4,
                                 "description": "Maximum hops for related-entity discovery"
+                            },
+                            "scoring": {
+                                "type": "string",
+                                "enum": ["composite"],
+                                "description": "Opt-in ranking mode (#55). 'composite' re-ranks chunks by relevance + graph proximity + entity centrality, adding composite_score and score_components fields. Omit for default relevance-only ranking."
                             },
                             "store": {
                                 "type": "string",
