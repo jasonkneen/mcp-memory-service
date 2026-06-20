@@ -24,6 +24,16 @@ SSE_HEARTBEAT_INTERVAL = safe_get_int_env('MCP_SSE_HEARTBEAT', 30, min_value=5, 
 SSE_EVENT_REPLAY_BUFFER_SIZE = safe_get_int_env('MCP_SSE_REPLAY_BUFFER_SIZE', 1000, min_value=0, max_value=100000)
 API_KEY = os.getenv('MCP_API_KEY', None)  # Optional authentication
 
+# Request body size limits (mitigate disk/memory exhaustion and buffer-overflow
+# attempts). The global cap applies to every request except large-upload routes
+# (document ingestion); the auth cap is a tighter bound for /oauth/* endpoints.
+HTTP_MAX_BODY_BYTES = safe_get_int_env(
+    'MCP_HTTP_MAX_BODY_BYTES', 1024 * 1024, min_value=4096, max_value=1024 * 1024 * 1024
+)  # 1 MiB default
+OAUTH_MAX_BODY_BYTES = safe_get_int_env(
+    'MCP_OAUTH_MAX_BODY_BYTES', 64 * 1024, min_value=1024, max_value=HTTP_MAX_BODY_BYTES
+)  # 64 KiB default
+
 # HTTPS Configuration
 HTTPS_ENABLED = os.getenv('MCP_HTTPS_ENABLED', 'false').lower() == 'true'
 SSL_CERT_FILE = os.getenv('MCP_SSL_CERT_FILE', None)
