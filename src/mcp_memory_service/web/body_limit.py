@@ -80,7 +80,12 @@ class BodySizeLimitMiddleware:
                     return
                 break
 
-        state = {"received": 0, "over_limit": False, "rejected": False}
+        state = {
+            "received": 0,
+            "over_limit": False,
+            "rejected": False,
+            "response_started": False,
+        }
 
         async def receive_wrapper():
             # Once the body is known to be over the limit, stop feeding real
@@ -98,17 +103,28 @@ class BodySizeLimitMiddleware:
         async def guarded_send(message):
             # Suppress the downstream response and emit 413 exactly once.
             if state["over_limit"]:
+                # If the app already emitted its response start, the status line
+                # and headers are on the wire — we can no longer inject a 413
+                # without a duplicate http.response.start (RuntimeError). Stop
+                # sending instead. (Not reachable for OAuth/JSON routes, which
+                # read the whole body before responding, but guards streaming
+                # handlers that flush headers early.)
+                if state["response_started"]:
+                    return
                 if not state["rejected"]:
                     state["rejected"] = True
                     await self._reject(send, limit)
                 return
+            if message["type"] == "http.response.start":
+                state["response_started"] = True
             await send(message)
 
         await self.app(scope, receive_wrapper, guarded_send)
 
         # The app may finish without sending anything (e.g. it raised after the
-        # disconnect). Ensure the client still gets a 413.
-        if state["over_limit"] and not state["rejected"]:
+        # disconnect). Ensure the client still gets a 413 — but only if no
+        # response start has gone out yet.
+        if state["over_limit"] and not state["rejected"] and not state["response_started"]:
             await self._reject(send, limit)
 
     @staticmethod

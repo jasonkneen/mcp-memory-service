@@ -359,3 +359,85 @@ async def test_auth_rate_limit_dependency_raises_429_over_limit():
         assert exc.value.status_code == 429
 
     rate_limit._reset_for_tests()
+
+
+# ---------------------------------------------------------------------------
+# Proxy-aware client keying (Finding #1)
+# ---------------------------------------------------------------------------
+
+class _ProxyReq:
+    """Minimal stand-in for a Starlette Request for _client_key."""
+    def __init__(self, headers=None, peer="1.2.3.4"):
+        self.headers = headers or {}
+        self._peer = peer
+
+    @property
+    def client(self):
+        peer = self._peer
+        return type("C", (), {"host": peer})()
+
+
+def test_client_key_uses_socket_peer_by_default():
+    # With no trusted proxy header configured, a client-supplied
+    # X-Forwarded-For must be ignored (otherwise it could be spoofed to
+    # evade the per-IP limit).
+    req = _ProxyReq(headers={"X-Forwarded-For": "9.9.9.9"}, peer="1.2.3.4")
+    with patch.object(rate_limit, "OAUTH_TRUST_PROXY_HEADER", ""):
+        assert rate_limit._client_key(req) == "1.2.3.4"
+
+
+def test_client_key_trusts_configured_proxy_header():
+    # When configured, the left-most forwarded entry (the originating client)
+    # is used so each real client gets its own bucket behind a proxy.
+    req = _ProxyReq(headers={"X-Forwarded-For": "9.9.9.9, 10.0.0.1"}, peer="1.2.3.4")
+    with patch.object(rate_limit, "OAUTH_TRUST_PROXY_HEADER", "X-Forwarded-For"):
+        assert rate_limit._client_key(req) == "9.9.9.9"
+
+
+def test_client_key_falls_back_when_proxy_header_absent():
+    # Configured header but request didn't carry it -> socket peer.
+    req = _ProxyReq(headers={}, peer="1.2.3.4")
+    with patch.object(rate_limit, "OAUTH_TRUST_PROXY_HEADER", "X-Forwarded-For"):
+        assert rate_limit._client_key(req) == "1.2.3.4"
+
+
+# ---------------------------------------------------------------------------
+# Body-size middleware: no duplicate response.start (Finding #2)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_body_limit_no_double_start_when_response_already_started():
+    from mcp_memory_service.config import OAUTH_MAX_BODY_BYTES
+
+    async def app(scope, receive, send):
+        # Streaming-style handler: flush headers BEFORE reading the body.
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        while True:
+            msg = await receive()
+            if msg["type"] == "http.disconnect" or not msg.get("more_body"):
+                break
+        await send({"type": "http.response.body", "body": b"late"})
+
+    middleware = BodySizeLimitMiddleware(app)
+    scope = {"type": "http", "path": "/oauth/token", "headers": []}
+
+    chunks = [{
+        "type": "http.request",
+        "body": b"x" * (OAUTH_MAX_BODY_BYTES + 10),
+        "more_body": False,
+    }]
+
+    async def receive():
+        return chunks.pop(0) if chunks else {"type": "http.disconnect"}
+
+    sent = []
+
+    async def send(message):
+        sent.append(message)
+
+    # Must not raise (a duplicate http.response.start would in a real server).
+    await middleware(scope, receive, send)
+
+    starts = [m for m in sent if m["type"] == "http.response.start"]
+    assert len(starts) == 1, "headers already sent -> 413 must not be injected"
+    assert starts[0]["status"] == 200

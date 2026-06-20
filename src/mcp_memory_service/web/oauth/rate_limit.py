@@ -32,6 +32,7 @@ from fastapi import HTTPException, Request, status
 from ...config import (
     OAUTH_RATE_LIMIT_PER_MINUTE,
     OAUTH_RATE_LIMIT_MAX_CONCURRENT,
+    OAUTH_TRUST_PROXY_HEADER,
 )
 
 logger = logging.getLogger(__name__)
@@ -79,6 +80,17 @@ class _SlidingWindowRateLimiter:
 
 
 def _client_key(request: Request) -> str:
+    # Behind a trusted reverse proxy the socket peer is the proxy, so every
+    # client collapses into one bucket. When OAUTH_TRUST_PROXY_HEADER is set,
+    # trust that header's left-most entry as the originating client instead.
+    # Opt-in only: an untrusted client could otherwise spoof it to dodge the
+    # per-IP limit.
+    if OAUTH_TRUST_PROXY_HEADER and request is not None:
+        forwarded = request.headers.get(OAUTH_TRUST_PROXY_HEADER)
+        if forwarded:
+            client = forwarded.split(",")[0].strip()
+            if client:
+                return client
     return request.client.host if request and request.client else "unknown"
 
 

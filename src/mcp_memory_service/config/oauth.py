@@ -271,6 +271,15 @@ OAUTH_RATE_LIMIT_MAX_CONCURRENT = safe_get_int_env(
     'MCP_OAUTH_RATE_LIMIT_MAX_CONCURRENT', 20, min_value=1, max_value=10000
 )
 
+# When set (e.g. "X-Forwarded-For"), the auth rate limiter reads the client IP
+# from this request header instead of the direct socket peer, so each real
+# client gets its own bucket when the server sits behind a reverse proxy. Only
+# the first (left-most) entry is used. Leave EMPTY unless a TRUSTED proxy sets
+# the header — otherwise any client could spoof it to evade the per-IP limit.
+# Empty (default) = key on the socket peer, which is spoof-proof but collapses
+# to a single bucket when every request arrives via one proxy IP.
+OAUTH_TRUST_PROXY_HEADER = os.getenv('MCP_OAUTH_TRUST_PROXY_HEADER', '').strip()
+
 if OAUTH_ENABLED:
     logger.debug("OAuth is enabled")
 
