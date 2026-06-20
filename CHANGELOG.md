@@ -10,12 +10,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [11.2.0] - 2026-06-20
+
+MINOR release: OAuth security hardening, sqlite-vec rowid collision fix, composite graph scoring, OpenCode XDG state dir fix.
+
 ### Added
 
+- feat(oauth): OAuth security hardening (PR #91, supersedes #88, @mzu + follow-up). client_secret hashed at rest (SHA-256, constant-time verify, transparent legacy-plaintext upgrade-on-auth); request body-size caps via `BodySizeLimitMiddleware` (enforces declared Content-Length AND streamed byte count; `/oauth/*` tight cap, global cap elsewhere, document ingestion exempt); in-process per-IP auth rate limiting + concurrency caps on `/oauth/authorize|token|register`; `/authorize` XSS fix (query re-serialized via urlencode + html.escape, grant page double-escapes attribute + JS-string context). New env vars: `MCP_OAUTH_RATE_LIMIT_PER_MINUTE` (default 60), `MCP_OAUTH_RATE_LIMIT_MAX_CONCURRENT` (default 20), `MCP_HTTP_MAX_BODY_BYTES` (default 1 MiB), `MCP_OAUTH_MAX_BODY_BYTES` (default 64 KiB), and opt-in `MCP_OAUTH_TRUST_PROXY_HEADER` (default empty = key on socket peer; set e.g. to `X-Forwarded-For` when behind a trusted reverse proxy so the rate limiter keys on the real client IP instead of collapsing all clients into one bucket).
 - feat(graph): opt-in composite scoring for `memory_explore` and `memory_detail` via the new `scoring="composite"` parameter (#55, @filhocf). Re-ranks chunks by semantic relevance + graph proximity (hop-distance decay) + entity centrality, adding `composite_score` and `score_components` fields. Default ranking is byte-for-byte unchanged when the parameter is omitted; falls back to relevance-only when graph data is unavailable. Batches graph proximity (one `find_connected()` per entity, no N+1). The `scoring` param is declared in both tool schemas for discoverability (PR #77).
 
 ### Fixed
 
+- fix(storage): orphaned-embedding rowid collisions in sqlite-vec (PR #90). Hard-delete paths (`purge_deleted`, `_purge_tombstone`) removed `memories` rows without deleting their `memory_embeddings`; since `memories` has no AUTOINCREMENT, SQLite reused the freed rowid and the next store hit "UNIQUE constraint failed: memory_embeddings" on every write. store() now pre-deletes any embedding at the target rowid before INSERT (single + batch); purge paths delete embeddings for rows they hard-delete; health_check surfaces orphaned/missing embeddings + rowid collision risk (status=degraded) for sqlite and hybrid backends. Includes regression tests.
 - fix(opencode): move plugin status file from `~/.config/opencode/` to `~/.local/state/opencode/` (XDG state dir), configurable via `OPENCODE_MEMORY_STATUS_FILE`
 
 ## [11.1.0] - 2026-06-18

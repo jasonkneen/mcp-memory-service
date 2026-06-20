@@ -555,18 +555,20 @@ The `:quality-cpu` image pre-exports both models at build time and ships only `o
 ---
 
 
-## Latest Release: **v11.1.0** (June 18, 2026)
+## Latest Release: **v11.2.0** (June 20, 2026)
 
-**MINOR: Two-phase query API aggregation + maintenance script hardening**
+**MINOR: OAuth security hardening, sqlite-vec rowid collision fix, composite graph scoring, OpenCode XDG state dir fix**
 
 **What's New:**
-- `feat(graph)`: two-phase query aggregation — `memory_explore` builds a graph-aware knowledge map, `memory_detail` hydrates chunks with entity context. New composite scorer: semantic relevance + graph proximity + entity centrality (PR #78, @filhocf)
-- `fix(maintenance)`: maintenance scripts (`improve_memory_ontology.py`, `find_duplicates.py`) are now API-key aware and work against protected HTTP servers (PR #76)
-- `fix(maintenance)`: harden `find_duplicates.py` `load_config()` against malformed config and fix endpoint scheme derivation (PR #82)
+- `feat(oauth)`: OAuth security hardening — client_secret hashed at rest, body-size caps, per-IP rate limiting, XSS fix on /authorize (PR #91, @mzu)
+- `fix(storage)`: sqlite-vec rowid collision fix — hard-delete paths now clean up embeddings, preventing "UNIQUE constraint failed" on reused rowids (PR #90)
+- `feat(graph)`: opt-in composite scoring for `memory_explore`/`memory_detail` via `scoring="composite"` (PR #77, @filhocf)
+- `fix(opencode)`: plugin status file moved to XDG state dir (#84)
 
 ---
 
 **Previous Releases**:
+- **v11.1.0** - MINOR: two-phase query API aggregation + maintenance script hardening (PR #78, @filhocf) (June 18, 2026)
 - **v11.0.0** - MAJOR: legacy tool-name alias removal + optional ML dependencies / ONNX-first fallback (PR #72, #49, #71) (June 13, 2026)
 - **v10.74.1** - fix(harvest): OpenClaw preamble noise filter in PatternExtractor (PR #46, @filhocf) (June 6, 2026)
 - **v10.74.0** - §13 declarative dispatch registry + §10 sqlite_vec mixin decomposition (both @filhocf) (June 5, 2026)
