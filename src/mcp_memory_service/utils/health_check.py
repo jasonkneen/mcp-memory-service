@@ -29,6 +29,57 @@ from ..config import SQLITE_VEC_PATH
 logger = logging.getLogger(__name__)
 
 
+def _check_embedding_integrity(conn: Any) -> Dict[str, Any]:
+    """Detect rowid desync between memories and memory_embeddings.
+
+    A blind table-existence check reports "healthy" even when the write path is
+    broken. This surfaces the actual failure mode (production incident 2026-06-20):
+      - orphaned_embeddings: embeddings whose memories row was hard-deleted
+      - missing_embeddings:  live memories with no embedding (search blind spot)
+      - rowid_collision_risk: the next memories rowid already exists in
+        memory_embeddings, so the next store would raise UNIQUE constraint failed.
+
+    Returns an empty dict on any error so health checks never hard-fail on this.
+    """
+    try:
+        orphaned = conn.execute(
+            """SELECT COUNT(*) FROM memory_embeddings e
+               LEFT JOIN memories m ON e.rowid = m.rowid
+               WHERE m.rowid IS NULL"""
+        ).fetchone()[0]
+        missing = conn.execute(
+            """SELECT COUNT(*) FROM memories m
+               LEFT JOIN memory_embeddings e ON m.rowid = e.rowid
+               WHERE e.rowid IS NULL AND m.deleted_at IS NULL"""
+        ).fetchone()[0]
+        max_rowid = conn.execute("SELECT MAX(rowid) FROM memories").fetchone()[0] or 0
+        collision = conn.execute(
+            "SELECT 1 FROM memory_embeddings WHERE rowid = ?", (max_rowid + 1,)
+        ).fetchone() is not None
+        return {
+            "orphaned_embeddings": orphaned,
+            "missing_embeddings": missing,
+            "rowid_collision_risk": collision,
+        }
+    except Exception as e:
+        logger.warning("Embedding integrity check failed: %s", e)
+        return {}
+
+
+def _apply_embedding_integrity(conn: Any, stats: Dict[str, Any]) -> None:
+    """Merge integrity metrics into stats and downgrade status if degraded."""
+    integrity = _check_embedding_integrity(conn)
+    if not integrity:
+        return
+    stats.update(integrity)
+    if integrity.get("orphaned_embeddings") or integrity.get("rowid_collision_risk"):
+        stats["status"] = "degraded"
+        stats["integrity_hint"] = (
+            "Orphaned embeddings / rowid collision detected — writes may fail with "
+            "UNIQUE constraint failed. Run scripts/maintenance to repair."
+        )
+
+
 class HealthCheckStrategy(ABC):
     """Abstract base class for storage health check strategies."""
 
@@ -92,6 +143,10 @@ class SqliteHealthChecker(HealthCheckStrategy):
                 file_size = os.path.getsize(db_path)
                 stats["database_size_bytes"] = file_size
                 stats["database_size_mb"] = round(file_size / (1024 * 1024), 2)
+
+            # Surface rowid desync / orphan embeddings (write-path health)
+            if has_embeddings:
+                _apply_embedding_integrity(storage.conn, stats)
 
             return True, "SQLite-vec database validation successful", stats
 
@@ -209,6 +264,10 @@ class HybridHealthChecker(HealthCheckStrategy):
                 "database_path": getattr(primary_storage, 'db_path', SQLITE_VEC_PATH),
                 "cloudflare_sync": cloudflare_status
             }
+
+            # Surface rowid desync / orphan embeddings on the primary SQLite store
+            if has_embeddings:
+                _apply_embedding_integrity(primary_storage.conn, stats)
 
             message = f"Hybrid storage validation successful ({memory_count} memories, Cloudflare: {cloudflare_status})"
             return True, message, stats

@@ -102,6 +102,34 @@ class DeleteMixin:
             cutoff = time.time() - (older_than_days * 86400)
 
             def _purge():
+                # Drop embeddings for the rows about to be hard-deleted. Skipping this
+                # leaves orphan embeddings whose rowids SQLite later reuses, causing
+                # "UNIQUE constraint failed: memory_embeddings" on the next store.
+                rows = self.conn.execute(
+                    'SELECT id FROM memories WHERE deleted_at IS NOT NULL AND deleted_at < ?',
+                    (cutoff,)
+                ).fetchall()
+                ids = [r[0] for r in rows]
+                if ids:
+                    placeholders = ','.join('?' for _ in ids)
+                    try:
+                        self.conn.execute(
+                            f'DELETE FROM memory_embeddings WHERE rowid IN ({placeholders})', ids
+                        )
+                    except Exception as vec_err:
+                        logger.warning(
+                            "Batch embedding purge failed (%s) — retrying per-row.", vec_err
+                        )
+                        for rid in ids:
+                            try:
+                                self.conn.execute(
+                                    'DELETE FROM memory_embeddings WHERE rowid = ?', (rid,)
+                                )
+                            except Exception as row_err:
+                                logger.warning(
+                                    "Could not delete embedding rowid=%s during purge: %s",
+                                    rid, row_err,
+                                )
                 cursor = self.conn.execute(
                     'DELETE FROM memories WHERE deleted_at IS NOT NULL AND deleted_at < ?',
                     (cutoff,)
