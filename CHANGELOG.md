@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Added
+
+- feat(graph): opt-in composite scoring for `memory_explore` and `memory_detail` via the new `scoring="composite"` parameter (#55, @filhocf). Re-ranks chunks by semantic relevance + graph proximity (hop-distance decay) + entity centrality, adding `composite_score` and `score_components` fields. Default ranking is byte-for-byte unchanged when the parameter is omitted; falls back to relevance-only when graph data is unavailable. Batches graph proximity (one `find_connected()` per entity, no N+1). The `scoring` param is declared in both tool schemas for discoverability (PR #77).
+
 ### Fixed
 
 - fix(opencode): move plugin status file from `~/.config/opencode/` to `~/.local/state/opencode/` (XDG state dir), configurable via `OPENCODE_MEMORY_STATUS_FILE`
