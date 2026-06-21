@@ -660,6 +660,10 @@ class MemoryDashboard {
         document.getElementById('graphLimitSelect')?.addEventListener('change', this.handleGraphRefresh.bind(this));
         document.getElementById('graphMinConnectionsSelect')?.addEventListener('change', this.handleGraphRefresh.bind(this));
         document.getElementById('graphDimensionBtn')?.addEventListener('click', this.toggleGraphDimension.bind(this));
+        document.getElementById('graphRotateBtn')?.addEventListener('click', this.toggleGraphRotation.bind(this));
+        document.querySelectorAll('#graphTypeFilterBar .graph-type-filter').forEach(btn => {
+            btn.addEventListener('click', () => this.toggleGraphTypeFilter(btn.dataset.type, btn));
+        });
         document.getElementById('graphFullscreenBtn')?.addEventListener('click', this.enterGraphFullscreen.bind(this));
         document.getElementById('graphExitFullscreenBtn')?.addEventListener('click', this.exitGraphFullscreen.bind(this));
 
@@ -5944,10 +5948,13 @@ class MemoryDashboard {
             'related': '#95A5A6'
         };
 
-        // Fresh copies — 3d-force-graph mutates link source/target into node
-        // refs, so main view and fullscreen must not share objects.
-        const nodes = data.nodes.map(n => ({ ...n }));
-        const links = data.edges.map(e => ({
+        // Apply the active type filter, then make fresh copies — 3d-force-graph
+        // mutates node + link objects (positions, source/target refs), so the
+        // main view, fullscreen, and the source currentGraphData must not share
+        // object identity.
+        const filtered = this._filterGraphData(data);
+        const nodes = filtered.nodes.map(n => ({ ...n }));
+        const links = filtered.edges.map(e => ({
             source: e.source,
             target: e.target,
             relationship_type: e.relationship_type || 'related'
@@ -6004,24 +6011,103 @@ class MemoryDashboard {
 
         this['graph3d' + slot] = Graph;
 
-        // Orrery-style slow auto-rotation that yields to the user on interaction
+        // Orrery-style auto-rotation. The rAF loop stays alive; `active` gates
+        // whether it advances, so the Pause/Play button and user drag can
+        // toggle rotation without restarting the loop. The angle is re-derived
+        // from the live camera each frame, so resuming after a manual drag
+        // never snaps the view.
         const distance = isFullscreen ? 600 : 420;
         Graph.cameraPosition({ z: distance });
-        const rotateState = { active: true, angle: 0 };
+        const rotateState = { alive: true, active: !this.graphRotationPaused, angle: 0 };
         this['graph3dRotate' + slot] = rotateState;
         const rotate = () => {
-            if (!rotateState.active) return;
-            rotateState.angle += 0.0016;
-            Graph.cameraPosition({
-                x: distance * Math.sin(rotateState.angle),
-                z: distance * Math.cos(rotateState.angle)
-            });
+            if (!rotateState.alive) return;
+            if (rotateState.active) {
+                const cam = Graph.cameraPosition();
+                const r = Math.hypot(cam.x, cam.z) || distance;
+                rotateState.angle = Math.atan2(cam.x, cam.z) + 0.0016;
+                Graph.cameraPosition({ x: r * Math.sin(rotateState.angle), z: r * Math.cos(rotateState.angle) });
+            }
             requestAnimationFrame(rotate);
         };
         requestAnimationFrame(rotate);
-        const stopRotation = () => { rotateState.active = false; };
-        container.addEventListener('pointerdown', stopRotation, { once: true });
-        container.addEventListener('wheel', stopRotation, { once: true });
+        // Grabbing the graph pauses rotation and syncs the Pause/Play label
+        const userPause = () => {
+            rotateState.active = false;
+            this.graphRotationPaused = true;
+            this._updateRotateButton();
+        };
+        container.addEventListener('pointerdown', userPause, { once: true });
+        container.addEventListener('wheel', userPause, { once: true });
+    }
+
+    /**
+     * Filter the raw graph data ({nodes, edges}) by the active type filter.
+     * Returns a new wrapper with references to the original objects (callers
+     * that mutate — e.g. the 3D renderer — must copy before use).
+     */
+    _filterGraphData(data) {
+        if (!data || !data.nodes) return { nodes: [], edges: [] };
+        const hidden = this.hiddenGraphTypes || new Set();
+        const nodes = data.nodes.filter(n => !hidden.has(n.type || 'untyped'));
+        const ids = new Set(nodes.map(n => n.id));
+        const edges = (data.edges || []).filter(e => ids.has(e.source) && ids.has(e.target));
+        return { nodes, edges };
+    }
+
+    /**
+     * Re-apply the type filter to whatever is currently rendered.
+     * 3D instances update in place (camera + rotation preserved); the 2D
+     * renderer is re-run with the filtered subset.
+     */
+    applyGraphTypeFilter() {
+        if (!this.currentGraphData) return;
+        if (this.use3DGraph) {
+            const f = this._filterGraphData(this.currentGraphData);
+            const graphData = {
+                nodes: f.nodes.map(n => ({ ...n })),
+                links: f.edges.map(e => ({ source: e.source, target: e.target, relationship_type: e.relationship_type || 'related' }))
+            };
+            ['_main', '_fs'].forEach(slot => {
+                const g = this['graph3d' + slot];
+                if (g) g.graphData(graphData);
+            });
+        } else {
+            const container = document.getElementById('graphVisualizationContainer');
+            if (container) this.renderGraphVisualization(container, this.currentGraphData);
+        }
+    }
+
+    /**
+     * Toggle visibility of a memory type (filter bar button).
+     */
+    toggleGraphTypeFilter(type, btn) {
+        if (!this.hiddenGraphTypes) this.hiddenGraphTypes = new Set();
+        if (this.hiddenGraphTypes.has(type)) {
+            this.hiddenGraphTypes.delete(type);
+            btn.classList.add('active');
+        } else {
+            this.hiddenGraphTypes.add(type);
+            btn.classList.remove('active');
+        }
+        this.applyGraphTypeFilter();
+    }
+
+    /**
+     * Pause / resume the 3D auto-rotation (button handler).
+     */
+    toggleGraphRotation() {
+        this.graphRotationPaused = !this.graphRotationPaused;
+        ['_main', '_fs'].forEach(slot => {
+            const rs = this['graph3dRotate' + slot];
+            if (rs) rs.active = !this.graphRotationPaused;
+        });
+        this._updateRotateButton();
+    }
+
+    _updateRotateButton() {
+        const label = document.getElementById('graphRotateLabel');
+        if (label) label.textContent = this.graphRotationPaused ? 'Play' : 'Pause';
     }
 
     /**
@@ -6031,6 +6117,7 @@ class MemoryDashboard {
     _disposeGraph3D(isFullscreen) {
         const slot = isFullscreen ? '_fs' : '_main';
         if (this['graph3dRotate' + slot]) {
+            this['graph3dRotate' + slot].alive = false;
             this['graph3dRotate' + slot].active = false;
             this['graph3dRotate' + slot] = null;
         }
