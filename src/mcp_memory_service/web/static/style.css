@@ -5313,16 +5313,19 @@ body.dark-mode .quality-tier-low,
 .graph-fullscreen-controls {
     display: flex;
     gap: 15px;
-    align-items: center;
+    align-items: stretch;
 }
 
 .graph-node-count {
+    display: flex;
+    align-items: center;
     font-size: 14px;
     color: var(--text-primary);
-    padding: 6px 12px;
+    padding: 0 12px;
     background: rgba(255, 255, 255, 0.1);
     border-radius: 6px;
     font-weight: 500;
+    white-space: nowrap;
 }
 
 #graphFullscreenContainer {

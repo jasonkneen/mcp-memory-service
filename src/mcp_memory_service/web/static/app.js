@@ -5768,6 +5768,10 @@ class MemoryDashboard {
         }
 
         // ----- Legacy 2D D3.js force-directed fallback -----
+        // Apply the same type filter + edge-dedup on fresh copies (D3 mutates
+        // node/link objects, so never run it on the shared currentGraphData).
+        data = this._filterGraphData(data);
+
         // Create SVG
         const svg = d3.select(container)
             .append('svg')
@@ -5986,12 +5990,12 @@ class MemoryDashboard {
                 return nodeColors[d.type || 'untyped'] || '#9B59B6';
             })
             .linkColor(d => edgeColors[d.relationship_type] || edgeColors['related'])
-            .linkOpacity(0.35)
+            .linkOpacity(0.55)
             .linkCurvature(0.25)
             .linkWidth(d => {
-                if (!highlightNode) return 0.6;
+                if (!highlightNode) return 1.0;
                 const hit = linkEndId(d.source) === highlightNode.id || linkEndId(d.target) === highlightNode.id;
-                return hit ? 1.5 : 0.2;
+                return hit ? 2.5 : 0.3;
             })
             .linkDirectionalParticles(d => {
                 if (!highlightNode) return 0;
@@ -6056,7 +6060,18 @@ class MemoryDashboard {
     _filterGraphData(data) {
         if (!data || !data.nodes) return { nodes: [], edges: [] };
         const hidden = this.hiddenGraphTypes || new Set();
-        const nodes = data.nodes.filter(n => !hidden.has(n.type || 'untyped'));
+        // d3-force / 3d-force-graph rewrite link source/target into node objects
+        // in place. Normalize back to a string id so a 2D->3D toggle (or any
+        // re-render) still matches the node set, and return fresh copies so no
+        // renderer mutates the shared currentGraphData.
+        const idOf = (x) => (x && typeof x === 'object' && x.id !== undefined) ? x.id : x;
+
+        const nodes = data.nodes
+            .filter(n => !hidden.has(n.type || 'untyped'))
+            .map(n => {
+                const { x, y, z, vx, vy, vz, fx, fy, fz, ...clean } = n;
+                return clean; // drop any layout state a previous render wrote
+            });
         const ids = new Set(nodes.map(n => n.id));
 
         // Symmetric relationships are stored as two directed rows (A->B and
@@ -6065,11 +6080,18 @@ class MemoryDashboard {
         const seen = new Set();
         const edges = [];
         for (const e of (data.edges || [])) {
-            if (!ids.has(e.source) || !ids.has(e.target) || e.source === e.target) continue;
-            const key = e.source < e.target ? `${e.source}|${e.target}` : `${e.target}|${e.source}`;
+            const s = idOf(e.source), t = idOf(e.target);
+            if (!ids.has(s) || !ids.has(t) || s === t) continue;
+            const key = s < t ? `${s}|${t}` : `${t}|${s}`;
             if (seen.has(key)) continue;
             seen.add(key);
-            edges.push(e);
+            edges.push({
+                source: s,
+                target: t,
+                relationship_type: e.relationship_type || 'related',
+                similarity: e.similarity,
+                connection_types: e.connection_types
+            });
         }
         return { nodes, edges };
     }
@@ -6434,9 +6456,10 @@ class MemoryDashboard {
         };
         const { w, h } = dims();
 
-        // Show node count
+        // Show node count (deduped, matching what is actually drawn)
         if (this.currentGraphData) {
-            nodeCount.textContent = `${this.currentGraphData.nodes.length} nodes, ${this.currentGraphData.edges.length} edges`;
+            const shown = this._filterGraphData(this.currentGraphData);
+            nodeCount.textContent = `${shown.nodes.length} nodes, ${shown.edges.length} edges`;
             this.renderGraphVisualizationInContainer(container, this.currentGraphData, w, h, true);
         }
 
