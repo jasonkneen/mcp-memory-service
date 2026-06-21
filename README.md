@@ -26,6 +26,13 @@ context in 5ms — without cloud lock-in or API costs.
 
 ---
 
+<div align="center">
+  <img src="docs/assets/images/knowledge-graph-3d.png" alt="3D knowledge graph — memories as a glowing, interactive galaxy" width="820">
+  <p><em>Interactive 3D knowledge graph (v11.3.0): every memory is a glowing node, every relationship a curved edge — explore your agent's memory as a navigable galaxy.</em></p>
+</div>
+
+---
+
 ## 🎬 See It in Action
 
 [![Watch the Dashboard Walkthrough](https://img.youtube.com/vi/W34r8VFoSdQ/maxresdefault.jpg)](https://youtu.be/W34r8VFoSdQ)
