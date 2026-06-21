@@ -5749,11 +5749,14 @@ class MemoryDashboard {
         // PoC (Orrery-style): tear down any prior 3D instance bound to this slot
         this._disposeGraph3D(isFullscreen);
 
-        // Default to 3D when the 3d-force-graph library is available
-        if (this.use3DGraph === undefined) {
-            this.use3DGraph = (typeof ForceGraph3D !== 'undefined');
+        // Default to 3D once the (ESM, deferred) 3d-force-graph module has set
+        // window.ForceGraph3D. Don't cache `false` — the module may still be
+        // loading on a very early render; leaving use3DGraph undefined lets the
+        // next render upgrade to 3D. An explicit user toggle (true/false) sticks.
+        if (this.use3DGraph === undefined && typeof window.ForceGraph3D !== 'undefined') {
+            this.use3DGraph = true;
         }
-        if (this.use3DGraph && typeof ForceGraph3D !== 'undefined') {
+        if (this.use3DGraph && typeof window.ForceGraph3D !== 'undefined') {
             this.render3DGraph(container, data, width, height, isFullscreen);
             return;
         }
@@ -5970,10 +5973,10 @@ class MemoryDashboard {
         let highlightNode = null;
         const linkEndId = (end) => (end && end.id !== undefined) ? end.id : end;
 
-        const Graph = ForceGraph3D()(container)
+        const Graph = window.ForceGraph3D()(container)
             .width(width)
             .height(height)
-            .backgroundColor('#000010')
+            .backgroundColor('#01010a')
             .showNavInfo(false)
             .graphData({ nodes, links })
             .nodeRelSize(4)
@@ -6010,6 +6013,13 @@ class MemoryDashboard {
             .onNodeClick(node => this.handleGraph3DNodeClick(node));
 
         this['graph3d' + slot] = Graph;
+
+        // Starfield + nebula + bloom glow (best-effort; never blocks the graph)
+        try {
+            this._addGraphCosmos(Graph, width, height);
+        } catch (e) {
+            console.warn('Graph cosmos/bloom skipped:', e);
+        }
 
         // Orrery-style auto-rotation. The rAF loop stays alive; `active` gates
         // whether it advances, so the Pause/Play button and user drag can
@@ -6108,6 +6118,70 @@ class MemoryDashboard {
     _updateRotateButton() {
         const label = document.getElementById('graphRotateLabel');
         if (label) label.textContent = this.graphRotationPaused ? 'Play' : 'Pause';
+    }
+
+    /**
+     * Add the cinematic backdrop to a 3D graph scene: a starfield, soft additive
+     * nebula clouds, and an UnrealBloomPass glow (Orrery-style). Uses the shared
+     * three instance + bloom pass exposed on window by the ESM module loader.
+     * Each render builds a fresh ForceGraph3D (own scene), so there is nothing to
+     * clean up across renders. No-op if three / bloom are unavailable.
+     */
+    _addGraphCosmos(Graph, width, height) {
+        const THREE = window.THREE;
+        if (!THREE || typeof Graph.scene !== 'function') return;
+        const scene = Graph.scene();
+        if (!scene) return;
+
+        // Starfield — points scattered in a large sphere around the graph
+        const starCount = 1500;
+        const positions = new Float32Array(starCount * 3);
+        for (let i = 0; i < positions.length; i++) positions[i] = (Math.random() - 0.5) * 4000;
+        const starGeo = new THREE.BufferGeometry();
+        starGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({
+            color: 0xffffff, size: 1.4, sizeAttenuation: true, transparent: true, opacity: 0.85
+        })));
+
+        // Nebula clouds — large additive sprites with a soft radial-gradient texture
+        const tex = this._getNebulaTexture(THREE);
+        const palette = [0x3a1f6e, 0x1f3a6e, 0x6e1f4f, 0x244a6e];
+        for (let i = 0; i < 6; i++) {
+            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+                map: tex, color: palette[i % palette.length],
+                blending: THREE.AdditiveBlending, transparent: true, opacity: 0.16, depthWrite: false
+            }));
+            sprite.position.set((Math.random() - 0.5) * 1600, (Math.random() - 0.5) * 1600, (Math.random() - 0.5) * 1600);
+            const s = 700 + Math.random() * 700;
+            sprite.scale.set(s, s, 1);
+            scene.add(sprite);
+        }
+
+        // Bloom glow via the post-processing composer (same three instance)
+        const Bloom = window.__UnrealBloomPass;
+        const composer = typeof Graph.postProcessingComposer === 'function' ? Graph.postProcessingComposer() : null;
+        if (Bloom && composer) {
+            const bloom = new Bloom(new THREE.Vector2(width, height), 1.6, 0.7, 0.1);
+            composer.addPass(bloom);
+        }
+    }
+
+    /**
+     * Lazily build + cache a soft circular gradient texture used for nebula sprites.
+     */
+    _getNebulaTexture(THREE) {
+        if (this._nebulaTexture) return this._nebulaTexture;
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = 256;
+        const ctx = canvas.getContext('2d');
+        const grad = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+        grad.addColorStop(0, 'rgba(255,255,255,0.9)');
+        grad.addColorStop(0.3, 'rgba(255,255,255,0.35)');
+        grad.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 256, 256);
+        this._nebulaTexture = new THREE.CanvasTexture(canvas);
+        return this._nebulaTexture;
     }
 
     /**

@@ -11,8 +11,30 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <!-- D3.js v7 for force-directed graph visualization (v9.2.0+) -->
     <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
-    <!-- 3d-force-graph (bundles three.js) — cinematic 3D knowledge graph, Orrery-style PoC -->
-    <script src="https://cdn.jsdelivr.net/npm/3d-force-graph@1.80.0/dist/3d-force-graph.min.js"></script>
+    <!-- 3d-force-graph + three (ESM, single shared three instance) for the
+         cinematic 3D knowledge graph with bloom + nebula (Orrery-style PoC).
+         three/webgpu, three/tsl and three/examples/jsm/ must be mapped because
+         3d-force-graph statically imports them. -->
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://esm.sh/three@0.184.0",
+        "three/webgpu": "https://esm.sh/three@0.184.0/webgpu?external=three",
+        "three/tsl": "https://esm.sh/three@0.184.0/tsl?external=three",
+        "three/examples/jsm/": "https://esm.sh/three@0.184.0/examples/jsm/",
+        "three/addons/": "https://esm.sh/three@0.184.0/examples/jsm/"
+      }
+    }
+    </script>
+    <script type="module">
+      import ForceGraph3D from 'https://esm.sh/3d-force-graph@1.80.0?external=three';
+      import * as THREE from 'three';
+      import { UnrealBloomPass } from 'https://esm.sh/three@0.184.0/examples/jsm/postprocessing/UnrealBloomPass.js?external=three';
+      window.ForceGraph3D = ForceGraph3D;
+      window.THREE = THREE;
+      window.__UnrealBloomPass = UnrealBloomPass;
+      window.dispatchEvent(new CustomEvent('forcegraph3d-ready'));
+    </script>
 </head>
 <body>
     <!-- Main Application Container -->
@@ -1654,7 +1676,7 @@
         </div>
     </div>
 
-    <script src="/static/app.js?v=orrery-3d-poc2"></script>
-    <link rel="stylesheet" href="/static/style.css?v=orrery-3d-poc2">
+    <script src="/static/app.js?v=orrery-3d-poc3"></script>
+    <link rel="stylesheet" href="/static/style.css?v=orrery-3d-poc3">
 </body>
 </html>
