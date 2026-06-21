@@ -6192,6 +6192,7 @@ class MemoryDashboard {
                 btn.className = 'graph-type-filter' + (this.hiddenGraphTypes.has(t) ? '' : ' active');
                 btn.dataset.type = t;
                 const count = this.graphTypeCounts ? (this.graphTypeCounts.get(t) || 0) : 0;
+                btn.dataset.count = `${count} node${count === 1 ? '' : 's'}`;
                 btn.title = `${t}: ${count} node${count === 1 ? '' : 's'} (click to toggle)`;
                 const dot = document.createElement('span');
                 dot.className = 'legend-color';

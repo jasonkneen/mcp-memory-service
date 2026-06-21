@@ -4958,6 +4958,7 @@ body.dark-mode .quality-tier-low,
 }
 
 .graph-type-filter {
+    position: relative;
     display: inline-flex;
     align-items: center;
     gap: 0.45rem;
@@ -4998,14 +4999,33 @@ body.dark-mode .quality-tier-low,
     box-shadow: 0 0 4px rgba(255, 255, 255, 0.3);
 }
 
+/* Instant count tooltip on pill hover (native title is too slow/unreliable) */
+.graph-type-filter:hover::after {
+    content: attr(data-count);
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-top: 6px;
+    padding: 3px 8px;
+    background: rgba(10, 12, 20, 0.96);
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 5px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 30;
+}
+
 /* Fullscreen filter pills: a tidy row beneath the header (in normal flow,
    so it never overlaps the title); scrolls if the type list is long. */
 .graph-fullscreen-filters {
     flex-shrink: 0;
     padding: 8px 16px;
     border-bottom: 1px solid var(--border-color);
-    max-height: 92px;
-    overflow-y: auto;
+    overflow: visible;
     background: rgba(10, 12, 20, 0.4);
 }
 
