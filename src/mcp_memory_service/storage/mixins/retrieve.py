@@ -857,6 +857,10 @@ class RetrieveMixin:
                 node_hashes.add(content_hash)
 
             if node_hashes:
+                # Bind only the source side (one placeholder per node) and filter
+                # the target in Python. This keeps the bound-variable count at N
+                # instead of 2*N, so large node limits stay well under SQLite's
+                # variable cap; the source_hash index still drives the lookup.
                 placeholders = ",".join("?" * len(node_hashes))
                 query = f"""
                     SELECT
@@ -867,16 +871,19 @@ class RetrieveMixin:
                         connection_types
                     FROM memory_graph
                     WHERE source_hash IN ({placeholders})
-                      AND target_hash IN ({placeholders})
                 """
 
                 def _get_graph_edges(q=query, nh=node_hashes):
-                    cursor = self.conn.execute(q, list(nh) + list(nh))
+                    cursor = self.conn.execute(q, list(nh))
                     return cursor.fetchall()
 
                 edges = []
                 for row in await self._execute_with_retry(_get_graph_edges):
                     source, target, rel_type, similarity, conn_types = row
+
+                    # Keep only edges whose target is also in the rendered node set
+                    if target not in node_hashes:
+                        continue
 
                     edges.append({
                         "source": source,

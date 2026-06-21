@@ -5700,9 +5700,10 @@ class MemoryDashboard {
             const limit = document.getElementById('graphLimitSelect')?.value || 100;
             const minConnections = document.getElementById('graphMinConnectionsSelect')?.value || 1;
 
-            // Warn about performance for large graphs
-            if (limit >= 750) {
-                this.showToast(`Loading ${limit} nodes may impact performance. Consider using filters.`, 'warning', 5000);
+            // The 3D (WebGL) renderer handles large graphs comfortably; only the
+            // legacy 2D SVG fallback struggles, so warn just for that case.
+            if (!this.use3DGraph && Number(limit) >= 750) {
+                this.showToast(`2D mode with ${limit} nodes may be slow — switch to 3D for large graphs.`, 'warning', 5000);
             }
 
             const data = await this.apiCall(`/analytics/graph-visualization?limit=${limit}&min_connections=${minConnections}`);
