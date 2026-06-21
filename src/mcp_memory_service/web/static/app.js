@@ -5979,36 +5979,54 @@ class MemoryDashboard {
             .backgroundColor('#01010a')
             .showNavInfo(false)
             .graphData({ nodes, links })
-            .nodeRelSize(4)
-            .nodeVal(d => Math.max(1, Math.sqrt(d.connections || 1) * 2))
-            .nodeOpacity(0.92)
             .nodeLabel(d => this.formatGraphTooltip(d))
-            .nodeColor(d => {
-                if (highlightNode && !neighbors.get(highlightNode.id)?.has(d.id)) {
-                    return '#222a3a'; // dimmed
-                }
-                return nodeColors[d.type || 'untyped'] || '#9B59B6';
+            // Soft glowing sprites (not hard spheres) for smooth Orrery-style
+            // halos; bloom amplifies the additive falloff.
+            .nodeThreeObjectExtend(false)
+            .nodeThreeObject(node => {
+                const THREE = window.THREE;
+                if (!THREE) return null; // fall back to default sphere
+                const baseHex = nodeColors[node.type || 'untyped'] || '#9B59B6';
+                const mat = new THREE.SpriteMaterial({
+                    map: this._getNodeGlowTexture(THREE),
+                    color: new THREE.Color(baseHex),
+                    blending: THREE.AdditiveBlending,
+                    transparent: true,
+                    depthWrite: false,
+                    opacity: 0.95
+                });
+                const sprite = new THREE.Sprite(mat);
+                const s = 7 + Math.sqrt(node.connections || 1) * 4;
+                sprite.scale.set(s, s, 1);
+                node.__mat = mat;
+                node.__baseColor = baseHex;
+                return sprite;
             })
             .linkColor(d => edgeColors[d.relationship_type] || edgeColors['related'])
             .linkOpacity(0.55)
             .linkCurvature(0.25)
             .linkWidth(d => {
                 if (!highlightNode) return 1.0;
-                const hit = linkEndId(d.source) === highlightNode.id || linkEndId(d.target) === highlightNode.id;
+                const hit = linkEndId(d.source) === highlightNode || linkEndId(d.target) === highlightNode;
                 return hit ? 2.5 : 0.3;
             })
             .linkDirectionalParticles(d => {
                 if (!highlightNode) return 0;
-                const hit = linkEndId(d.source) === highlightNode.id || linkEndId(d.target) === highlightNode.id;
+                const hit = linkEndId(d.source) === highlightNode || linkEndId(d.target) === highlightNode;
                 return hit ? 3 : 0;
             })
             .linkDirectionalParticleSpeed(0.01)
             .onNodeHover(node => {
-                highlightNode = node || null;
+                highlightNode = node ? node.id : null;
                 container.style.cursor = node ? 'pointer' : '';
-                // Re-apply accessors so the highlight/dim takes effect
-                Graph.nodeColor(Graph.nodeColor())
-                    .linkWidth(Graph.linkWidth())
+                // Dim non-neighbor sprites; relight neighbors
+                nodes.forEach(n => {
+                    if (!n.__mat) return;
+                    const near = !highlightNode || neighbors.get(highlightNode)?.has(n.id);
+                    n.__mat.opacity = near ? 0.95 : 0.12;
+                    n.__mat.color.set(near ? n.__baseColor : '#223047');
+                });
+                Graph.linkWidth(Graph.linkWidth())
                     .linkDirectionalParticles(Graph.linkDirectionalParticles());
             })
             .onNodeClick(node => this.handleGraph3DNodeClick(node));
@@ -6262,9 +6280,32 @@ class MemoryDashboard {
         const Bloom = window.__UnrealBloomPass;
         const composer = typeof Graph.postProcessingComposer === 'function' ? Graph.postProcessingComposer() : null;
         if (Bloom && composer) {
-            const bloom = new Bloom(new THREE.Vector2(width, height), 1.6, 0.7, 0.1);
+            // Softer falloff (lower strength, larger radius, no threshold) so the
+            // glowing sprites blend smoothly instead of blowing out.
+            const bloom = new Bloom(new THREE.Vector2(width, height), 1.1, 0.9, 0.0);
             composer.addPass(bloom);
         }
+    }
+
+    /**
+     * Lazily build + cache the soft radial-gradient texture used for node glow
+     * sprites. A smooth white core fading to transparent gives the fluid Orrery
+     * halo once tinted per type and amplified by bloom.
+     */
+    _getNodeGlowTexture(THREE) {
+        if (this._nodeGlowTexture) return this._nodeGlowTexture;
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = 128;
+        const ctx = canvas.getContext('2d');
+        const grad = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+        grad.addColorStop(0.0, 'rgba(255,255,255,1)');
+        grad.addColorStop(0.18, 'rgba(255,255,255,0.9)');
+        grad.addColorStop(0.45, 'rgba(255,255,255,0.32)');
+        grad.addColorStop(1.0, 'rgba(255,255,255,0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 128, 128);
+        this._nodeGlowTexture = new THREE.CanvasTexture(canvas);
+        return this._nodeGlowTexture;
     }
 
     /**
