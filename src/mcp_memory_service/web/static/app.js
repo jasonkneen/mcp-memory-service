@@ -5993,22 +5993,22 @@ class MemoryDashboard {
                     blending: THREE.AdditiveBlending,
                     transparent: true,
                     depthWrite: false,
-                    opacity: 0.95
+                    opacity: 0.75
                 });
                 const sprite = new THREE.Sprite(mat);
-                const s = 7 + Math.sqrt(node.connections || 1) * 4;
+                const s = 4 + Math.sqrt(node.connections || 1) * 2.5;
                 sprite.scale.set(s, s, 1);
                 node.__mat = mat;
                 node.__baseColor = baseHex;
                 return sprite;
             })
             .linkColor(d => edgeColors[d.relationship_type] || edgeColors['related'])
-            .linkOpacity(0.55)
+            .linkOpacity(0.32)
             .linkCurvature(0.25)
             .linkWidth(d => {
-                if (!highlightNode) return 1.0;
+                if (!highlightNode) return 0.4;
                 const hit = linkEndId(d.source) === highlightNode || linkEndId(d.target) === highlightNode;
-                return hit ? 2.5 : 0.3;
+                return hit ? 1.5 : 0.15;
             })
             .linkDirectionalParticles(d => {
                 if (!highlightNode) return 0;
@@ -6023,7 +6023,7 @@ class MemoryDashboard {
                 nodes.forEach(n => {
                     if (!n.__mat) return;
                     const near = !highlightNode || neighbors.get(highlightNode)?.has(n.id);
-                    n.__mat.opacity = near ? 0.95 : 0.12;
+                    n.__mat.opacity = near ? 0.75 : 0.1;
                     n.__mat.color.set(near ? n.__baseColor : '#223047');
                 });
                 Graph.linkWidth(Graph.linkWidth())
@@ -6174,6 +6174,7 @@ class MemoryDashboard {
         ordered.forEach(t => { map[t] = canonical[t] || palette[p++ % palette.length]; });
         if (!map['untyped']) map['untyped'] = canonical.untyped;
         this.graphTypeColors = map;
+        this.graphTypeCounts = counts; // node count per type, shown on pill hover
     }
 
     /**
@@ -6190,6 +6191,8 @@ class MemoryDashboard {
                 const btn = document.createElement('button');
                 btn.className = 'graph-type-filter' + (this.hiddenGraphTypes.has(t) ? '' : ' active');
                 btn.dataset.type = t;
+                const count = this.graphTypeCounts ? (this.graphTypeCounts.get(t) || 0) : 0;
+                btn.title = `${t}: ${count} node${count === 1 ? '' : 's'} (click to toggle)`;
                 const dot = document.createElement('span');
                 dot.className = 'legend-color';
                 dot.style.background = this.graphTypeColors[t];
@@ -6280,9 +6283,9 @@ class MemoryDashboard {
         const Bloom = window.__UnrealBloomPass;
         const composer = typeof Graph.postProcessingComposer === 'function' ? Graph.postProcessingComposer() : null;
         if (Bloom && composer) {
-            // Softer falloff (lower strength, larger radius, no threshold) so the
-            // glowing sprites blend smoothly instead of blowing out.
-            const bloom = new Bloom(new THREE.Vector2(width, height), 1.1, 0.9, 0.0);
+            // Gentle bloom — enough to make nodes glow without washing the
+            // scene into big white halos.
+            const bloom = new Bloom(new THREE.Vector2(width, height), 0.65, 0.8, 0.05);
             composer.addPass(bloom);
         }
     }
