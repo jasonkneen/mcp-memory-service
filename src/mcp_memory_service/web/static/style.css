@@ -4987,13 +4987,15 @@ body.dark-mode .quality-tier-low,
     box-shadow: 0 0 4px rgba(255, 255, 255, 0.3);
 }
 
-/* Fullscreen filter pills: floating, top-left overlay */
+/* Fullscreen filter pills: a tidy row beneath the header (in normal flow,
+   so it never overlaps the title); scrolls if the type list is long. */
 .graph-fullscreen-filters {
-    position: absolute;
-    top: 64px;
-    left: 16px;
-    z-index: 5;
-    max-width: 70vw;
+    flex-shrink: 0;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border-color);
+    max-height: 92px;
+    overflow-y: auto;
+    background: rgba(10, 12, 20, 0.4);
 }
 
 /* Fullscreen legend: unobtrusive overlay, toggleable */

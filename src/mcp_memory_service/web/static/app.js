@@ -6058,7 +6058,19 @@ class MemoryDashboard {
         const hidden = this.hiddenGraphTypes || new Set();
         const nodes = data.nodes.filter(n => !hidden.has(n.type || 'untyped'));
         const ids = new Set(nodes.map(n => n.id));
-        const edges = (data.edges || []).filter(e => ids.has(e.source) && ids.has(e.target));
+
+        // Symmetric relationships are stored as two directed rows (A->B and
+        // B->A); collapse each unordered pair to a single edge so we draw one
+        // curve, not two mirrored ones. Also drop self-loops.
+        const seen = new Set();
+        const edges = [];
+        for (const e of (data.edges || [])) {
+            if (!ids.has(e.source) || !ids.has(e.target) || e.source === e.target) continue;
+            const key = e.source < e.target ? `${e.source}|${e.target}` : `${e.target}|${e.source}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            edges.push(e);
+        }
         return { nodes, edges };
     }
 
