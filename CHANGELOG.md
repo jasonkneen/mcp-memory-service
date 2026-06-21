@@ -10,6 +10,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [11.3.0] - 2026-06-21
+
+### Added
+- Interactive 3D knowledge-graph visualization in the dashboard Analytics view, inspired by the Orrery Obsidian plugin. Renders memories as a rotating 3D galaxy via 3d-force-graph (three.js), loaded as ESM with an importmap so three is shared (required for bloom).
+  - Soft glowing sprite nodes, UnrealBloomPass glow, and a starfield and nebula backdrop.
+  - Curved edges, hover neighbour-highlight with directional flow particles, and click-to-open the full memory detail modal.
+  - Dynamic per-memory-type colours and filter pills (every type present is individually filterable; hover a pill for its node count).
+  - Pause/resume auto-rotation.
+  - True OS fullscreen (Fullscreen API) with in-view filter pills, a legend show/hide toggle, and a working detail modal.
+  - The legacy 2D D3 SVG renderer is retained as an automatic fallback and via a 2D/3D toggle.
+
+### Changed
+- Graph-visualization node cap lifted now that WebGL handles large graphs: /analytics/graph-visualization default 100->1000, max 500->10000.
+- Symmetric graph relationships are deduplicated for rendering (one curve per node pair instead of two mirrored ones).
+- Storage graph-edges query binds only the source side (N placeholders instead of 2N) so large node limits stay well under SQLite bound-variable cap.
+
+### Notes
+- The dashboard now loads three and 3d-force-graph from the esm.sh CDN. Self-hosting/vendoring these assets is a possible follow-up for offline deployments.
+
 ## [11.2.0] - 2026-06-20
 
 MINOR release: OAuth security hardening, sqlite-vec rowid collision fix, composite graph scoring, OpenCode XDG state dir fix.

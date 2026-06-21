@@ -555,19 +555,20 @@ The `:quality-cpu` image pre-exports both models at build time and ships only `o
 ---
 
 
-## Latest Release: **v11.2.0** (June 20, 2026)
+## Latest Release: **v11.3.0** (June 21, 2026)
 
-**MINOR: OAuth security hardening, sqlite-vec rowid collision fix, composite graph scoring, OpenCode XDG state dir fix**
+**MINOR: Interactive 3D knowledge graph visualization (Orrery-inspired)**
 
 **What's New:**
-- `feat(oauth)`: OAuth security hardening — client_secret hashed at rest, body-size caps, per-IP rate limiting, XSS fix on /authorize (PR #91, @mzu)
-- `fix(storage)`: sqlite-vec rowid collision fix — hard-delete paths now clean up embeddings, preventing "UNIQUE constraint failed" on reused rowids (PR #90)
-- `feat(graph)`: opt-in composite scoring for `memory_explore`/`memory_detail` via `scoring="composite"` (PR #77, @filhocf)
-- `fix(opencode)`: plugin status file moved to XDG state dir (#84)
+- Interactive 3D knowledge-graph visualization in the dashboard Analytics view, rendered as a rotating 3D galaxy via 3d-force-graph (three.js). Soft glowing nodes, UnrealBloomPass bloom, starfield backdrop, curved edges, hover highlight, and click-to-open memory detail modal (PR #94)
+- Dynamic per-memory-type colour filter pills, pause/resume auto-rotation, and true OS fullscreen (Fullscreen API) with in-view controls
+- Node cap lifted: /analytics/graph-visualization default 100→1000, max 500→10000
+- Legacy 2D D3 SVG renderer retained as automatic fallback and via 2D/3D toggle
 
 ---
 
 **Previous Releases**:
+- **v11.2.0** - MINOR: OAuth security hardening (#91), sqlite-vec rowid collision fix (#90), composite graph scoring (#55/#77, @filhocf), OpenCode XDG state dir fix (#84) (June 20, 2026)
 - **v11.1.0** - MINOR: two-phase query API aggregation + maintenance script hardening (PR #78, @filhocf) (June 18, 2026)
 - **v11.0.0** - MAJOR: legacy tool-name alias removal + optional ML dependencies / ONNX-first fallback (PR #72, #49, #71) (June 13, 2026)
 - **v10.74.1** - fix(harvest): OpenClaw preamble noise filter in PatternExtractor (PR #46, @filhocf) (June 6, 2026)
