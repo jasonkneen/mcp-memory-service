@@ -6487,6 +6487,16 @@ class MemoryDashboard {
             modal.requestFullscreen().catch(() => {});
         }
 
+        // In OS fullscreen the browser only paints the fullscreen element's
+        // subtree, so a node click would open the memory-detail modal off-screen.
+        // Relocate #memoryModal inside the fullscreen element while open; it is
+        // restored to its original parent in exitGraphFullscreen().
+        const memModal = document.getElementById('memoryModal');
+        if (memModal) {
+            this._memoryModalHome = memModal.parentNode;
+            modal.appendChild(memModal);
+        }
+
         // Size the canvas to the container (fills the screen below the header)
         const dims = () => {
             const c = document.getElementById('graphFullscreenContainer');
@@ -6538,6 +6548,13 @@ class MemoryDashboard {
         // Leave OS fullscreen if we're still in it
         if (document.fullscreenElement) {
             document.exitFullscreen().catch(() => {});
+        }
+
+        // Restore the memory-detail modal to its original parent
+        const memModal = document.getElementById('memoryModal');
+        if (memModal && this._memoryModalHome) {
+            this._memoryModalHome.appendChild(memModal);
+            this._memoryModalHome = null;
         }
 
         // Clear container
