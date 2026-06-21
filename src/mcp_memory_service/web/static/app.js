@@ -659,6 +659,7 @@ class MemoryDashboard {
         document.getElementById('refreshGraphBtn')?.addEventListener('click', this.handleGraphRefresh.bind(this));
         document.getElementById('graphLimitSelect')?.addEventListener('change', this.handleGraphRefresh.bind(this));
         document.getElementById('graphMinConnectionsSelect')?.addEventListener('change', this.handleGraphRefresh.bind(this));
+        document.getElementById('graphDimensionBtn')?.addEventListener('click', this.toggleGraphDimension.bind(this));
         document.getElementById('graphFullscreenBtn')?.addEventListener('click', this.enterGraphFullscreen.bind(this));
         document.getElementById('graphExitFullscreenBtn')?.addEventListener('click', this.exitGraphFullscreen.bind(this));
 
@@ -5741,6 +5742,19 @@ class MemoryDashboard {
      */
     renderGraphVisualizationInContainer(container, data, width, height, isFullscreen) {
 
+        // PoC (Orrery-style): tear down any prior 3D instance bound to this slot
+        this._disposeGraph3D(isFullscreen);
+
+        // Default to 3D when the 3d-force-graph library is available
+        if (this.use3DGraph === undefined) {
+            this.use3DGraph = (typeof ForceGraph3D !== 'undefined');
+        }
+        if (this.use3DGraph && typeof ForceGraph3D !== 'undefined') {
+            this.render3DGraph(container, data, width, height, isFullscreen);
+            return;
+        }
+
+        // ----- Legacy 2D D3.js force-directed fallback -----
         // Create SVG
         const svg = d3.select(container)
             .append('svg')
@@ -5902,6 +5916,161 @@ class MemoryDashboard {
     }
 
     /**
+     * Render graph as a cinematic 3D force-directed galaxy (Orrery-style PoC).
+     * Uses the global ForceGraph3D (3d-force-graph, bundles three.js).
+     * Same data contract as the 2D renderer: nodes + edges from
+     * /analytics/graph-visualization.
+     */
+    render3DGraph(container, data, width, height, isFullscreen) {
+        const slot = isFullscreen ? '_fs' : '_main';
+
+        // Reset container (removes loading spinner / previous canvas)
+        container.innerHTML = '';
+
+        // Color maps mirror the 2D renderer for visual consistency
+        const nodeColors = {
+            'observation': '#4A90E2',
+            'decision': '#E24A4A',
+            'learning': '#50C878',
+            'error': '#F39C12',
+            'untyped': '#9B59B6'
+        };
+        const edgeColors = {
+            'causes': '#E74C3C',
+            'fixes': '#27AE60',
+            'contradicts': '#E67E22',
+            'supports': '#3498DB',
+            'follows': '#9B59B6',
+            'related': '#95A5A6'
+        };
+
+        // Fresh copies — 3d-force-graph mutates link source/target into node
+        // refs, so main view and fullscreen must not share objects.
+        const nodes = data.nodes.map(n => ({ ...n }));
+        const links = data.edges.map(e => ({
+            source: e.source,
+            target: e.target,
+            relationship_type: e.relationship_type || 'related'
+        }));
+
+        // Neighbor map for hover highlighting
+        const neighbors = new Map();
+        nodes.forEach(n => neighbors.set(n.id, new Set([n.id])));
+        links.forEach(l => {
+            neighbors.get(l.source)?.add(l.target);
+            neighbors.get(l.target)?.add(l.source);
+        });
+        let highlightNode = null;
+        const linkEndId = (end) => (end && end.id !== undefined) ? end.id : end;
+
+        const Graph = ForceGraph3D()(container)
+            .width(width)
+            .height(height)
+            .backgroundColor('#000010')
+            .showNavInfo(false)
+            .graphData({ nodes, links })
+            .nodeRelSize(4)
+            .nodeVal(d => Math.max(1, Math.sqrt(d.connections || 1) * 2))
+            .nodeOpacity(0.92)
+            .nodeLabel(d => this.formatGraphTooltip(d))
+            .nodeColor(d => {
+                if (highlightNode && !neighbors.get(highlightNode.id)?.has(d.id)) {
+                    return '#222a3a'; // dimmed
+                }
+                return nodeColors[d.type] || nodeColors['untyped'];
+            })
+            .linkColor(d => edgeColors[d.relationship_type] || edgeColors['related'])
+            .linkOpacity(0.35)
+            .linkWidth(d => {
+                if (!highlightNode) return 0.6;
+                const hit = linkEndId(d.source) === highlightNode.id || linkEndId(d.target) === highlightNode.id;
+                return hit ? 1.5 : 0.2;
+            })
+            .linkDirectionalParticles(d => {
+                if (!highlightNode) return 0;
+                const hit = linkEndId(d.source) === highlightNode.id || linkEndId(d.target) === highlightNode.id;
+                return hit ? 3 : 0;
+            })
+            .linkDirectionalParticleSpeed(0.01)
+            .onNodeHover(node => {
+                highlightNode = node || null;
+                container.style.cursor = node ? 'pointer' : '';
+                // Re-apply accessors so the highlight/dim takes effect
+                Graph.nodeColor(Graph.nodeColor())
+                    .linkWidth(Graph.linkWidth())
+                    .linkDirectionalParticles(Graph.linkDirectionalParticles());
+            })
+            .onNodeClick(node => this.handleGraph3DNodeClick(node));
+
+        this['graph3d' + slot] = Graph;
+
+        // Orrery-style slow auto-rotation that yields to the user on interaction
+        const distance = isFullscreen ? 600 : 420;
+        Graph.cameraPosition({ z: distance });
+        const rotateState = { active: true, angle: 0 };
+        this['graph3dRotate' + slot] = rotateState;
+        const rotate = () => {
+            if (!rotateState.active) return;
+            rotateState.angle += 0.0016;
+            Graph.cameraPosition({
+                x: distance * Math.sin(rotateState.angle),
+                z: distance * Math.cos(rotateState.angle)
+            });
+            requestAnimationFrame(rotate);
+        };
+        requestAnimationFrame(rotate);
+        const stopRotation = () => { rotateState.active = false; };
+        container.addEventListener('pointerdown', stopRotation, { once: true });
+        container.addEventListener('wheel', stopRotation, { once: true });
+    }
+
+    /**
+     * Tear down the 3D graph instance for a given slot (main / fullscreen),
+     * stopping its render loop and our auto-rotation rAF.
+     */
+    _disposeGraph3D(isFullscreen) {
+        const slot = isFullscreen ? '_fs' : '_main';
+        if (this['graph3dRotate' + slot]) {
+            this['graph3dRotate' + slot].active = false;
+            this['graph3dRotate' + slot] = null;
+        }
+        const g = this['graph3d' + slot];
+        if (g) {
+            try { g.pauseAnimation(); } catch (e) { /* noop */ }
+            try { if (g._destructor) g._destructor(); } catch (e) { /* noop */ }
+            this['graph3d' + slot] = null;
+        }
+    }
+
+    /**
+     * Open the memory detail modal for a clicked 3D node.
+     */
+    async handleGraph3DNodeClick(node) {
+        if (!node) return;
+        try {
+            this.showToast('Loading memory details...', 'info');
+            const memory = await this.apiCall(`/memories/${node.id}`);
+            this.showMemoryDetails(memory);
+        } catch (error) {
+            console.error('Failed to load memory:', error);
+            this.showToast('Failed to load memory details', 'error');
+        }
+    }
+
+    /**
+     * Toggle between the 3D (Orrery-style) and 2D D3 renderers, then re-render.
+     */
+    toggleGraphDimension() {
+        this.use3DGraph = !this.use3DGraph;
+        const label = document.getElementById('graphDimensionLabel');
+        if (label) label.textContent = this.use3DGraph ? '3D' : '2D';
+        if (this.currentGraphData) {
+            const container = document.getElementById('graphVisualizationContainer');
+            if (container) this.renderGraphVisualization(container, this.currentGraphData);
+        }
+    }
+
+    /**
      * Handle graph refresh button click
      */
     async handleGraphRefresh() {
@@ -6054,6 +6223,9 @@ class MemoryDashboard {
             this.fullscreenSimulation.stop();
             this.fullscreenSimulation = null;
         }
+
+        // Tear down the fullscreen 3D instance, if any (Orrery-style PoC)
+        this._disposeGraph3D(true);
     }
 
     // ===== QUALITY ANALYTICS METHODS =====
