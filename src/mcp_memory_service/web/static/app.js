@@ -6193,13 +6193,14 @@ class MemoryDashboard {
                 btn.dataset.type = t;
                 const count = this.graphTypeCounts ? (this.graphTypeCounts.get(t) || 0) : 0;
                 btn.dataset.count = `${count} node${count === 1 ? '' : 's'}`;
-                btn.title = `${t}: ${count} node${count === 1 ? '' : 's'} (click to toggle)`;
                 const dot = document.createElement('span');
                 dot.className = 'legend-color';
                 dot.style.background = this.graphTypeColors[t];
                 btn.appendChild(dot);
                 btn.appendChild(document.createTextNode(' ' + t));
                 btn.addEventListener('click', () => this.toggleGraphTypeFilter(t));
+                btn.addEventListener('mouseenter', () => this._showPillTip(btn));
+                btn.addEventListener('mouseleave', () => this._hidePillTip());
                 container.appendChild(btn);
             });
         };
@@ -6213,6 +6214,32 @@ class MemoryDashboard {
     _syncTypeFilterButtons() {
         document.querySelectorAll('#graphTypeFilterBar .graph-type-filter, #graphFullscreenFilterBar .graph-type-filter')
             .forEach(b => b.classList.toggle('active', !this.hiddenGraphTypes.has(b.dataset.type)));
+    }
+
+    /**
+     * Instant, always-on-top count tooltip for a filter pill. Uses a single
+     * position:fixed element reparented into the active fullscreen element (or
+     * body) so it escapes the filter bar's stacking context and is visible in
+     * both normal and OS-fullscreen views.
+     */
+    _showPillTip(btn) {
+        if (!this._pillTip) {
+            this._pillTip = document.createElement('div');
+            this._pillTip.className = 'pill-tip';
+            document.body.appendChild(this._pillTip);
+        }
+        const tip = this._pillTip;
+        tip.textContent = btn.dataset.count || '';
+        const host = document.fullscreenElement || document.body;
+        if (tip.parentNode !== host) host.appendChild(tip);
+        const r = btn.getBoundingClientRect();
+        tip.style.left = `${r.left + r.width / 2}px`;
+        tip.style.top = `${r.bottom + 6}px`;
+        tip.style.display = 'block';
+    }
+
+    _hidePillTip() {
+        if (this._pillTip) this._pillTip.style.display = 'none';
     }
 
     /**

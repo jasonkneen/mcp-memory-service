@@ -4999,16 +4999,16 @@ body.dark-mode .quality-tier-low,
     box-shadow: 0 0 4px rgba(255, 255, 255, 0.3);
 }
 
-/* Instant count tooltip on pill hover (native title is too slow/unreliable) */
-.graph-type-filter:hover::after {
-    content: attr(data-count);
-    position: absolute;
-    top: 100%;
-    left: 50%;
+/* Instant, always-on-top count tooltip for a filter pill (JS-positioned).
+   position:fixed + very high z-index so it escapes the filter bar's stacking
+   context and never sits behind the graph layer. */
+.pill-tip {
+    position: fixed;
+    z-index: 100000;
+    display: none;
     transform: translateX(-50%);
-    margin-top: 6px;
     padding: 3px 8px;
-    background: rgba(10, 12, 20, 0.96);
+    background: rgba(10, 12, 20, 0.97);
     color: #fff;
     border: 1px solid rgba(255, 255, 255, 0.18);
     border-radius: 5px;
@@ -5016,7 +5016,6 @@ body.dark-mode .quality-tier-low,
     font-weight: 600;
     white-space: nowrap;
     pointer-events: none;
-    z-index: 30;
 }
 
 /* Fullscreen filter pills: a tidy row beneath the header (in normal flow,
