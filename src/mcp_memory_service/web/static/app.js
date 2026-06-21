@@ -659,6 +659,11 @@ class MemoryDashboard {
         document.getElementById('refreshGraphBtn')?.addEventListener('click', this.handleGraphRefresh.bind(this));
         document.getElementById('graphLimitSelect')?.addEventListener('change', this.handleGraphRefresh.bind(this));
         document.getElementById('graphMinConnectionsSelect')?.addEventListener('change', this.handleGraphRefresh.bind(this));
+        document.getElementById('graphDimensionBtn')?.addEventListener('click', this.toggleGraphDimension.bind(this));
+        document.getElementById('graphRotateBtn')?.addEventListener('click', this.toggleGraphRotation.bind(this));
+        document.getElementById('graphFullscreenRotateBtn')?.addEventListener('click', this.toggleGraphRotation.bind(this));
+        document.getElementById('graphFullscreenLegendBtn')?.addEventListener('click', this.toggleGraphLegend.bind(this));
+        // Type-filter pills are generated dynamically from the data; see _renderTypeFilterPills()
         document.getElementById('graphFullscreenBtn')?.addEventListener('click', this.enterGraphFullscreen.bind(this));
         document.getElementById('graphExitFullscreenBtn')?.addEventListener('click', this.exitGraphFullscreen.bind(this));
 
@@ -5695,9 +5700,10 @@ class MemoryDashboard {
             const limit = document.getElementById('graphLimitSelect')?.value || 100;
             const minConnections = document.getElementById('graphMinConnectionsSelect')?.value || 1;
 
-            // Warn about performance for large graphs
-            if (limit >= 750) {
-                this.showToast(`Loading ${limit} nodes may impact performance. Consider using filters.`, 'warning', 5000);
+            // The 3D (WebGL) renderer handles large graphs comfortably; only the
+            // legacy 2D SVG fallback struggles, so warn just for that case.
+            if (!this.use3DGraph && Number(limit) >= 750) {
+                this.showToast(`2D mode with ${limit} nodes may be slow — switch to 3D for large graphs.`, 'warning', 5000);
             }
 
             const data = await this.apiCall(`/analytics/graph-visualization?limit=${limit}&min_connections=${minConnections}`);
@@ -5709,6 +5715,11 @@ class MemoryDashboard {
 
             // Store data for fullscreen use
             this.currentGraphData = data;
+
+            // Build the type->color map from the actual data and (re)render the
+            // filter pills so every present type is filterable (no orphan "other").
+            this._buildGraphTypeColors(data.nodes);
+            this._renderTypeFilterPills();
 
             this.renderGraphVisualization(container, data);
         } catch (error) {
@@ -5741,6 +5752,26 @@ class MemoryDashboard {
      */
     renderGraphVisualizationInContainer(container, data, width, height, isFullscreen) {
 
+        // PoC (Orrery-style): tear down any prior 3D instance bound to this slot
+        this._disposeGraph3D(isFullscreen);
+
+        // Default to 3D once the (ESM, deferred) 3d-force-graph module has set
+        // window.ForceGraph3D. Don't cache `false` — the module may still be
+        // loading on a very early render; leaving use3DGraph undefined lets the
+        // next render upgrade to 3D. An explicit user toggle (true/false) sticks.
+        if (this.use3DGraph === undefined && typeof window.ForceGraph3D !== 'undefined') {
+            this.use3DGraph = true;
+        }
+        if (this.use3DGraph && typeof window.ForceGraph3D !== 'undefined') {
+            this.render3DGraph(container, data, width, height, isFullscreen);
+            return;
+        }
+
+        // ----- Legacy 2D D3.js force-directed fallback -----
+        // Apply the same type filter + edge-dedup on fresh copies (D3 mutates
+        // node/link objects, so never run it on the shared currentGraphData).
+        data = this._filterGraphData(data);
+
         // Create SVG
         const svg = d3.select(container)
             .append('svg')
@@ -5757,14 +5788,8 @@ class MemoryDashboard {
             });
         svg.call(zoom);
 
-        // Color mapping for memory types
-        const nodeColors = {
-            'observation': '#4A90E2',
-            'decision': '#E24A4A',
-            'learning': '#50C878',
-            'error': '#F39C12',
-            'untyped': '#9B59B6'
-        };
+        // Color mapping for memory types (dynamic, shared with pills/legend)
+        const nodeColors = this.graphTypeColors || { 'untyped': '#9B59B6' };
 
         // Color mapping for relationship types
         const edgeColors = {
@@ -5902,6 +5927,484 @@ class MemoryDashboard {
     }
 
     /**
+     * Render graph as a cinematic 3D force-directed galaxy (Orrery-style PoC).
+     * Uses the global ForceGraph3D (3d-force-graph, bundles three.js).
+     * Same data contract as the 2D renderer: nodes + edges from
+     * /analytics/graph-visualization.
+     */
+    render3DGraph(container, data, width, height, isFullscreen) {
+        const slot = isFullscreen ? '_fs' : '_main';
+
+        // Reset container (removes loading spinner / previous canvas)
+        container.innerHTML = '';
+
+        // Color maps mirror the 2D renderer for visual consistency.
+        // nodeColors is built dynamically from the data (see _buildGraphTypeColors)
+        // so every memory type present gets a distinct, filterable color.
+        const nodeColors = this.graphTypeColors || { 'untyped': '#9B59B6' };
+        const edgeColors = {
+            'causes': '#E74C3C',
+            'fixes': '#27AE60',
+            'contradicts': '#E67E22',
+            'supports': '#3498DB',
+            'follows': '#9B59B6',
+            'related': '#95A5A6'
+        };
+
+        // Apply the active type filter, then make fresh copies — 3d-force-graph
+        // mutates node + link objects (positions, source/target refs), so the
+        // main view, fullscreen, and the source currentGraphData must not share
+        // object identity.
+        const filtered = this._filterGraphData(data);
+        const nodes = filtered.nodes.map(n => ({ ...n }));
+        const links = filtered.edges.map(e => ({
+            source: e.source,
+            target: e.target,
+            relationship_type: e.relationship_type || 'related'
+        }));
+
+        // Neighbor map for hover highlighting
+        const neighbors = new Map();
+        nodes.forEach(n => neighbors.set(n.id, new Set([n.id])));
+        links.forEach(l => {
+            neighbors.get(l.source)?.add(l.target);
+            neighbors.get(l.target)?.add(l.source);
+        });
+        let highlightNode = null;
+        const linkEndId = (end) => (end && end.id !== undefined) ? end.id : end;
+
+        const Graph = window.ForceGraph3D()(container)
+            .width(width)
+            .height(height)
+            .backgroundColor('#01010a')
+            .showNavInfo(false)
+            .graphData({ nodes, links })
+            .nodeLabel(d => this.formatGraphTooltip(d))
+            // Soft glowing sprites (not hard spheres) for smooth Orrery-style
+            // halos; bloom amplifies the additive falloff.
+            .nodeThreeObjectExtend(false)
+            .nodeThreeObject(node => {
+                const THREE = window.THREE;
+                if (!THREE) return null; // fall back to default sphere
+                const baseHex = nodeColors[node.type || 'untyped'] || '#9B59B6';
+                const mat = new THREE.SpriteMaterial({
+                    map: this._getNodeGlowTexture(THREE),
+                    color: new THREE.Color(baseHex),
+                    blending: THREE.AdditiveBlending,
+                    transparent: true,
+                    depthWrite: false,
+                    opacity: 0.75
+                });
+                const sprite = new THREE.Sprite(mat);
+                const s = 4 + Math.sqrt(node.connections || 1) * 2.5;
+                sprite.scale.set(s, s, 1);
+                node.__mat = mat;
+                node.__baseColor = baseHex;
+                return sprite;
+            })
+            .linkColor(d => edgeColors[d.relationship_type] || edgeColors['related'])
+            .linkOpacity(0.32)
+            .linkCurvature(0.25)
+            .linkWidth(d => {
+                if (!highlightNode) return 0.4;
+                const hit = linkEndId(d.source) === highlightNode || linkEndId(d.target) === highlightNode;
+                return hit ? 1.5 : 0.15;
+            })
+            .linkDirectionalParticles(d => {
+                if (!highlightNode) return 0;
+                const hit = linkEndId(d.source) === highlightNode || linkEndId(d.target) === highlightNode;
+                return hit ? 3 : 0;
+            })
+            .linkDirectionalParticleSpeed(0.01)
+            .onNodeHover(node => {
+                highlightNode = node ? node.id : null;
+                container.style.cursor = node ? 'pointer' : '';
+                // Dim non-neighbor sprites; relight neighbors
+                nodes.forEach(n => {
+                    if (!n.__mat) return;
+                    const near = !highlightNode || neighbors.get(highlightNode)?.has(n.id);
+                    n.__mat.opacity = near ? 0.75 : 0.1;
+                    n.__mat.color.set(near ? n.__baseColor : '#223047');
+                });
+                Graph.linkWidth(Graph.linkWidth())
+                    .linkDirectionalParticles(Graph.linkDirectionalParticles());
+            })
+            .onNodeClick(node => this.handleGraph3DNodeClick(node));
+
+        this['graph3d' + slot] = Graph;
+
+        // Starfield + nebula + bloom glow (best-effort; never blocks the graph)
+        try {
+            this._addGraphCosmos(Graph, width, height);
+        } catch (e) {
+            console.warn('Graph cosmos/bloom skipped:', e);
+        }
+
+        // Orrery-style auto-rotation. The rAF loop stays alive; `active` gates
+        // whether it advances, so the Pause/Play button and user drag can
+        // toggle rotation without restarting the loop. The angle is re-derived
+        // from the live camera each frame, so resuming after a manual drag
+        // never snaps the view.
+        const distance = isFullscreen ? 600 : 420;
+        Graph.cameraPosition({ z: distance });
+        const rotateState = { alive: true, active: !this.graphRotationPaused, angle: 0 };
+        this['graph3dRotate' + slot] = rotateState;
+        const rotate = () => {
+            if (!rotateState.alive) return;
+            if (rotateState.active) {
+                const cam = Graph.cameraPosition();
+                const r = Math.hypot(cam.x, cam.z) || distance;
+                rotateState.angle = Math.atan2(cam.x, cam.z) + 0.0016;
+                Graph.cameraPosition({ x: r * Math.sin(rotateState.angle), z: r * Math.cos(rotateState.angle) });
+            }
+            requestAnimationFrame(rotate);
+        };
+        requestAnimationFrame(rotate);
+        // Grabbing the graph pauses rotation and syncs the Pause/Play label
+        const userPause = () => {
+            rotateState.active = false;
+            this.graphRotationPaused = true;
+            this._updateRotateButton();
+        };
+        container.addEventListener('pointerdown', userPause, { once: true });
+        container.addEventListener('wheel', userPause, { once: true });
+    }
+
+    /**
+     * Filter the raw graph data ({nodes, edges}) by the active type filter.
+     * Returns a new wrapper with references to the original objects (callers
+     * that mutate — e.g. the 3D renderer — must copy before use).
+     */
+    _filterGraphData(data) {
+        if (!data || !data.nodes) return { nodes: [], edges: [] };
+        const hidden = this.hiddenGraphTypes || new Set();
+        // d3-force / 3d-force-graph rewrite link source/target into node objects
+        // in place. Normalize back to a string id so a 2D->3D toggle (or any
+        // re-render) still matches the node set, and return fresh copies so no
+        // renderer mutates the shared currentGraphData.
+        const idOf = (x) => (x && typeof x === 'object' && x.id !== undefined) ? x.id : x;
+
+        const nodes = data.nodes
+            .filter(n => !hidden.has(n.type || 'untyped'))
+            .map(n => {
+                const { x, y, z, vx, vy, vz, fx, fy, fz, ...clean } = n;
+                return clean; // drop any layout state a previous render wrote
+            });
+        const ids = new Set(nodes.map(n => n.id));
+
+        // Symmetric relationships are stored as two directed rows (A->B and
+        // B->A); collapse each unordered pair to a single edge so we draw one
+        // curve, not two mirrored ones. Also drop self-loops.
+        const seen = new Set();
+        const edges = [];
+        for (const e of (data.edges || [])) {
+            const s = idOf(e.source), t = idOf(e.target);
+            if (!ids.has(s) || !ids.has(t) || s === t) continue;
+            const key = s < t ? `${s}|${t}` : `${t}|${s}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            edges.push({
+                source: s,
+                target: t,
+                relationship_type: e.relationship_type || 'related',
+                similarity: e.similarity,
+                connection_types: e.connection_types
+            });
+        }
+        return { nodes, edges };
+    }
+
+    /**
+     * Re-apply the type filter to whatever is currently rendered.
+     * 3D instances update in place (camera + rotation preserved); the 2D
+     * renderer is re-run with the filtered subset.
+     */
+    applyGraphTypeFilter() {
+        if (!this.currentGraphData) return;
+        if (this.use3DGraph) {
+            const f = this._filterGraphData(this.currentGraphData);
+            const graphData = {
+                nodes: f.nodes.map(n => ({ ...n })),
+                links: f.edges.map(e => ({ source: e.source, target: e.target, relationship_type: e.relationship_type || 'related' }))
+            };
+            ['_main', '_fs'].forEach(slot => {
+                const g = this['graph3d' + slot];
+                if (g) g.graphData(graphData);
+            });
+        } else {
+            const container = document.getElementById('graphVisualizationContainer');
+            if (container) this.renderGraphVisualization(container, this.currentGraphData);
+        }
+    }
+
+    /**
+     * Toggle visibility of a memory type (filter bar button).
+     */
+    toggleGraphTypeFilter(type) {
+        if (!this.hiddenGraphTypes) this.hiddenGraphTypes = new Set();
+        if (this.hiddenGraphTypes.has(type)) this.hiddenGraphTypes.delete(type);
+        else this.hiddenGraphTypes.add(type);
+        this._syncTypeFilterButtons();
+        this.applyGraphTypeFilter();
+    }
+
+    /**
+     * Build a stable type -> color map from the data. The five canonical types
+     * keep their fixed colors; any other type present (note, configuration,
+     * reference, ...) gets a distinct color from a fallback palette so it is
+     * both visible and filterable. Ordered by frequency for nicer pills.
+     */
+    _buildGraphTypeColors(nodes) {
+        const canonical = {
+            observation: '#4A90E2', decision: '#E24A4A', learning: '#50C878',
+            error: '#F39C12', untyped: '#9B59B6'
+        };
+        const palette = [
+            '#16A085', '#E84393', '#0984E3', '#00B894', '#E17055', '#6C5CE7',
+            '#D63031', '#00CEC9', '#FDCB6E', '#636E72', '#A29BFE', '#55EFC4'
+        ];
+        const counts = new Map();
+        (nodes || []).forEach(n => {
+            const t = n.type || 'untyped';
+            counts.set(t, (counts.get(t) || 0) + 1);
+        });
+        const ordered = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(e => e[0]);
+        const map = {};
+        let p = 0;
+        ordered.forEach(t => { map[t] = canonical[t] || palette[p++ % palette.length]; });
+        if (!map['untyped']) map['untyped'] = canonical.untyped;
+        this.graphTypeColors = map;
+        this.graphTypeCounts = counts; // node count per type, shown on pill hover
+    }
+
+    /**
+     * (Re)render the type filter pills into the main + fullscreen bars from the
+     * current type->color map. Pills reflect the active hidden set.
+     */
+    _renderTypeFilterPills() {
+        const types = Object.keys(this.graphTypeColors || {});
+        if (!this.hiddenGraphTypes) this.hiddenGraphTypes = new Set();
+        const build = (container) => {
+            if (!container) return;
+            container.innerHTML = '';
+            types.forEach(t => {
+                const btn = document.createElement('button');
+                btn.className = 'graph-type-filter' + (this.hiddenGraphTypes.has(t) ? '' : ' active');
+                btn.dataset.type = t;
+                const count = this.graphTypeCounts ? (this.graphTypeCounts.get(t) || 0) : 0;
+                btn.dataset.count = `${count} node${count === 1 ? '' : 's'}`;
+                const dot = document.createElement('span');
+                dot.className = 'legend-color';
+                dot.style.background = this.graphTypeColors[t];
+                btn.appendChild(dot);
+                btn.appendChild(document.createTextNode(' ' + t));
+                btn.addEventListener('click', () => this.toggleGraphTypeFilter(t));
+                btn.addEventListener('mouseenter', () => this._showPillTip(btn));
+                btn.addEventListener('mouseleave', () => this._hidePillTip());
+                container.appendChild(btn);
+            });
+        };
+        build(document.getElementById('graphTypeFilterBar'));
+        build(document.getElementById('graphFullscreenFilterBar'));
+    }
+
+    /**
+     * Keep every pill's active state in sync with the hidden set (both bars).
+     */
+    _syncTypeFilterButtons() {
+        document.querySelectorAll('#graphTypeFilterBar .graph-type-filter, #graphFullscreenFilterBar .graph-type-filter')
+            .forEach(b => b.classList.toggle('active', !this.hiddenGraphTypes.has(b.dataset.type)));
+    }
+
+    /**
+     * Instant, always-on-top count tooltip for a filter pill. Uses a single
+     * position:fixed element reparented into the active fullscreen element (or
+     * body) so it escapes the filter bar's stacking context and is visible in
+     * both normal and OS-fullscreen views.
+     */
+    _showPillTip(btn) {
+        if (!this._pillTip) {
+            this._pillTip = document.createElement('div');
+            this._pillTip.className = 'pill-tip';
+            document.body.appendChild(this._pillTip);
+        }
+        const tip = this._pillTip;
+        tip.textContent = btn.dataset.count || '';
+        const host = document.fullscreenElement || document.body;
+        if (tip.parentNode !== host) host.appendChild(tip);
+        const r = btn.getBoundingClientRect();
+        tip.style.left = `${r.left + r.width / 2}px`;
+        tip.style.top = `${r.bottom + 6}px`;
+        tip.style.display = 'block';
+    }
+
+    _hidePillTip() {
+        if (this._pillTip) this._pillTip.style.display = 'none';
+    }
+
+    /**
+     * Show / hide the fullscreen legend overlay.
+     */
+    toggleGraphLegend() {
+        const legend = document.getElementById('graphFullscreenLegend');
+        if (legend) legend.classList.toggle('hidden');
+    }
+
+    /**
+     * Pause / resume the 3D auto-rotation (button handler).
+     */
+    toggleGraphRotation() {
+        this.graphRotationPaused = !this.graphRotationPaused;
+        ['_main', '_fs'].forEach(slot => {
+            const rs = this['graph3dRotate' + slot];
+            if (rs) rs.active = !this.graphRotationPaused;
+        });
+        this._updateRotateButton();
+    }
+
+    _updateRotateButton() {
+        const text = this.graphRotationPaused ? 'Play' : 'Pause';
+        ['graphRotateLabel', 'graphFullscreenRotateLabel'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = text;
+        });
+    }
+
+    /**
+     * Add the cinematic backdrop to a 3D graph scene: a starfield, soft additive
+     * nebula clouds, and an UnrealBloomPass glow (Orrery-style). Uses the shared
+     * three instance + bloom pass exposed on window by the ESM module loader.
+     * Each render builds a fresh ForceGraph3D (own scene), so there is nothing to
+     * clean up across renders. No-op if three / bloom are unavailable.
+     */
+    _addGraphCosmos(Graph, width, height) {
+        const THREE = window.THREE;
+        if (!THREE || typeof Graph.scene !== 'function') return;
+        const scene = Graph.scene();
+        if (!scene) return;
+
+        // Starfield — points scattered in a large sphere around the graph
+        const starCount = 1500;
+        const positions = new Float32Array(starCount * 3);
+        for (let i = 0; i < positions.length; i++) positions[i] = (Math.random() - 0.5) * 4000;
+        const starGeo = new THREE.BufferGeometry();
+        starGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({
+            color: 0xffffff, size: 1.4, sizeAttenuation: true, transparent: true, opacity: 0.85
+        })));
+
+        // Nebula clouds — large additive sprites with a soft radial-gradient texture
+        const tex = this._getNebulaTexture(THREE);
+        const palette = [0x3a1f6e, 0x1f3a6e, 0x6e1f4f, 0x244a6e];
+        for (let i = 0; i < 6; i++) {
+            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+                map: tex, color: palette[i % palette.length],
+                blending: THREE.AdditiveBlending, transparent: true, opacity: 0.16, depthWrite: false
+            }));
+            sprite.position.set((Math.random() - 0.5) * 1600, (Math.random() - 0.5) * 1600, (Math.random() - 0.5) * 1600);
+            const s = 700 + Math.random() * 700;
+            sprite.scale.set(s, s, 1);
+            scene.add(sprite);
+        }
+
+        // Bloom glow via the post-processing composer (same three instance)
+        const Bloom = window.__UnrealBloomPass;
+        const composer = typeof Graph.postProcessingComposer === 'function' ? Graph.postProcessingComposer() : null;
+        if (Bloom && composer) {
+            // Gentle bloom — enough to make nodes glow without washing the
+            // scene into big white halos.
+            const bloom = new Bloom(new THREE.Vector2(width, height), 0.65, 0.8, 0.05);
+            composer.addPass(bloom);
+        }
+    }
+
+    /**
+     * Lazily build + cache the soft radial-gradient texture used for node glow
+     * sprites. A smooth white core fading to transparent gives the fluid Orrery
+     * halo once tinted per type and amplified by bloom.
+     */
+    _getNodeGlowTexture(THREE) {
+        if (this._nodeGlowTexture) return this._nodeGlowTexture;
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = 128;
+        const ctx = canvas.getContext('2d');
+        const grad = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+        grad.addColorStop(0.0, 'rgba(255,255,255,1)');
+        grad.addColorStop(0.18, 'rgba(255,255,255,0.9)');
+        grad.addColorStop(0.45, 'rgba(255,255,255,0.32)');
+        grad.addColorStop(1.0, 'rgba(255,255,255,0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 128, 128);
+        this._nodeGlowTexture = new THREE.CanvasTexture(canvas);
+        return this._nodeGlowTexture;
+    }
+
+    /**
+     * Lazily build + cache a soft circular gradient texture used for nebula sprites.
+     */
+    _getNebulaTexture(THREE) {
+        if (this._nebulaTexture) return this._nebulaTexture;
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = 256;
+        const ctx = canvas.getContext('2d');
+        const grad = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+        grad.addColorStop(0, 'rgba(255,255,255,0.9)');
+        grad.addColorStop(0.3, 'rgba(255,255,255,0.35)');
+        grad.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 256, 256);
+        this._nebulaTexture = new THREE.CanvasTexture(canvas);
+        return this._nebulaTexture;
+    }
+
+    /**
+     * Tear down the 3D graph instance for a given slot (main / fullscreen),
+     * stopping its render loop and our auto-rotation rAF.
+     */
+    _disposeGraph3D(isFullscreen) {
+        const slot = isFullscreen ? '_fs' : '_main';
+        if (this['graph3dRotate' + slot]) {
+            this['graph3dRotate' + slot].alive = false;
+            this['graph3dRotate' + slot].active = false;
+            this['graph3dRotate' + slot] = null;
+        }
+        const g = this['graph3d' + slot];
+        if (g) {
+            try { g.pauseAnimation(); } catch (e) { /* noop */ }
+            try { if (g._destructor) g._destructor(); } catch (e) { /* noop */ }
+            this['graph3d' + slot] = null;
+        }
+    }
+
+    /**
+     * Open the memory detail modal for a clicked 3D node.
+     */
+    async handleGraph3DNodeClick(node) {
+        if (!node) return;
+        try {
+            this.showToast('Loading memory details...', 'info');
+            const memory = await this.apiCall(`/memories/${node.id}`);
+            this.showMemoryDetails(memory);
+        } catch (error) {
+            console.error('Failed to load memory:', error);
+            this.showToast('Failed to load memory details', 'error');
+        }
+    }
+
+    /**
+     * Toggle between the 3D (Orrery-style) and 2D D3 renderers, then re-render.
+     */
+    toggleGraphDimension() {
+        this.use3DGraph = !this.use3DGraph;
+        const label = document.getElementById('graphDimensionLabel');
+        if (label) label.textContent = this.use3DGraph ? '3D' : '2D';
+        if (this.currentGraphData) {
+            const container = document.getElementById('graphVisualizationContainer');
+            if (container) this.renderGraphVisualization(container, this.currentGraphData);
+        }
+    }
+
+    /**
      * Handle graph refresh button click
      */
     async handleGraphRefresh() {
@@ -6002,31 +6505,63 @@ class MemoryDashboard {
         // Clone legend from main graph
         const originalLegend = document.getElementById('graphLegend');
         legend.innerHTML = originalLegend.innerHTML;
+        legend.classList.remove('hidden');
 
-        // Show modal
+        // Show modal + populate the fullscreen filter pills
         modal.style.display = 'flex';
+        this._graphFullscreenOpen = true;
+        this._renderTypeFilterPills();
+        this._updateRotateButton();
 
-        // Get window dimensions for fullscreen
-        const width = window.innerWidth - 80;
-        const height = window.innerHeight - 180;
-
-        // Show node count
-        if (this.currentGraphData) {
-            nodeCount.textContent = `${this.currentGraphData.nodes.length} nodes, ${this.currentGraphData.edges.length} edges`;
+        // Request real OS-level fullscreen (falls back to the overlay if denied)
+        if (modal.requestFullscreen) {
+            modal.requestFullscreen().catch(() => {});
         }
 
-        // Re-render graph in fullscreen with larger dimensions
-        if (this.currentGraphData) {
-            this.renderGraphVisualizationInContainer(
-                container,
-                this.currentGraphData,
-                width,
-                height,
-                true // isFullscreen flag
-            );
+        // In OS fullscreen the browser only paints the fullscreen element's
+        // subtree, so a node click would open the memory-detail modal off-screen.
+        // Relocate #memoryModal inside the fullscreen element while open; it is
+        // restored to its original parent in exitGraphFullscreen().
+        const memModal = document.getElementById('memoryModal');
+        if (memModal) {
+            this._memoryModalHome = memModal.parentNode;
+            modal.appendChild(memModal);
         }
 
-        // Add escape key listener
+        // Size the canvas to the container (fills the screen below the header)
+        const dims = () => {
+            const c = document.getElementById('graphFullscreenContainer');
+            return {
+                w: (c && c.clientWidth) || window.innerWidth,
+                h: (c && c.clientHeight) || Math.max(200, window.innerHeight - 64)
+            };
+        };
+        const { w, h } = dims();
+
+        // Show node count (deduped, matching what is actually drawn)
+        if (this.currentGraphData) {
+            const shown = this._filterGraphData(this.currentGraphData);
+            nodeCount.textContent = `${shown.nodes.length} nodes, ${shown.edges.length} edges`;
+            this.renderGraphVisualizationInContainer(container, this.currentGraphData, w, h, true);
+        }
+
+        // Resize the live 3D instance as fullscreen settles / the window resizes
+        this._fsResizeHandler = () => {
+            const d = dims();
+            const g = this.graph3d_fs;
+            if (g) { g.width(d.w); g.height(d.h); }
+        };
+        this._fsChangeHandler = () => {
+            this._fsResizeHandler();
+            // User left OS fullscreen (Esc / gesture) -> close the overlay too
+            if (!document.fullscreenElement && this._graphFullscreenOpen) {
+                this.exitGraphFullscreen();
+            }
+        };
+        window.addEventListener('resize', this._fsResizeHandler);
+        document.addEventListener('fullscreenchange', this._fsChangeHandler);
+
+        // Escape key (for the non-OS-fullscreen fallback path)
         this.fullscreenEscapeHandler = (e) => {
             if (e.key === 'Escape') this.exitGraphFullscreen();
         };
@@ -6037,11 +6572,34 @@ class MemoryDashboard {
      * Exit fullscreen mode
      */
     exitGraphFullscreen() {
+        this._graphFullscreenOpen = false;
         const modal = document.getElementById('graphFullscreenModal');
         modal.style.display = 'none';
 
+        // Leave OS fullscreen if we're still in it
+        if (document.fullscreenElement) {
+            document.exitFullscreen().catch(() => {});
+        }
+
+        // Restore the memory-detail modal to its original parent
+        const memModal = document.getElementById('memoryModal');
+        if (memModal && this._memoryModalHome) {
+            this._memoryModalHome.appendChild(memModal);
+            this._memoryModalHome = null;
+        }
+
         // Clear container
         document.getElementById('graphFullscreenContainer').innerHTML = '';
+
+        // Remove resize / fullscreenchange handlers
+        if (this._fsResizeHandler) {
+            window.removeEventListener('resize', this._fsResizeHandler);
+            this._fsResizeHandler = null;
+        }
+        if (this._fsChangeHandler) {
+            document.removeEventListener('fullscreenchange', this._fsChangeHandler);
+            this._fsChangeHandler = null;
+        }
 
         // Remove escape listener
         if (this.fullscreenEscapeHandler) {
@@ -6054,6 +6612,9 @@ class MemoryDashboard {
             this.fullscreenSimulation.stop();
             this.fullscreenSimulation = null;
         }
+
+        // Tear down the fullscreen 3D instance, if any (Orrery-style PoC)
+        this._disposeGraph3D(true);
     }
 
     // ===== QUALITY ANALYTICS METHODS =====

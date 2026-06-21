@@ -665,8 +665,12 @@ async def test_graph_visualization_parameter_validation(test_app):
     response = test_app.get("/api/analytics/graph-visualization?limit=0")
     assert response.status_code == 422  # Validation error
 
-    # Test invalid limit (> 500)
+    # Test valid large limit (3D renderer lifted the old 500 cap to 10000)
     response = test_app.get("/api/analytics/graph-visualization?limit=1000")
+    assert response.status_code == 200
+
+    # Test invalid limit (> 10000)
+    response = test_app.get("/api/analytics/graph-visualization?limit=10001")
     assert response.status_code == 422
 
     # Test invalid min_connections (< 1)
