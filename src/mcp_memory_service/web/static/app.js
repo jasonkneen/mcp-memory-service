@@ -661,9 +661,9 @@ class MemoryDashboard {
         document.getElementById('graphMinConnectionsSelect')?.addEventListener('change', this.handleGraphRefresh.bind(this));
         document.getElementById('graphDimensionBtn')?.addEventListener('click', this.toggleGraphDimension.bind(this));
         document.getElementById('graphRotateBtn')?.addEventListener('click', this.toggleGraphRotation.bind(this));
-        document.querySelectorAll('#graphTypeFilterBar .graph-type-filter').forEach(btn => {
-            btn.addEventListener('click', () => this.toggleGraphTypeFilter(btn.dataset.type, btn));
-        });
+        document.getElementById('graphFullscreenRotateBtn')?.addEventListener('click', this.toggleGraphRotation.bind(this));
+        document.getElementById('graphFullscreenLegendBtn')?.addEventListener('click', this.toggleGraphLegend.bind(this));
+        // Type-filter pills are generated dynamically from the data; see _renderTypeFilterPills()
         document.getElementById('graphFullscreenBtn')?.addEventListener('click', this.enterGraphFullscreen.bind(this));
         document.getElementById('graphExitFullscreenBtn')?.addEventListener('click', this.exitGraphFullscreen.bind(this));
 
@@ -5716,6 +5716,11 @@ class MemoryDashboard {
             // Store data for fullscreen use
             this.currentGraphData = data;
 
+            // Build the type->color map from the actual data and (re)render the
+            // filter pills so every present type is filterable (no orphan "other").
+            this._buildGraphTypeColors(data.nodes);
+            this._renderTypeFilterPills();
+
             this.renderGraphVisualization(container, data);
         } catch (error) {
             console.error('Failed to load graph visualization:', error);
@@ -5779,14 +5784,8 @@ class MemoryDashboard {
             });
         svg.call(zoom);
 
-        // Color mapping for memory types
-        const nodeColors = {
-            'observation': '#4A90E2',
-            'decision': '#E24A4A',
-            'learning': '#50C878',
-            'error': '#F39C12',
-            'untyped': '#9B59B6'
-        };
+        // Color mapping for memory types (dynamic, shared with pills/legend)
+        const nodeColors = this.graphTypeColors || { 'untyped': '#9B59B6' };
 
         // Color mapping for relationship types
         const edgeColors = {
@@ -5935,14 +5934,10 @@ class MemoryDashboard {
         // Reset container (removes loading spinner / previous canvas)
         container.innerHTML = '';
 
-        // Color maps mirror the 2D renderer for visual consistency
-        const nodeColors = {
-            'observation': '#4A90E2',
-            'decision': '#E24A4A',
-            'learning': '#50C878',
-            'error': '#F39C12',
-            'untyped': '#9B59B6'
-        };
+        // Color maps mirror the 2D renderer for visual consistency.
+        // nodeColors is built dynamically from the data (see _buildGraphTypeColors)
+        // so every memory type present gets a distinct, filterable color.
+        const nodeColors = this.graphTypeColors || { 'untyped': '#9B59B6' };
         const edgeColors = {
             'causes': '#E74C3C',
             'fixes': '#27AE60',
@@ -5988,10 +5983,11 @@ class MemoryDashboard {
                 if (highlightNode && !neighbors.get(highlightNode.id)?.has(d.id)) {
                     return '#222a3a'; // dimmed
                 }
-                return nodeColors[d.type] || nodeColors['untyped'];
+                return nodeColors[d.type || 'untyped'] || '#9B59B6';
             })
             .linkColor(d => edgeColors[d.relationship_type] || edgeColors['related'])
             .linkOpacity(0.35)
+            .linkCurvature(0.25)
             .linkWidth(d => {
                 if (!highlightNode) return 0.6;
                 const hit = linkEndId(d.source) === highlightNode.id || linkEndId(d.target) === highlightNode.id;
@@ -6092,16 +6088,83 @@ class MemoryDashboard {
     /**
      * Toggle visibility of a memory type (filter bar button).
      */
-    toggleGraphTypeFilter(type, btn) {
+    toggleGraphTypeFilter(type) {
         if (!this.hiddenGraphTypes) this.hiddenGraphTypes = new Set();
-        if (this.hiddenGraphTypes.has(type)) {
-            this.hiddenGraphTypes.delete(type);
-            btn.classList.add('active');
-        } else {
-            this.hiddenGraphTypes.add(type);
-            btn.classList.remove('active');
-        }
+        if (this.hiddenGraphTypes.has(type)) this.hiddenGraphTypes.delete(type);
+        else this.hiddenGraphTypes.add(type);
+        this._syncTypeFilterButtons();
         this.applyGraphTypeFilter();
+    }
+
+    /**
+     * Build a stable type -> color map from the data. The five canonical types
+     * keep their fixed colors; any other type present (note, configuration,
+     * reference, ...) gets a distinct color from a fallback palette so it is
+     * both visible and filterable. Ordered by frequency for nicer pills.
+     */
+    _buildGraphTypeColors(nodes) {
+        const canonical = {
+            observation: '#4A90E2', decision: '#E24A4A', learning: '#50C878',
+            error: '#F39C12', untyped: '#9B59B6'
+        };
+        const palette = [
+            '#16A085', '#E84393', '#0984E3', '#00B894', '#E17055', '#6C5CE7',
+            '#D63031', '#00CEC9', '#FDCB6E', '#636E72', '#A29BFE', '#55EFC4'
+        ];
+        const counts = new Map();
+        (nodes || []).forEach(n => {
+            const t = n.type || 'untyped';
+            counts.set(t, (counts.get(t) || 0) + 1);
+        });
+        const ordered = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(e => e[0]);
+        const map = {};
+        let p = 0;
+        ordered.forEach(t => { map[t] = canonical[t] || palette[p++ % palette.length]; });
+        if (!map['untyped']) map['untyped'] = canonical.untyped;
+        this.graphTypeColors = map;
+    }
+
+    /**
+     * (Re)render the type filter pills into the main + fullscreen bars from the
+     * current type->color map. Pills reflect the active hidden set.
+     */
+    _renderTypeFilterPills() {
+        const types = Object.keys(this.graphTypeColors || {});
+        if (!this.hiddenGraphTypes) this.hiddenGraphTypes = new Set();
+        const build = (container) => {
+            if (!container) return;
+            container.innerHTML = '';
+            types.forEach(t => {
+                const btn = document.createElement('button');
+                btn.className = 'graph-type-filter' + (this.hiddenGraphTypes.has(t) ? '' : ' active');
+                btn.dataset.type = t;
+                const dot = document.createElement('span');
+                dot.className = 'legend-color';
+                dot.style.background = this.graphTypeColors[t];
+                btn.appendChild(dot);
+                btn.appendChild(document.createTextNode(' ' + t));
+                btn.addEventListener('click', () => this.toggleGraphTypeFilter(t));
+                container.appendChild(btn);
+            });
+        };
+        build(document.getElementById('graphTypeFilterBar'));
+        build(document.getElementById('graphFullscreenFilterBar'));
+    }
+
+    /**
+     * Keep every pill's active state in sync with the hidden set (both bars).
+     */
+    _syncTypeFilterButtons() {
+        document.querySelectorAll('#graphTypeFilterBar .graph-type-filter, #graphFullscreenFilterBar .graph-type-filter')
+            .forEach(b => b.classList.toggle('active', !this.hiddenGraphTypes.has(b.dataset.type)));
+    }
+
+    /**
+     * Show / hide the fullscreen legend overlay.
+     */
+    toggleGraphLegend() {
+        const legend = document.getElementById('graphFullscreenLegend');
+        if (legend) legend.classList.toggle('hidden');
     }
 
     /**
@@ -6117,8 +6180,11 @@ class MemoryDashboard {
     }
 
     _updateRotateButton() {
-        const label = document.getElementById('graphRotateLabel');
-        if (label) label.textContent = this.graphRotationPaused ? 'Play' : 'Pause';
+        const text = this.graphRotationPaused ? 'Play' : 'Pause';
+        ['graphRotateLabel', 'graphFullscreenRotateLabel'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = text;
+        });
     }
 
     /**
@@ -6333,31 +6399,52 @@ class MemoryDashboard {
         // Clone legend from main graph
         const originalLegend = document.getElementById('graphLegend');
         legend.innerHTML = originalLegend.innerHTML;
+        legend.classList.remove('hidden');
 
-        // Show modal
+        // Show modal + populate the fullscreen filter pills
         modal.style.display = 'flex';
+        this._graphFullscreenOpen = true;
+        this._renderTypeFilterPills();
+        this._updateRotateButton();
 
-        // Get window dimensions for fullscreen
-        const width = window.innerWidth - 80;
-        const height = window.innerHeight - 180;
+        // Request real OS-level fullscreen (falls back to the overlay if denied)
+        if (modal.requestFullscreen) {
+            modal.requestFullscreen().catch(() => {});
+        }
+
+        // Size the canvas to the container (fills the screen below the header)
+        const dims = () => {
+            const c = document.getElementById('graphFullscreenContainer');
+            return {
+                w: (c && c.clientWidth) || window.innerWidth,
+                h: (c && c.clientHeight) || Math.max(200, window.innerHeight - 64)
+            };
+        };
+        const { w, h } = dims();
 
         // Show node count
         if (this.currentGraphData) {
             nodeCount.textContent = `${this.currentGraphData.nodes.length} nodes, ${this.currentGraphData.edges.length} edges`;
+            this.renderGraphVisualizationInContainer(container, this.currentGraphData, w, h, true);
         }
 
-        // Re-render graph in fullscreen with larger dimensions
-        if (this.currentGraphData) {
-            this.renderGraphVisualizationInContainer(
-                container,
-                this.currentGraphData,
-                width,
-                height,
-                true // isFullscreen flag
-            );
-        }
+        // Resize the live 3D instance as fullscreen settles / the window resizes
+        this._fsResizeHandler = () => {
+            const d = dims();
+            const g = this.graph3d_fs;
+            if (g) { g.width(d.w); g.height(d.h); }
+        };
+        this._fsChangeHandler = () => {
+            this._fsResizeHandler();
+            // User left OS fullscreen (Esc / gesture) -> close the overlay too
+            if (!document.fullscreenElement && this._graphFullscreenOpen) {
+                this.exitGraphFullscreen();
+            }
+        };
+        window.addEventListener('resize', this._fsResizeHandler);
+        document.addEventListener('fullscreenchange', this._fsChangeHandler);
 
-        // Add escape key listener
+        // Escape key (for the non-OS-fullscreen fallback path)
         this.fullscreenEscapeHandler = (e) => {
             if (e.key === 'Escape') this.exitGraphFullscreen();
         };
@@ -6368,11 +6455,27 @@ class MemoryDashboard {
      * Exit fullscreen mode
      */
     exitGraphFullscreen() {
+        this._graphFullscreenOpen = false;
         const modal = document.getElementById('graphFullscreenModal');
         modal.style.display = 'none';
 
+        // Leave OS fullscreen if we're still in it
+        if (document.fullscreenElement) {
+            document.exitFullscreen().catch(() => {});
+        }
+
         // Clear container
         document.getElementById('graphFullscreenContainer').innerHTML = '';
+
+        // Remove resize / fullscreenchange handlers
+        if (this._fsResizeHandler) {
+            window.removeEventListener('resize', this._fsResizeHandler);
+            this._fsResizeHandler = null;
+        }
+        if (this._fsChangeHandler) {
+            document.removeEventListener('fullscreenchange', this._fsChangeHandler);
+            this._fsChangeHandler = null;
+        }
 
         // Remove escape listener
         if (this.fullscreenEscapeHandler) {

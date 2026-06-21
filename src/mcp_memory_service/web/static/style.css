@@ -4927,35 +4927,94 @@ body.dark-mode .quality-tier-low,
 .graph-filter-bar {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0.6rem 0;
+}
+
+.graph-filter-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-muted, var(--text));
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.graph-type-pills {
+    display: flex;
+    flex-wrap: wrap;
     gap: 0.4rem;
-    margin: 0.5rem 0;
 }
 
 .graph-type-filter {
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
-    padding: 0.25rem 0.6rem;
+    gap: 0.45rem;
+    padding: 0.35rem 0.7rem;
     font-size: 0.8rem;
-    border: 1px solid var(--border);
+    font-weight: 600;
+    text-transform: capitalize;
+    border: 1.5px solid var(--border);
     border-radius: 999px;
     background: var(--surface-alt);
     color: var(--text);
     cursor: pointer;
-    opacity: 0.45;
-    transition: opacity 0.15s ease, border-color 0.15s ease;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+    transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease, filter 0.15s ease;
+}
+
+.graph-type-filter:hover {
+    border-color: var(--accent, #4A90E2);
+    filter: brightness(1.1);
+}
+
+/* Inactive (filtered out): clearly toggled-off but still legible as a button */
+.graph-type-filter:not(.active) {
+    opacity: 0.5;
+    text-decoration: line-through;
+    filter: grayscale(0.6);
 }
 
 .graph-type-filter.active {
-    opacity: 1;
     border-color: var(--accent, #4A90E2);
 }
 
 .graph-type-filter .legend-color {
-    width: 10px;
-    height: 10px;
+    width: 11px;
+    height: 11px;
     border-radius: 50%;
     display: inline-block;
+    box-shadow: 0 0 4px rgba(255, 255, 255, 0.3);
+}
+
+/* Fullscreen filter pills: floating, top-left overlay */
+.graph-fullscreen-filters {
+    position: absolute;
+    top: 64px;
+    left: 16px;
+    z-index: 5;
+    max-width: 70vw;
+}
+
+/* Fullscreen legend: unobtrusive overlay, toggleable */
+.graph-legend-overlay {
+    position: absolute;
+    bottom: 16px;
+    right: 16px;
+    z-index: 5;
+    margin: 0;
+    max-width: 280px;
+    max-height: 50vh;
+    overflow: auto;
+    background: rgba(10, 12, 20, 0.72);
+    backdrop-filter: blur(6px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    font-size: 0.78rem;
+    opacity: 0.9;
+}
+
+.graph-legend-overlay.hidden {
+    display: none;
 }
 
 .graph-container {
@@ -5219,6 +5278,18 @@ body.dark-mode .quality-tier-low,
     display: flex;
     flex-direction: column;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+/* True OS fullscreen: fill the entire screen edge-to-edge */
+#graphFullscreenModal:fullscreen .graph-fullscreen-content,
+#graphFullscreenModal:-webkit-full-screen .graph-fullscreen-content {
+    width: 100%;
+    height: 100%;
+    border-radius: 0;
+}
+#graphFullscreenModal:fullscreen,
+#graphFullscreenModal:-webkit-full-screen {
+    background: #01010a;
 }
 
 .graph-fullscreen-header {
