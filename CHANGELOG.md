@@ -10,6 +10,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [11.3.1] - 2026-06-22
+
+PATCH release: claude-hooks noise reduction - auto-capture moved to Stop event and gated on substantive content.
+
+### Fixed
+- Auto-capture now fires once per turn at the Stop event instead of on every PostToolUse call, eliminating duplicate low-value memory entries per turn.
+- Word-boundary anchors added to trigger regex patterns so substrings of ordinary words (e.g. "error" inside "errored") no longer produce false-positive captures.
+- Session-end consolidation (`session-end.js`) now gates on `isSessionMeaningful()`: sessions that only match generic topic/next-step keywords but contain no real decisions, insights, or code changes are skipped, preventing floods of 0.0-quality "Session Summary" memories.
+
 ## [11.3.0] - 2026-06-21
 
 ### Added
