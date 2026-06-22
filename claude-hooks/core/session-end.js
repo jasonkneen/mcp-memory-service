@@ -210,6 +210,27 @@ function analyzeConversation(conversationData) {
 }
 
 /**
+ * Decide whether an analyzed session is substantive enough to store.
+ *
+ * Topics and next-steps are keyword-matched on generic vocabulary
+ * ("debugging", "testing", "should", "will") and fire on almost any
+ * conversation, so they are NOT counted as evidence. Only decisions,
+ * insights, and code changes indicate a session worth remembering.
+ * This prevents trivial sessions from producing generic "Session Summary"
+ * memories that score 0.0 on quality.
+ *
+ * The #remember override (forceRemember) bypasses the gate.
+ */
+function isSessionMeaningful(analysis, { forceRemember = false } = {}) {
+    if (forceRemember) return true;
+    if (!analysis) return false;
+    const substantive = (analysis.decisions?.length || 0)
+        + (analysis.insights?.length || 0)
+        + (analysis.codeChanges?.length || 0);
+    return substantive > 0;
+}
+
+/**
  * Trigger quality evaluation for a stored memory (async, non-blocking)
  * This calls the backend's quality scoring system to pre-score the memory
  */
@@ -384,9 +405,11 @@ async function onSessionEnd(context) {
         // Analyze conversation
         const analysis = analyzeConversation(context.conversation);
 
-        // Bypass confidence check with #remember
-        if (!overrides.forceRemember && analysis.confidence < 0.1) {
-            console.log('[Memory Hook] Session analysis confidence too low, skipping consolidation');
+        // Only store sessions with real substance (decisions/insights/code
+        // changes). Topic- or next-step-only sessions are generic noise.
+        // #remember bypasses this gate.
+        if (!isSessionMeaningful(analysis, { forceRemember: overrides.forceRemember })) {
+            console.log('[Memory Hook] Session not substantive (no decisions/insights/code changes), skipping consolidation');
             return;
         }
         
@@ -453,7 +476,8 @@ module.exports = {
     // Exported for testing
     _internal: {
         parseTranscript: null,  // Will be set after function definition
-        analyzeConversation
+        analyzeConversation,
+        isSessionMeaningful
     }
 };
 
