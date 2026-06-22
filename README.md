@@ -564,19 +564,19 @@ The `:quality-cpu` image pre-exports both models at build time and ships only `o
 ---
 
 
-## Latest Release: **v11.3.0** (June 21, 2026)
+## Latest Release: **v11.3.1** (June 22, 2026)
 
-**MINOR: Interactive 3D knowledge graph visualization (Orrery-inspired)**
+**PATCH: claude-hooks noise reduction - auto-capture moved to Stop event and gated on substantive content**
 
-**What's New:**
-- Interactive 3D knowledge-graph visualization in the dashboard Analytics view, rendered as a rotating 3D galaxy via 3d-force-graph (three.js). Soft glowing nodes, UnrealBloomPass bloom, starfield backdrop, curved edges, hover highlight, and click-to-open memory detail modal (PR #94)
-- Dynamic per-memory-type colour filter pills, pause/resume auto-rotation, and true OS fullscreen (Fullscreen API) with in-view controls
-- Node cap lifted: /analytics/graph-visualization default 100→1000, max 500→10000
-- Legacy 2D D3 SVG renderer retained as automatic fallback and via 2D/3D toggle
+**What's Fixed:**
+- Auto-capture now fires once per turn at the Stop event instead of on every PostToolUse call, eliminating duplicate low-value memory entries per turn
+- Word-boundary anchors in trigger regex prevent false-positive captures from substrings (e.g. "error" inside "errored")
+- Session-end consolidation gated on `isSessionMeaningful()` - trivial sessions with only generic keyword matches no longer produce 0.0-quality "Session Summary" memories
 
 ---
 
 **Previous Releases**:
+- **v11.3.0** - MINOR: Interactive 3D knowledge graph visualization (Orrery-inspired), node cap 100→1000/max 500→10000 (June 21, 2026)
 - **v11.2.0** - MINOR: OAuth security hardening (#91), sqlite-vec rowid collision fix (#90), composite graph scoring (#55/#77, @filhocf), OpenCode XDG state dir fix (#84) (June 20, 2026)
 - **v11.1.0** - MINOR: two-phase query API aggregation + maintenance script hardening (PR #78, @filhocf) (June 18, 2026)
 - **v11.0.0** - MAJOR: legacy tool-name alias removal + optional ML dependencies / ONNX-first fallback (PR #72, #49, #71) (June 13, 2026)
