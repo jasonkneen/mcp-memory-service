@@ -10,6 +10,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [11.3.2] - 2026-06-30
+
+### Fixed
+- Declare `numpy>=1.24.0` as a core dependency — bare install via `uvx` crashed with `No module named 'numpy'` after the v11 optional-ML refactor dropped the implicit transitive numpy dep from torch (closes #98)
+
 ## [11.3.1] - 2026-06-22
 
 PATCH release: claude-hooks noise reduction - auto-capture moved to Stop event and gated on substantive content.

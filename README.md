@@ -564,18 +564,17 @@ The `:quality-cpu` image pre-exports both models at build time and ships only `o
 ---
 
 
-## Latest Release: **v11.3.1** (June 22, 2026)
+## Latest Release: **v11.3.2** (June 30, 2026)
 
-**PATCH: claude-hooks noise reduction - auto-capture moved to Stop event and gated on substantive content**
+**PATCH: declare numpy>=1.24.0 as core dependency — fixes uvx bare install crash**
 
 **What's Fixed:**
-- Auto-capture now fires once per turn at the Stop event instead of on every PostToolUse call, eliminating duplicate low-value memory entries per turn
-- Word-boundary anchors in trigger regex prevent false-positive captures from substrings (e.g. "error" inside "errored")
-- Session-end consolidation gated on `isSessionMeaningful()` - trivial sessions with only generic keyword matches no longer produce 0.0-quality "Session Summary" memories
+- `numpy>=1.24.0` is now declared as a core dependency. Bare `uvx --from mcp-memory-service memory launch` crashed with `No module named 'numpy'` after the v11 optional-ML refactor dropped the implicit transitive numpy dep from torch. numpy is imported at module level by consolidation, embeddings, and quality subpackages, so it must be a direct dep (closes #98).
 
 ---
 
 **Previous Releases**:
+- **v11.3.1** - PATCH: claude-hooks noise reduction - auto-capture moved to Stop event and gated on substantive content (June 22, 2026)
 - **v11.3.0** - MINOR: Interactive 3D knowledge graph visualization (Orrery-inspired), node cap 100→1000/max 500→10000 (June 21, 2026)
 - **v11.2.0** - MINOR: OAuth security hardening (#91), sqlite-vec rowid collision fix (#90), composite graph scoring (#55/#77, @filhocf), OpenCode XDG state dir fix (#84) (June 20, 2026)
 - **v11.1.0** - MINOR: two-phase query API aggregation + maintenance script hardening (PR #78, @filhocf) (June 18, 2026)
