@@ -221,12 +221,39 @@ def _kill_process(pid: int) -> bool:
 
 # ─── Health check ─────────────────────────────────────────────────────────────
 
+def _is_https_enabled() -> bool:
+    """Return True if MCP_HTTPS_ENABLED is set in env or the project .env file."""
+    if os.environ.get("MCP_HTTPS_ENABLED", "").lower() in ("1", "true", "yes"):
+        return True
+    # Fall back to reading the .env file in cwd (dev workflow)
+    env_path = Path(".env")
+    if env_path.exists():
+        try:
+            for line in env_path.read_text().splitlines():
+                line = line.strip()
+                if line.startswith("MCP_HTTPS_ENABLED"):
+                    _, _, val = line.partition("=")
+                    return val.strip().lower() in ("1", "true", "yes")
+        except Exception:
+            pass
+    return False
+
+
+def _base_url(host: str, port: int) -> str:
+    scheme = "https" if _is_https_enabled() else "http"
+    return f"{scheme}://{host}:{port}"
+
+
 def _http_get_json(url: str, timeout: int = 3) -> dict | None:
     """GET a JSON endpoint, return parsed dict or None on failure."""
     try:
+        import ssl
         import urllib.request
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
         req = urllib.request.Request(url, headers={"Accept": "application/json"})
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
             return json.loads(resp.read().decode())
     except Exception:
         return None
@@ -281,7 +308,7 @@ def launch(ctx, http_host, http_port, detach, storage_backend, debug):
     # Resolve host and port
     host = http_host or os.environ.get("MCP_HTTP_HOST", "127.0.0.1")
     port = http_port or int(os.environ.get("MCP_HTTP_PORT", "8000"))
-    base_url = f"http://{host}:{port}"
+    base_url = _base_url(host, port)
 
     # Apply env overrides
     os.environ["MCP_HTTP_HOST"] = host
@@ -428,7 +455,7 @@ def stop(http_host, http_port):
         time.sleep(0.5)
         click.echo("Server stopped.")
     else:
-        base_url = f"http://{host}:{port}"
+        base_url = _base_url(host, port)
         health = _http_get_json(f"{base_url}/api/health")
         if health:
             click.echo("Server responds but no managed PID found. Force-stopping by port...")
@@ -459,7 +486,7 @@ def restart(ctx, http_host, http_port, storage_backend, debug):
     """
     host = http_host or os.environ.get("MCP_HTTP_HOST", "127.0.0.1")
     port = http_port or int(os.environ.get("MCP_HTTP_PORT", "8000"))
-    base_url = f"http://{host}:{port}"
+    base_url = _base_url(host, port)
     
     # If storage_backend not specified, try to read it from the running server
     if storage_backend is None:
@@ -484,7 +511,7 @@ def status(http_host, http_port):
     """Show server status (running/stopped, PID, backend info)."""
     host = http_host or os.environ.get("MCP_HTTP_HOST", "127.0.0.1")
     port = http_port or int(os.environ.get("MCP_HTTP_PORT", "8000"))
-    base_url = f"http://{host}:{port}"
+    base_url = _base_url(host, port)
 
     pid = _read_pid()
     health = _http_get_json(f"{base_url}/api/health")
@@ -525,7 +552,7 @@ def health_cmd(http_host, http_port):
     """Check if the memory server HTTP API is reachable (detailed)."""
     host = http_host or os.environ.get("MCP_HTTP_HOST", "127.0.0.1")
     port = http_port or int(os.environ.get("MCP_HTTP_PORT", "8000"))
-    base_url = f"http://{host}:{port}"
+    base_url = _base_url(host, port)
 
     health = _http_get_json(f"{base_url}/api/health")
     if health:
