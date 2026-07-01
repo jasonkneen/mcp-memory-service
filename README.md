@@ -564,16 +564,17 @@ The `:quality-cpu` image pre-exports both models at build time and ships only `o
 ---
 
 
-## Latest Release: **v11.3.2** (June 30, 2026)
+## Latest Release: **v11.3.3** (July 1, 2026)
 
-**PATCH: declare numpy>=1.24.0 as core dependency — fixes uvx bare install crash**
+**PATCH: fix(cli): memory CLI commands respect MCP_HTTPS_ENABLED**
 
 **What's Fixed:**
-- `numpy>=1.24.0` is now declared as a core dependency. Bare `uvx --from mcp-memory-service memory launch` crashed with `No module named 'numpy'` after the v11 optional-ML refactor dropped the implicit transitive numpy dep from torch. numpy is imported at module level by consolidation, embeddings, and quality subpackages, so it must be a direct dep (closes #98).
+- `memory health/info/status` commands now respect `MCP_HTTPS_ENABLED` — previously hardcoded `http://` caused silent failures when the server runs with TLS enabled. `_is_https_enabled()` reads the env var or `.env` file; `_base_url()` returns the correct scheme; `_http_get_json` skips cert verification for self-signed certs.
 
 ---
 
 **Previous Releases**:
+- **v11.3.2** - PATCH: declare numpy>=1.24.0 as core dependency (fixes uvx bare install crash, closes #98) (June 30, 2026)
 - **v11.3.1** - PATCH: claude-hooks noise reduction - auto-capture moved to Stop event and gated on substantive content (June 22, 2026)
 - **v11.3.0** - MINOR: Interactive 3D knowledge graph visualization (Orrery-inspired), node cap 100→1000/max 500→10000 (June 21, 2026)
 - **v11.2.0** - MINOR: OAuth security hardening (#91), sqlite-vec rowid collision fix (#90), composite graph scoring (#55/#77, @filhocf), OpenCode XDG state dir fix (#84) (June 20, 2026)

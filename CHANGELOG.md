@@ -10,6 +10,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [11.3.3] - 2026-07-01
+
+### Fixed
+- fix(cli): `memory health/info/status` commands now respect `MCP_HTTPS_ENABLED` -- previously hardcoded `http://` caused silent failures when the server runs with TLS enabled. `_is_https_enabled()` reads the env var or `.env` file; `_base_url()` returns the correct scheme; `_http_get_json` skips cert verification for self-signed certs.
+
 ## [11.3.2] - 2026-06-30
 
 ### Fixed
