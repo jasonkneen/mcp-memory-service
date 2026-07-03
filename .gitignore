@@ -242,3 +242,7 @@ opencode/memory-status-tui.js
 
 # OpenCode session exports
 session-ses_*.md
+scripts/demo/DEMO_CHEATSHEET.md
+scripts/demo/DEMO_ENVIRONMENT.md
+scripts/demo/RUNBOOK.md
+.env.prod-backup
