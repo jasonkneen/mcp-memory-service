@@ -559,12 +559,15 @@ async def handle_memory_consolidate(server, arguments: dict) -> List[types.TextC
             tags = arguments.get("tags", [])
             memory_type = arguments.get("memory_type")
 
-            # Verify all hashes exist
+            # Verify all hashes exist and collect source data
             missing = []
+            sources = []
             for h in content_hashes:
                 existing = await server.storage.get_by_hash(h)
                 if existing is None:
                     missing.append(h)
+                else:
+                    sources.append(existing)
 
             if missing:
                 return [
@@ -573,6 +576,21 @@ async def handle_memory_consolidate(server, arguments: dict) -> List[types.TextC
                         text=f"Error: memories not found: {', '.join(missing)}",
                     )
                 ]
+
+            # Tag union: default to union of source tags when not explicitly provided
+            if not tags:
+                all_tags = set()
+                for src in sources:
+                    src_tags = getattr(src, "tags", [])
+                    if isinstance(src_tags, str):
+                        src_tags = [t.strip() for t in src_tags.split(",") if t.strip()]
+                    if isinstance(src_tags, list):
+                        all_tags.update(src_tags)
+                tags = sorted(all_tags)
+
+            # memory_type inheritance: default to first source's type when not specified
+            if not memory_type and sources:
+                memory_type = getattr(sources[0], "memory_type", None)
 
             from mcp_memory_service.models.memory import Memory
             from mcp_memory_service.utils.hashing import generate_content_hash
@@ -609,7 +627,7 @@ async def handle_memory_consolidate(server, arguments: dict) -> List[types.TextC
                     failed.append(h)
 
             result = {
-                "ok": True,
+                "ok": len(failed) == 0,
                 "content_hash": result_hash,
                 "merged": content_hashes,
                 "deleted": deleted,

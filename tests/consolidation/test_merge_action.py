@@ -278,7 +278,7 @@ class TestMergeAction:
         result = await handle_memory_consolidate(mock_server, arguments)
         payload = _parse_result(result)
 
-        assert payload["ok"] is True
+        assert payload["ok"] is False
         assert payload["content_hash"] == "new_hash_merged"
         assert "hash_alpha" in payload["deleted"]
         assert "hash_beta" in payload.get("failed", []) or "hash_beta" in (payload.get("failed") or [])
@@ -308,8 +308,8 @@ class TestMergeAction:
 
     @pytest.mark.asyncio
     async def test_merge_without_optional_metadata(self, mock_server):
-        """Omitting tags and memory_type must produce a Memory with empty tags
-        and None memory_type."""
+        """Omitting tags and memory_type must inherit from sources:
+        tags = union of source tags, memory_type = first source's type."""
         arguments = {
             "action": "merge",
             "content_hashes": ["hash_alpha", "hash_beta"],
@@ -325,5 +325,7 @@ class TestMergeAction:
         _call = mock_server.storage.store.await_args
         assert _call is not None
         memory_arg = _call[0][0]
-        assert memory_arg.tags == ["untagged"]
-        assert memory_arg.memory_type is None
+        # Tag union from sources: ["tag-a"] + ["tag-b"] = sorted ["tag-a", "tag-b"]
+        assert memory_arg.tags == ["tag-a", "tag-b"]
+        # memory_type inherited from first source
+        assert memory_arg.memory_type == "observation"

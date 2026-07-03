@@ -669,11 +669,11 @@ Examples:
                 "tags": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Optional tags for the merged memory",
+                    "description": "Tags for the merged memory (default: union of source tags)",
                 },
                 "memory_type": {
                     "type": "string",
-                    "description": "Optional memory type for the merged memory",
+                    "description": "Memory type for the merged memory (default: inherited from first source)",
                 },
             },
             "required": ["action"],
