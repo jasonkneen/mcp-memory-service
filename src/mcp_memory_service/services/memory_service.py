@@ -765,7 +765,9 @@ class MemoryService:
             if not graph:
                 return
 
-            extractor = EntityExtractor()
+            extractor = EntityExtractor(
+                domain_extractors=EntityExtractor.get_domain_extractors()
+            )
             entities = extractor.extract_entities(memory.content, memory.metadata)
             if not entities:
                 return

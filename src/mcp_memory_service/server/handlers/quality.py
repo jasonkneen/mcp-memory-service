@@ -518,7 +518,9 @@ async def handle_maintain(server, arguments: dict) -> List[types.TextContent]:
         from mcp_memory_service.reasoning.entities import EntityExtractor
         from .graph import get_graph_storage
 
-        extractor = EntityExtractor()
+        extractor = EntityExtractor(
+            domain_extractors=EntityExtractor.get_domain_extractors()
+        )
         total_entities = 0
         linked = 0
 
