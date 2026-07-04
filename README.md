@@ -564,16 +564,19 @@ The `:quality-cpu` image pre-exports both models at build time and ships only `o
 ---
 
 
-## Latest Release: **v11.3.3** (July 1, 2026)
+## Latest Release: **v11.4.0** (July 4, 2026)
 
-**PATCH: fix(cli): memory CLI commands respect MCP_HTTPS_ENABLED**
+**MINOR: memory merge action + pluggable domain NER extractors + mcpmemory.services landing page**
 
-**What's Fixed:**
-- `memory health/info/status` commands now respect `MCP_HTTPS_ENABLED` — previously hardcoded `http://` caused silent failures when the server runs with TLS enabled. `_is_https_enabled()` reads the env var or `.env` file; `_base_url()` returns the correct scheme; `_http_get_json` skips cert verification for self-signed certs.
+**What's New:**
+- `memory_consolidate` gains a `merge` action (#100, PR #105, @filhocf): merge N source memories into one, with tag union, memory_type inheritance, store-first/delete-after safety, and honest partial-failure reporting.
+- Pluggable domain-specific entity extractors (#54, PR #107, @filhocf): implement the `DomainExtractor` protocol and register via `MCP_ENTITY_EXTRACTOR_MODULES` — medical, legal, technical NER alongside the built-in patterns. See `docs/DOMAIN_EXTRACTORS.md`.
+- mcpmemory.services landing page (PR #106) with galaxy hero video and a fully client-side in-browser demo (sqlite-vec WASM + transformers.js).
 
 ---
 
 **Previous Releases**:
+- **v11.3.3** - PATCH: fix(cli): memory CLI commands respect MCP_HTTPS_ENABLED (fixes silent failures when TLS is enabled) (July 1, 2026)
 - **v11.3.2** - PATCH: declare numpy>=1.24.0 as core dependency (fixes uvx bare install crash, closes #98) (June 30, 2026)
 - **v11.3.1** - PATCH: claude-hooks noise reduction - auto-capture moved to Stop event and gated on substantive content (June 22, 2026)
 - **v11.3.0** - MINOR: Interactive 3D knowledge graph visualization (Orrery-inspired), node cap 100→1000/max 500→10000 (June 21, 2026)
