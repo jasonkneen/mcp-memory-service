@@ -140,7 +140,9 @@ async def handle_memory_graph(server, arguments: dict) -> List[types.TextContent
             if not mem:
                 return [types.TextContent(type="text", text=f"Memory {hash_val} not found")]
 
-            extractor = EntityExtractor()
+            extractor = EntityExtractor(
+                domain_extractors=EntityExtractor.get_domain_extractors()
+            )
             content = mem.get("content", "")
             metadata = mem.get("metadata", {})
             entities = extractor.extract_entities(content, metadata)

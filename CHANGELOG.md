@@ -10,6 +10,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [11.4.0] - 2026-07-04
+
+MINOR release: memory merge action, pluggable domain NER extractors, mcpmemory.services landing page. Special thanks to @filhocf for both feature contributions.
+
+### Added
+
+- feat(consolidate): `merge` action for the `memory_consolidate` tool (#100, PR #105, @filhocf). Merges N source memories into a single memory with store-first/delete-after ordering and per-delete result checking. When not explicitly provided, `tags` default to the sorted union of all source tags and `memory_type` is inherited from the first source. The response's `ok` flag is `true` only when every source deletion succeeded (`len(failed) == 0`), so partial failures are reported correctly. 11 tests including failure paths.
+- feat(ner): pluggable domain-specific entity extractors (#54, PR #107, @filhocf). New `DomainExtractor` protocol in `reasoning/entities.py`; register implementations via the `MCP_ENTITY_EXTRACTOR_MODULES` env var (`module.path:ClassName`, comma-separated). Extractors are lazily loaded once and cached, failures are isolated per extractor (built-in extraction never breaks), and domain entities are deduplicated against built-in ones. Wired into the graph handler, the quality maintain cycle, and the memory store path. See `docs/DOMAIN_EXTRACTORS.md`.
+- feat(site): mcpmemory.services landing page (PR #106) — galaxy hero video rendered from 3,134 connected memories, blog tutorial, and an in-browser semantic memory demo running entirely client-side (sqlite-vec WASM + transformers.js embeddings).
+- feat(demo): AI Tinkerers Zürich demo scripts (local-agent, concurrency, standalone).
+
 ## [11.3.3] - 2026-07-01
 
 ### Fixed
