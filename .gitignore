@@ -246,3 +246,8 @@ scripts/demo/DEMO_CHEATSHEET.md
 scripts/demo/DEMO_ENVIRONMENT.md
 scripts/demo/RUNBOOK.md
 .env.prod-backup
+
+# wrangler artifacts (written to cwd when deploying site/ from repo root)
+node-compile-cache/
+update-check/
+.wrangler/

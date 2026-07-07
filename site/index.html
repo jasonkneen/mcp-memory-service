@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Memory for AI Agents — REST, MCP, OAuth, CLI · mcp-memory-service v11.3.0</title>
+<title>Memory for AI Agents — REST, MCP, OAuth, CLI · mcp-memory-service v11.4.0</title>
 <meta name="description" content="Memory layer for AI agents. REST API + MCP + OAuth + CLI + dashboard — one self-hosted service, every transport. 14+ client integrations, knowledge graph, automatic consolidation. LongMemEval R@5 86%, session ingestion, zero cloud cost.">
-<meta property="og:title" content="MCP Memory Service v11.3.0">
-<meta property="og:description" content="Reasoning engine: transitive closure, abductive inference, entity grouping, insight cards (RFC #732). SQL-level time filter enforcement. Self-hosted AI memory — REST, MCP, OAuth 2.1, CLI. LongMemEval R@5 86%.">
+<meta property="og:title" content="MCP Memory Service v11.4.0">
+<meta property="og:description" content="Memory merge action, pluggable domain entity extractors, in-browser semantic demo (sqlite-vec WASM). Self-hosted AI memory — REST, MCP, OAuth 2.1, CLI. LongMemEval R@5 86%.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://mcpmemory.services/">
 <meta property="twitter:card" content="summary_large_image">
@@ -121,7 +121,7 @@ footer a{color:var(--cyan)}
 <!-- Hero -->
 <header class="hero">
   <img src="brain-icon.png" alt="Memory for AI Agents" class="hero-logo">
-  <span class="hero-badge">mcp-memory-service v11.3 &mdash; Now Available</span>
+  <span class="hero-badge">mcp-memory-service v11.4 &mdash; Now Available</span>
   <h1>Memory for AI Agents</h1>
   <p>Persistent memory for AI agents &mdash; REST API, MCP, OAuth, CLI, dashboard. Semantic search, knowledge graph, automatic consolidation. One self-hosted service, every transport.</p>
   <div class="hero-buttons">
@@ -161,23 +161,23 @@ footer a{color:var(--cyan)}
 <!-- Features -->
 <section id="features">
   <div class="container">
-    <h2 class="section-title">What's New in v11.3</h2>
-    <p class="section-subtitle">MINOR release: cinematic 3D knowledge graph visualization (Orrery-inspired, WebGL/three.js, bloom, starfield, hover highlights, fullscreen). ~2,539 tests.</p>
+    <h2 class="section-title">What's New in v11.4</h2>
+    <p class="section-subtitle">MINOR release: memory merge action, pluggable domain-specific entity extractors, and this very site &mdash; mcpmemory.services with a fully client-side demo. ~2,602 tests.</p>
     <div class="features-grid">
       <div class="feature-card" data-delay="0">
         <div class="feature-icon consolidation">&#129504;</div>
-        <h3>Belief-Aware Quarantine (SS6)</h3>
-        <p>Memories that contradict active beliefs are automatically quarantined. Two new MCP tools — get_quarantined_memories and unquarantine_memory — let agents review and restore quarantined memories. Threshold-driven, 290 LOC of tests. (RFC-1047 SS6, PR #36)</p>
+        <h3>Memory Merge</h3>
+        <p>New merge action for the memory_consolidate tool: combine N source memories into one consolidated entry with store-first/delete-after ordering. Tags default to the union of all source tags, memory_type is inherited, and partial deletion failures are reported correctly. (#100, PR #105, @filhocf)</p>
       </div>
       <div class="feature-card" data-delay="150">
         <div class="feature-icon http">&#128101;</div>
-        <h3>Consolidation Engine v2 + memory_distill (SS3)</h3>
-        <p>Three new MCP tools: memory_distill rewrites undistilled memories in batch via LLM, get_onboarding_guide surfaces a structured onboarding narrative, and commit_session_legacy commits legacy sessions. Includes a scheduled distill job (6h interval) and harvest pipeline v2. (RFC-1047 SS3, PR #39)</p>
+        <h3>Pluggable Domain Entity Extractors</h3>
+        <p>New DomainExtractor protocol: register domain-specific NER extractors via the MCP_ENTITY_EXTRACTOR_MODULES env var. Lazily loaded and cached, failures isolated per extractor, results deduplicated against built-in extraction — wired into the graph handler, quality maintenance, and the store path. (#54, PR #107, @filhocf)</p>
       </div>
       <div class="feature-card" data-delay="300">
         <div class="feature-icon privacy">&#128203;</div>
-        <h3>Bootstrap Profile + Config Domain Refactor (SS4/SS5/SS9)</h3>
-        <p>get_bootstrap_profile tool with Kiro/Claude/Generic formatters and confidence-weighted dedup (cosine 0.70). Monolithic 1327-line config.py split into 12 domain modules with full backward-compatible re-exports. (RFC-1047 SS4+SS5, PR #40; SS9, PR #38)</p>
+        <h3>mcpmemory.services + In-Browser Demo</h3>
+        <p>This landing page: a galaxy hero video rendered from 3,134 connected memories, a claude.ai setup tutorial, and a semantic memory demo running entirely in your browser — sqlite-vec WASM plus transformers.js embeddings, no server, no data leaves the page. (PR #106)</p>
       </div>
     </div>
   </div>
@@ -270,7 +270,7 @@ footer a{color:var(--cyan)}
       <a href="blog/remote-mcp-tutorial.html" class="btn btn-secondary">
         Blog: 5-Min claude.ai Setup
       </a>
-      <a href="https://codeberg.org/doobidoo/mcp-memory-service/releases/tag/v11.3.0" class="btn btn-secondary" target="_blank">
+      <a href="https://codeberg.org/doobidoo/mcp-memory-service/releases/tag/v11.4.0" class="btn btn-secondary" target="_blank">
         Release Notes
       </a>
     </div>

@@ -9,7 +9,7 @@ Spawn the `codeberg-release-manager` agent to handle the entire release lifecycl
 1. **Pre-Release**: List open PRs, merge approved ones, verify CI green on main
 2. **Version Bump**: Determine bump type (MAJOR/MINOR/PATCH) from PR labels, update `_version.py`, `pyproject.toml`, `README.md`, `uv.lock`
 3. **Documentation**: Update CHANGELOG.md (move [Unreleased] → version entry), README.md ("Latest Release"), CLAUDE.md (version callout)
-4. **Landing Page**: Update `docs/index.html` for MINOR/MAJOR releases only — version badge, test count, re-publish to here.now
+4. **Landing Page**: Update `site/index.html` for MINOR/MAJOR releases only — version badge, What's New cards, test count. Deploys automatically to mcpmemory.services on merge (`.forgejo/workflows/deploy-site.yml`)
 5. **Release Creation**: Git tag on main, GitHub Release with notes + contributor recognition
 6. **Post-Release**: Clean up branches, close resolved issues, verify CI/CD workflows (PyPI auto-publishes via tag push)
 

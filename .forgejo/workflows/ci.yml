@@ -9,6 +9,18 @@ on:
     paths-ignore: ['docs/**', '*.md', 'LICENSE', '.gitignore']
 
 jobs:
+  version-drift-check:
+    runs-on: docker
+    name: Version Drift (site/index.html)
+    timeout-minutes: 5
+    steps:
+    - uses: actions/checkout@v4
+    # Fails when site/index.html references a MAJOR.MINOR older than
+    # src/mcp_memory_service/_version.py — i.e. a release PR that forgot to
+    # bump the mcpmemory.services landing page. PATCH-only drift is ignored.
+    - name: Check landing page version strings
+      run: bash scripts/ci/check_versions.sh
+
   test:
     runs-on: docker
     name: Tests + Coverage

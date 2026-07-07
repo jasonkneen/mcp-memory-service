@@ -29,7 +29,10 @@ if [ -z "$CANONICAL" ]; then
   exit 1
 fi
 
-# Default scan target: docs/index.html only (the project landing page).
+# Default scan target: site/index.html only (the mcpmemory.services landing
+# page, deployed to Cloudflare Pages via .forgejo/workflows/deploy-site.yml).
+# docs/index.html is a plain redirect stub to mcpmemory.services and carries
+# no version strings anymore.
 #
 # Rationale: the landing page is the one surface where ANY older-than-canonical
 # version reference is unambiguously wrong (it's the "current state" page).
@@ -41,11 +44,11 @@ fi
 #
 # To widen the scan (e.g. to catch only specific version-claim phrases in
 # README/CLAUDE.md), override via:
-#   MCS_VERSION_SCAN_TARGETS="docs/index.html README.md" bash check_versions.sh
+#   MCS_VERSION_SCAN_TARGETS="site/index.html README.md" bash check_versions.sh
 if [ -n "${MCS_VERSION_SCAN_TARGETS:-}" ]; then
   read -ra SCAN_TARGETS <<< "$MCS_VERSION_SCAN_TARGETS"
 else
-  SCAN_TARGETS=("docs/index.html")
+  SCAN_TARGETS=("site/index.html")
 fi
 
 # Path-substring excludes applied even within scoped scan targets.

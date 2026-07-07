@@ -37,7 +37,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with th
 ### Release Workflow Checklist
 Before merging or releasing:
 1. Verify CI is green on the target branch (`gh run list --branch <branch>`)
-2. **Update `docs/index.html` version strings** whenever MAJOR.MINOR changes (i.e. every MINOR or MAJOR release — PATCH releases are exempt). The `version-drift-check` CI gate enforces this and will fail if skipped. Update ALL occurrences: `<title>`, `<meta og:title>`, release link `href`. Use `grep -n "v10\." docs/index.html` to find them. This is MANDATORY — not optional for "incremental" releases.
+2. **Update `site/index.html` version strings** whenever MAJOR.MINOR changes (i.e. every MINOR or MAJOR release — PATCH releases are exempt). The `version-drift-check` CI gate enforces this and will fail if skipped. Update ALL occurrences: `<title>`, `<meta og:title>`, hero badge, "What's New" section, release link `href`. Use `grep -n "v11\." site/index.html` to find them. This is MANDATORY — not optional for "incremental" releases. The site auto-deploys to Cloudflare Pages (mcpmemory.services) when the change lands on main (`.forgejo/workflows/deploy-site.yml`).
 3. Clean up merged branches after release (`git branch -d`, `git push origin --delete`)
 4. Use `codeberg-release-manager` agent — never manually bump versions
 
@@ -604,7 +604,7 @@ python scripts/validation/diagnose_backend_config.py          # Backend-specific
 - **README.md** - User-facing documentation, installation, features
 - **CHANGELOG.md** - Version history, breaking changes, migrations
 - **scripts/README.md** - Complete script reference
-- **docs/index.html** - Animated landing page (GitHub Pages + here.now `merry-realm-j835`)
+- **site/** - mcpmemory.services landing page + in-browser demo (Cloudflare Pages, auto-deployed)
 - **docs/** - Guides, troubleshooting, architecture specs
 - **Wiki** - Comprehensive documentation (https://github.com/doobidoo/mcp-memory-service/wiki)
 - **`.claude/directives/`** - Topic-specific directives for Claude Code
@@ -613,13 +613,7 @@ python scripts/validation/diagnose_backend_config.py          # Backend-specific
 - **CLAUDE.md** - Architecture changes, new patterns, development workflows
 - **README.md** - New features, installation changes, user-facing updates
 - **CHANGELOG.md** - Every version bump (use codeberg-release-manager agent)
-- **docs/index.html** - Landing page: MINOR/MAJOR releases only (version badge, test count, features). Auto-deployed via GitHub Pages. Also re-publish to here.now:
-  ```bash
-  mkdir -p /tmp/herenow-publish && \
-  cp docs/index.html docs/brain-icon.png /tmp/herenow-publish/ && \
-  ~/.agents/skills/here-now/scripts/publish.sh /tmp/herenow-publish --slug merry-realm-j835 && \
-  rm -rf /tmp/herenow-publish
-  ```
+- **site/index.html** - Landing page: MINOR/MAJOR releases only (title, og:title, hero badge, "What's New" cards, test count, release link). No manual publish step: merging to main triggers `.forgejo/workflows/deploy-site.yml`, which deploys `site/` to Cloudflare Pages (mcpmemory.services). GitHub Pages and the here.now mirror are retired; `docs/index.html` is only a redirect stub — never put version strings or content there.
 - **Wiki** - Detailed guides, troubleshooting, tutorials
 
 ## Additional Resources

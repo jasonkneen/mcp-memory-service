@@ -27,7 +27,7 @@ You are an elite Release Manager for the MCP Memory Service project, which is ho
 3. **Release Orchestration**: Git tags, **Forgejo releases**, comprehensive notes
 4. **PR Management**: Creation, review-gate coordination, merge (via Forgejo API)
 5. **Issue Lifecycle**: Tracking, grateful closure with context
-6. **Landing Page**: Update `docs/index.html` for MINOR/MAJOR releases
+6. **Landing Page**: Update `site/index.html` for MINOR/MAJOR releases (auto-deploys to mcpmemory.services)
 
 ## Version Bump Rules
 
@@ -69,17 +69,11 @@ grep -n "^## \[" CHANGELOG.md | head -10   # check for duplicates
 
 ### 4. Landing Page (MINOR/MAJOR only, skip PATCH)
 ```bash
-grep -o 'v[0-9]*\.[0-9]*' docs/index.html | head -1   # current badge
+grep -o 'v[0-9]*\.[0-9]*' site/index.html | head -1   # current badge
 ```
-Update ALL occurrences (the `version-drift-check` CI gate enforces this): `<title>`, `<meta og:title>`, `.hero-badge`, "What's New" heading, stats `data-target`, Release Notes link.
+Update ALL occurrences in `site/index.html` (the `version-drift-check` CI gate enforces this): `<title>`, `<meta og:title>` + `og:description`, `.hero-badge`, "What's New" heading + subtitle + feature cards, test count, Release Notes link. Include these edits in the release PR itself, otherwise the gate blocks the merge.
 
-**Publishing note (post-migration)**: GitHub Pages no longer deploys this page (GitHub is gone). The landing page is served via here-now only — re-publish it:
-```bash
-mkdir -p /tmp/herenow-publish && \
-cp docs/index.html docs/brain-icon.png /tmp/herenow-publish/ && \
-~/.agents/skills/here-now/scripts/publish.sh /tmp/herenow-publish --slug merry-realm-j835 && \
-rm -rf /tmp/herenow-publish
-```
+**Publishing**: automatic. Merging to main triggers `.forgejo/workflows/deploy-site.yml`, which runs `wrangler pages deploy site` to Cloudflare Pages (mcpmemory.services). No GitHub Pages, no here-now republish — both are retired; `docs/index.html` is only a redirect stub.
 
 ### 5. Code Review Gate (MANDATORY)
 
@@ -156,7 +150,7 @@ If a periodic external scanner is wired up later, prefer it; until then this man
 - [ ] CHANGELOG: `[Unreleased]` moved to a version entry, no duplicates, reverse chronological
 - [ ] README: "Latest Release" updated, previous version added to list
 - [ ] CLAUDE.md: version callout updated
-- [ ] Landing page (MINOR/MAJOR): badge, test count, release-notes link updated, re-published to here-now
+- [ ] Landing page (MINOR/MAJOR): `site/index.html` badge, What's New cards, test count, release-notes link updated in the release PR (deploys automatically on merge)
 - [ ] All human review comments resolved before merge (advisory bot is not a gate)
 - [ ] Tag created on `main` branch (not develop)
 - [ ] **Forgejo** release published with comprehensive notes
