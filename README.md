@@ -10,6 +10,7 @@ context in 5ms — without cloud lock-in or API costs.
 
 ---
 
+[![Website](https://img.shields.io/badge/Website-mcpmemory.services-00e5ff?logo=cloudflare&logoColor=white)](https://mcpmemory.services)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![PyPI version](https://img.shields.io/pypi/v/mcp-memory-service?color=blue&logo=pypi&logoColor=white)](https://pypi.org/project/mcp-memory-service/)
 [![Python](https://img.shields.io/pypi/pyversions/mcp-memory-service?logo=python&logoColor=white)](https://pypi.org/project/mcp-memory-service/)
@@ -27,10 +28,10 @@ context in 5ms — without cloud lock-in or API costs.
 ---
 
 <div align="center">
-  <a href="https://youtu.be/GxwrCoJ7SrU">
-    <img src="docs/assets/images/knowledge-graph-3d.png" alt="Watch: 3D knowledge graph — memories as a glowing, interactive galaxy" width="820">
-  </a>
-  <p><em>▶ <a href="https://youtu.be/GxwrCoJ7SrU">Watch the 3D knowledge graph in motion</a> (v11.3.0)</em> — every memory a glowing node, every relationship a curved edge.</p>
+  <video src="https://mcpmemory.services/assets/videos/knowledge-graph-3d.mp4" poster="https://mcpmemory.services/assets/images/knowledge-graph-3d-poster.png" width="820" autoplay loop muted playsinline controls>
+    <a href="https://mcpmemory.services/"><img src="docs/assets/images/knowledge-graph-3d.png" alt="3D knowledge graph — memories as a glowing, interactive galaxy" width="820"></a>
+  </video>
+  <p><em>▶ <a href="https://mcpmemory.services/">The 3D knowledge graph in motion</a></em> — every memory a glowing node, every relationship a curved edge. <sub>(Video not playing? <a href="https://mcpmemory.services/">See it live at mcpmemory.services</a>.)</sub></p>
 </div>
 
 ---
@@ -82,7 +83,7 @@ cloudflared tunnel --url http://localhost:8765
 ```
 
 **Production Setup:** See [Remote MCP Setup Guide](docs/remote-mcp-setup.md) for Let's Encrypt, nginx, and firewall configuration.
-**Step-by-Step Tutorial:** [Blog: 5-Minute claude.ai Setup](https://doobidoo.github.io/mcp-memory-service/blog/remote-mcp-tutorial.html) | [Wiki Guide](https://github.com/doobidoo/mcp-memory-service/wiki/Claude-AI-Remote-MCP-Integration)
+**Step-by-Step Tutorial:** [Blog: 5-Minute claude.ai Setup](https://mcpmemory.services/blog/remote-mcp-tutorial.html) | [Wiki Guide](https://github.com/doobidoo/mcp-memory-service/wiki/Claude-AI-Remote-MCP-Integration)
 
 ---
 
