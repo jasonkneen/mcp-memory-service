@@ -51,6 +51,8 @@ context in 5ms — without cloud lock-in or API costs.
 > "Your project has inspired me in many ways. In my view, it's the best implementation of MCP memory I've found so far."
 > — **Michał Zubkowicz**
 
+**[AI Tinkerers Zürich Talk](https://zurich.aitinkerers.org/talks/rsvp_DuHc2MBp1uo)** ([full video](https://drive.google.com/file/d/1NJDLetJ5CE7Jiek9OtyXCrt-zm768YB6/view)) — Maintainer Heinrich Krupp presents mcp-memory-service to the AI Tinkerers Zürich meetup, covering persistent memory architecture, semantic search, and multi-agent memory sharing.
+
 ---
 
 ## 🌐 Works with claude.ai (Browser)
