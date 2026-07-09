@@ -289,14 +289,16 @@ class MetadataMixin:
         now: Optional[float] = None,
     ) -> float:
         """Compute time-decayed confidence score."""
-        decay_window = float(os.environ.get("MEMORY_DECAY_WINDOW_DAYS", "30"))
+        decay_window = float(os.environ.get("MEMORY_DECAY_WINDOW_DAYS", "0"))
+        if decay_window <= 0:
+            return confidence if confidence is not None else 1.0
         decay_rate = 0.5
         ts_now = now or time.time()
         reference = last_accessed or created_at or ts_now
         days_since = (ts_now - reference) / 86400.0
         staleness = days_since / decay_window
         decay = max(0.0, 1.0 - staleness * decay_rate)
-        return round((confidence or 1.0) * decay, 4)
+        return round((confidence if confidence is not None else 1.0) * decay, 4)
 
     def _detect_conflicts(self, new_hash: str, new_content: str, embedding) -> list:
         """Detect conflicting active memories for a newly stored memory."""
@@ -522,7 +524,7 @@ class MetadataMixin:
                 continue
 
             result.debug_info["effective_confidence"] = eff
-            result.debug_info["confidence"] = confidence or 1.0
+            result.debug_info["confidence"] = confidence if confidence is not None else 1.0
             result.debug_info["last_accessed"] = last_accessed
             hashes_to_touch.append(ch)
             enriched.append(result)

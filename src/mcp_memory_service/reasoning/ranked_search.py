@@ -63,12 +63,15 @@ def compute_ranked_score(
     semantic = max(0.0, min(1.0, float(semantic_score)))
 
     try:
-        decay_window = float(os.environ.get("MEMORY_DECAY_WINDOW_DAYS", "30"))
+        decay_window = float(os.environ.get("MEMORY_DECAY_WINDOW_DAYS", "0"))
     except (TypeError, ValueError):
-        decay_window = 30.0
+        decay_window = 0.0
     reference = memory.last_accessed_at or memory.created_at or ts_now
     days_since = max(0.0, (ts_now - reference) / 86400.0)
-    time_decay_score = math.exp(-days_since / max(decay_window, 1.0))
+    if decay_window <= 0:
+        time_decay_score = 1.0
+    else:
+        time_decay_score = math.exp(-days_since / max(decay_window, 1.0))
 
     access_count = max(0, int(memory.access_count or 0))
     access_score = min(1.0, math.log(access_count + 1) / math.log(100))

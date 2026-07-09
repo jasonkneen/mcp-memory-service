@@ -68,14 +68,17 @@ class TestComputeRankedScore:
         """Recently accessed memory should score higher on time_decay."""
         from mcp_memory_service.reasoning.ranked_search import compute_ranked_score, RankedSearchWeights
         import time
+        import os
+        from unittest.mock import patch as _patch
         w = RankedSearchWeights(semantic=0.0, time_decay=1.0, access_frequency=0.0, quality=0.0)
         now = time.time()
 
         mem_old = MagicMock(quality_score=0.5, access_count=1, last_accessed_at=now - 86400*60, created_at=now - 86400*60)
         mem_new = MagicMock(quality_score=0.5, access_count=1, last_accessed_at=now - 3600, created_at=now - 3600)
 
-        score_old, _ = compute_ranked_score(0.5, mem_old, weights=w, now=now)
-        score_new, _ = compute_ranked_score(0.5, mem_new, weights=w, now=now)
+        with _patch.dict(os.environ, {"MEMORY_DECAY_WINDOW_DAYS": "30"}):
+            score_old, _ = compute_ranked_score(0.5, mem_old, weights=w, now=now)
+            score_new, _ = compute_ranked_score(0.5, mem_new, weights=w, now=now)
         assert score_new > score_old
 
     def test_breakdown_contains_all_signals(self):

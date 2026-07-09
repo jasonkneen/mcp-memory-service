@@ -86,6 +86,21 @@ async def _store(storage, content: str, tags: list[str] | None = None) -> str:
 class TestEffectiveConfidence:
     """Unit tests for staleness-aware confidence decay."""
 
+    @pytest.fixture(autouse=True)
+    def _enable_decay(self, monkeypatch):
+        monkeypatch.setenv("MEMORY_DECAY_WINDOW_DAYS", "30")
+
+    def test_decay_disabled_returns_confidence_unchanged(self, monkeypatch):
+        """When MEMORY_DECAY_WINDOW_DAYS=0, confidence is returned as-is."""
+        monkeypatch.setenv("MEMORY_DECAY_WINDOW_DAYS", "0")
+        now = time.time()
+        sixty_days_ago = now - (60 * 86400)
+        result = SqliteVecMemoryStorage._effective_confidence(
+            confidence=0.8, last_accessed=sixty_days_ago,
+            created_at=sixty_days_ago, now=now,
+        )
+        assert result == 0.8
+
     def test_fresh_memory_full_confidence(self):
         """A memory accessed just now should have confidence ~1.0."""
         now = time.time()
