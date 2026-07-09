@@ -22,6 +22,20 @@ from .belief import (
 
 logger = logging.getLogger(__name__)
 
+_NOISE_PREFIXES = (
+    "Association between",
+    "[CHECKPOINT]",
+    "harvested_sessions:",
+    "Cluster of",
+    "[SESSÃO]",
+    "[MINED:",
+)
+
+
+def _is_noise(content: str) -> bool:
+    """Filter out non-useful observations (checkpoints, associations, etc)."""
+    return any(content.lstrip().startswith(prefix) for prefix in _NOISE_PREFIXES)
+
 
 def _hash_content(content: str) -> str:
     """Deterministic hash for belief content."""
@@ -29,6 +43,7 @@ def _hash_content(content: str) -> str:
 
 
 class BeliefService:
+    SIMILARITY_THRESHOLD = 0.85
     """Derives and manages beliefs from observations."""
 
     def __init__(self, storage):
@@ -47,6 +62,14 @@ class BeliefService:
 
         try:
             observations = await self.storage.get_all_memories(memory_type="observation")
+            if not observations:
+                return stats
+
+            # Filter noise before grouping
+            observations = [
+                obs for obs in observations
+                if not _is_noise(obs.content if hasattr(obs, "content") else obs.get("content", ""))
+            ]
             if not observations:
                 return stats
 
@@ -198,31 +221,58 @@ class BeliefService:
     # --- Internal helpers ---
 
     async def _group_observations(self, observations) -> dict:
-        """Group observations by content similarity.
+        """Group observations by semantic similarity using existing embeddings.
 
-        Uses first observation as cluster representative; others with
-        high similarity join the cluster. Simple greedy single-pass approach.
+        Uses storage KNN search to find similar observations (threshold 0.85).
+        Greedy single-pass: first observation becomes cluster representative,
+        subsequent observations join if similarity > threshold.
+        Falls back to exact-content matching when embeddings are unavailable.
         """
         groups = {}  # representative content -> [observations]
-        representatives = []  # (content, obs_list)
+        assigned = set()  # track which observations have been assigned
 
-        for obs in observations:
+        for i, obs in enumerate(observations):
             content = obs.content if hasattr(obs, "content") else obs.get("content", "")
-            if not content:
+            obs_hash = obs.content_hash if hasattr(obs, "content_hash") else obs.get("content_hash", str(i))
+
+            if obs_hash in assigned or not content:
                 continue
 
-            matched = False
-            for rep_content, obs_list in representatives:
-                # Use content hash matching for exact duplicates
-                if content == rep_content:
-                    obs_list.append(obs)
-                    matched = True
-                    break
+            # This observation becomes a cluster representative
+            cluster = [obs]
+            assigned.add(obs_hash)
 
-            if not matched:
-                new_list = [obs]
-                representatives.append((content, new_list))
-                groups[content] = new_list
+            # Fast path: exact content match (always works, no embeddings needed)
+            for other_obs in observations:
+                other_content = other_obs.content if hasattr(other_obs, "content") else other_obs.get("content", "")
+                other_hash = other_obs.content_hash if hasattr(other_obs, "content_hash") else other_obs.get("content_hash", "")
+                if other_hash not in assigned and other_content == content:
+                    cluster.append(other_obs)
+                    assigned.add(other_hash)
+
+            # Find similar observations using existing embeddings
+            try:
+                similar = await self.storage.retrieve(content, n_results=50)
+                for result in similar:
+                    r_hash = result.memory.content_hash if hasattr(result, "memory") else result.get("content_hash", "")
+                    r_score = result.relevance_score if hasattr(result, "relevance_score") else result.get("relevance_score", 0)
+
+                    if r_hash in assigned:
+                        continue
+                    if r_score < self.SIMILARITY_THRESHOLD:
+                        continue
+
+                    # Check if this result is in our observations list
+                    for other_obs in observations:
+                        other_hash = other_obs.content_hash if hasattr(other_obs, "content_hash") else other_obs.get("content_hash", "")
+                        if other_hash == r_hash and other_hash not in assigned:
+                            cluster.append(other_obs)
+                            assigned.add(other_hash)
+                            break
+            except Exception:
+                pass  # If search fails, rely on exact-match grouping above
+
+            groups[content] = cluster
 
         return groups
 
