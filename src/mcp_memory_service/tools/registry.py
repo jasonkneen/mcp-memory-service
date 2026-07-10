@@ -1205,6 +1205,10 @@ Examples:
                     "default": 2048,
                     "description": "Token budget",
                 },
+                "budget_tokens": {
+                    "type": "integer",
+                    "description": "Override token budget for this call (takes precedence over max_tokens)",
+                },
             },
             "required": ["agent_ids"],
         },

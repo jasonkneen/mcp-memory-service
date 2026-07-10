@@ -3,7 +3,7 @@
 import os
 import re
 from datetime import datetime, timezone
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 
 class BootstrapFormatter:
@@ -11,7 +11,8 @@ class BootstrapFormatter:
     name: str = "base"
 
     def format(self, avoidances: list, preferences: list,
-               conventions: list, meta: dict) -> str:
+               conventions: list, meta: dict, *,
+               beliefs: Optional[list] = None, task_context: Optional[list] = None) -> str:
         raise NotImplementedError
 
 
@@ -20,7 +21,8 @@ class ClaudeFormatter(BootstrapFormatter):
     name = "claude"
 
     def format(self, avoidances: list, preferences: list,
-               conventions: list, meta: dict) -> str:
+               conventions: list, meta: dict, *,
+               beliefs: Optional[list] = None, task_context: Optional[list] = None) -> str:
         now = meta.get("generated_at", datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
         sections = [f"=== BEHAVIORAL PROFILE (v1, generated {now}) ===\n"]
 
@@ -40,6 +42,16 @@ class ClaudeFormatter(BootstrapFormatter):
         if conventions:
             sections.append("## Conventions (learned from decisions)")
             sections.extend(conventions[:10])
+            sections.append("")
+
+        if beliefs:
+            sections.append("## Beliefs (derived from repeated observations)")
+            sections.extend(beliefs[:10])
+            sections.append("")
+
+        if task_context:
+            sections.append("## Task Context (relevant to current task)")
+            sections.extend(task_context[:5])
             sections.append("")
 
         sections.append("## Meta-instruction")
@@ -63,6 +75,10 @@ class KiroFormatter(BootstrapFormatter):
         "conventions_prefix": "✅ ALWAYS:",
         "preferences_header": "## Preferences (learned)",
         "preferences_prefix": "📌",
+        "beliefs_header": "## Beliefs (derived knowledge)",
+        "beliefs_prefix": "🧠",
+        "task_header": "## Task Context",
+        "task_prefix": "📎",
     }
 
     LOCALE_PT_BR = {
@@ -73,6 +89,10 @@ class KiroFormatter(BootstrapFormatter):
         "conventions_prefix": "✅ SEMPRE:",
         "preferences_header": "## Preferências (aprendidas)",
         "preferences_prefix": "📌",
+        "beliefs_header": "## Crenças (conhecimento derivado)",
+        "beliefs_prefix": "🧠",
+        "task_header": "## Contexto da Tarefa",
+        "task_prefix": "📎",
     }
 
     def __init__(self, locale: str = "en"):
@@ -85,7 +105,8 @@ class KiroFormatter(BootstrapFormatter):
         return text.strip()
 
     def format(self, avoidances: list, preferences: list,
-               conventions: list, meta: dict) -> str:
+               conventions: list, meta: dict, *,
+               beliefs: Optional[list] = None, task_context: Optional[list] = None) -> str:
         s = self._strings
         lines = [s["title"]]
 
@@ -105,6 +126,18 @@ class KiroFormatter(BootstrapFormatter):
             lines.append(s["preferences_header"])
             for p in preferences[:10]:
                 lines.append(f"{s['preferences_prefix']} {self._clean(p)}")
+            lines.append("")
+
+        if beliefs:
+            lines.append(s["beliefs_header"])
+            for b in (beliefs or [])[:10]:
+                lines.append(f"{s['beliefs_prefix']} {self._clean(b)}")
+            lines.append("")
+
+        if task_context:
+            lines.append(s["task_header"])
+            for t in (task_context or [])[:5]:
+                lines.append(f"{s['task_prefix']} {self._clean(t)}")
             lines.append("")
 
         return "\n".join(lines)

@@ -8,6 +8,7 @@ to the beliefs table. No LLM dependency.
 import hashlib
 import json
 import logging
+import re
 from datetime import datetime, timezone
 from typing import List, Optional
 
@@ -29,12 +30,56 @@ _NOISE_PREFIXES = (
     "Cluster of",
     "[SESSÃO]",
     "[MINED:",
+    "# Session Summary",
+    "## Session Summary",
 )
+
+_NOISE_PATTERNS = [
+    re.compile(r"^#{1,3}\s+Session\s+Summary", re.IGNORECASE),
+    re.compile(r"^User:\s", re.MULTILINE),
+    re.compile(r"^Assistant:\s", re.MULTILINE),
+    re.compile(r"<task-notification>", re.IGNORECASE),
+    re.compile(r"<ide_opened_file>", re.IGNORECASE),
+    re.compile(r"^Topics Discussed:", re.MULTILINE | re.IGNORECASE),
+]
 
 
 def _is_noise(content: str) -> bool:
-    """Filter out non-useful observations (checkpoints, associations, etc)."""
-    return any(content.lstrip().startswith(prefix) for prefix in _NOISE_PREFIXES)
+    """Filter out non-useful observations using structural heuristics."""
+    text = content.lstrip()
+
+    # Prefix check (fast path)
+    if any(text.startswith(prefix) for prefix in _NOISE_PREFIXES):
+        return True
+
+    # Pattern check (regex)
+    if any(pat.search(text) for pat in _NOISE_PATTERNS):
+        return True
+
+    # Length check: very long observations are usually dumps, not insights
+    if len(text) > 500:
+        return True
+
+    # Bullet-list ratio: >60% lines starting with "- " = likely a list dump
+    lines = [l for l in text.split("\n") if l.strip()]
+    if len(lines) > 3:
+        bullet_ratio = sum(1 for l in lines if l.lstrip().startswith("- ")) / len(lines)
+        if bullet_ratio > 0.6:
+            return True
+
+    return False
+
+
+def _content_entropy(content: str) -> float:
+    """Unique-token ratio as proxy for information density.
+
+    Returns 0.0-1.0. Low values (<0.3) indicate repetitive/boilerplate content.
+    """
+    words = content.lower().split()
+    if not words:
+        return 0.0
+    unique = set(words)
+    return len(unique) / len(words)
 
 
 def _hash_content(content: str) -> str:
@@ -69,6 +114,16 @@ class BeliefService:
             observations = [
                 obs for obs in observations
                 if not _is_noise(obs.content if hasattr(obs, "content") else obs.get("content", ""))
+            ]
+            if not observations:
+                return stats
+
+            # Filter low-entropy content (repetitive boilerplate)
+            observations = [
+                obs for obs in observations
+                if _content_entropy(
+                    obs.content if hasattr(obs, "content") else obs.get("content", "")
+                ) > 0.25
             ]
             if not observations:
                 return stats
@@ -230,6 +285,7 @@ class BeliefService:
         """
         groups = {}  # representative content -> [observations]
         assigned = set()  # track which observations have been assigned
+        content_hashes_seen = set()  # dedup near-identical clusters
 
         for i, obs in enumerate(observations):
             content = obs.content if hasattr(obs, "content") else obs.get("content", "")
@@ -271,6 +327,13 @@ class BeliefService:
                             break
             except Exception:
                 pass  # If search fails, rely on exact-match grouping above
+
+            # Dedup: normalize content, hash it. Skip if we already have near-identical representative.
+            normalized = " ".join(content.lower().split())
+            content_digest = hashlib.sha256(normalized.encode()).hexdigest()[:16]
+            if content_digest in content_hashes_seen:
+                continue  # Skip this cluster — near-identical to an existing one
+            content_hashes_seen.add(content_digest)
 
             groups[content] = cluster
 

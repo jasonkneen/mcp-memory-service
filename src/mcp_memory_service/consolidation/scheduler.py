@@ -15,6 +15,7 @@
 """APScheduler integration for autonomous consolidation operations."""
 
 import logging
+import os
 from typing import Dict, Any, Optional
 from datetime import datetime
 
@@ -233,9 +234,10 @@ class ConsolidationScheduler:
             # Run the consolidation
             report = await self.consolidator.consolidate(time_horizon)
             
-            # Run belief derivation (piggybacking on consolidation cadence)
+            # Run belief derivation (opt-in via MCP_BELIEFS_ENABLED)
             belief_stats = {}
-            if hasattr(self.consolidator, 'storage'):
+            beliefs_enabled = os.getenv("MCP_BELIEFS_ENABLED", "false").lower() in ("true", "1", "yes")
+            if beliefs_enabled and hasattr(self.consolidator, 'storage'):
                 try:
                     belief_svc = BeliefService(self.consolidator.storage)
                     belief_stats = await belief_svc.derive_beliefs()

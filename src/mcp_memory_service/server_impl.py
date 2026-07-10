@@ -2438,6 +2438,8 @@ class MemoryServer:
 
         agent_ids = arguments.get("agent_ids", [])
         max_tokens = arguments.get("max_tokens", int(os.getenv("MCP_BOOTSTRAP_MAX_TOKENS", "2048")))
+        task_summary = arguments.get("task_summary")
+        budget_tokens = arguments.get("budget_tokens") or max_tokens
         fresh_start_interval = int(os.getenv("MCP_BOOTSTRAP_FRESH_START_INTERVAL", "10"))
 
         avoidances = []
@@ -2485,27 +2487,62 @@ class MemoryServer:
                     if not agent_ids or meta.get("agent_id") in agent_ids:
                         conventions.append(f"- {mem.get('content', '')}")
 
-            # Query harvest-produced memories
+            # Query harvest-produced memories (semantic if task_summary provided, else chronological)
             harvest_types = {"convention": conventions, "bug": avoidances, "decision": conventions, "learning": preferences}
             for htype, target_list in harvest_types.items():
-                for _htag in ["session-harvest", "memory-distill"]:
-                    harvest_mems = await self.memory_service.list_memories(
-                        page=1, page_size=20, memory_type=htype, tags=[_htag],
+                if task_summary:
+                    # Semantic search: find memories RELEVANT to the current task
+                    harvest_mems = await self.memory_service.retrieve_memories(
+                        query=f"{task_summary} {htype}", n_results=10,
                     )
-                    for mem in harvest_mems.get("memories", []):
-                        content = mem.get("content", "")
-                        if content and len(content) > 20:
-                            meta = mem.get("metadata") or {}
-                            if isinstance(meta, str):
-                                meta = json.loads(meta) if meta else {}
-                            conf = meta.get("confidence", 0.75)
-                            prefix = "⚠️ " if htype == "bug" else ""
-                            entry = f"- {prefix}{content} [confidence: {conf:.2f}]"
-                            if entry not in target_list:
-                                target_list.append(entry)
+                    mem_list = harvest_mems.get("memories", []) if isinstance(harvest_mems, dict) else []
+                else:
+                    # Fallback: chronological (original behavior)
+                    mem_list = []
+                    for _htag in ["session-harvest", "memory-distill"]:
+                        harvest_mems = await self.memory_service.list_memories(
+                            page=1, page_size=20, memory_type=htype, tags=[_htag],
+                        )
+                        mem_list.extend(harvest_mems.get("memories", []))
+                for mem in mem_list:
+                    content = mem.get("content", "")
+                    if content and len(content) > 20:
+                        meta = mem.get("metadata") or {}
+                        if isinstance(meta, str):
+                            meta = json.loads(meta) if meta else {}
+                        conf = meta.get("confidence", 0.75)
+                        prefix = "⚠️ " if htype == "bug" else ""
+                        entry = f"- {prefix}{content} [confidence: {conf:.2f}]"
+                        if entry not in target_list:
+                            target_list.append(entry)
 
             # Deduplicate and rank
             from mcp_memory_service.harvest.bootstrap_utils import deduplicate_entries, rank_entries
+
+            # Fetch active beliefs (from derive_beliefs pipeline)
+            beliefs_entries = []
+            try:
+                from mcp_memory_service.consolidation.belief_service import BeliefService
+                belief_svc = BeliefService(self.storage)
+                active_beliefs = await belief_svc.get_beliefs(status="active", min_confidence=0.6)
+                for b in active_beliefs[:10]:
+                    beliefs_entries.append(f"- 🧠 {b['content']} [confidence: {b['confidence']:.2f}]")
+            except Exception as e:
+                logger.debug(f"Beliefs fetch skipped: {e}")
+
+            # Task-aware memory retrieval (if task_summary provided)
+            task_context = []
+            if task_summary:
+                try:
+                    task_results = await self.memory_service.retrieve_memories(
+                        query=task_summary, n_results=5
+                    )
+                    for mem in task_results.get("memories", []):
+                        content = mem.get("content", "")
+                        if content and len(content) > 20:
+                            task_context.append(f"- {content[:200]}")
+                except Exception as e:
+                    logger.debug(f"Task-aware retrieval skipped: {e}")
 
             def _dedup_and_rank(entries: list) -> list:
                 parsed = []
@@ -2530,10 +2567,11 @@ class MemoryServer:
             agent_id_for_format = agent_ids[0] if agent_ids else "claude-code"
             formatter = get_formatter_for_agent(agent_id_for_format)
             meta = {"fresh_start": fresh_start_recommended}
-            profile = formatter.format(avoidances, preferences, conventions, meta)
+            profile = formatter.format(avoidances, preferences, conventions, meta,
+                                       beliefs=beliefs_entries, task_context=task_context)
 
             # Truncate to token budget (rough: 1 token ≈ 4 chars)
-            max_chars = max_tokens * 4
+            max_chars = budget_tokens * 4
             if len(profile) > max_chars:
                 profile = profile[:max_chars] + "\n... (truncated to token budget)"
 
