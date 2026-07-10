@@ -567,18 +567,20 @@ The `:quality-cpu` image pre-exports both models at build time and ships only `o
 ---
 
 
-## Latest Release: **v11.4.0** (July 4, 2026)
+## Latest Release: **v11.5.0** (July 10, 2026)
 
-**MINOR: memory merge action + pluggable domain NER extractors + mcpmemory.services landing page**
+**MINOR: conditional temporal decay + functional belief derivation + consolidation clustering fix + bootstrap belief injection**
 
 **What's New:**
-- `memory_consolidate` gains a `merge` action (#100, PR #105, @filhocf): merge N source memories into one, with tag union, memory_type inheritance, store-first/delete-after safety, and honest partial-failure reporting.
-- Pluggable domain-specific entity extractors (#54, PR #107, @filhocf): implement the `DomainExtractor` protocol and register via `MCP_ENTITY_EXTRACTOR_MODULES` — medical, legal, technical NER alongside the built-in patterns. See `docs/DOMAIN_EXTRACTORS.md`.
-- mcpmemory.services landing page (PR #106) with galaxy hero video and a fully client-side in-browser demo (sqlite-vec WASM + transformers.js).
+- Conditional temporal decay for search relevance (#123, @filhocf): opt-in via `MEMORY_DECAY_WINDOW_DAYS` (default `0` = disabled, zero behavior change for existing users). Recent memories rank above older ones with equivalent similarity.
+- Belief pipeline is now functional (#124, @filhocf): semantic grouping + noise filter replace the exact-content-equality grouping that produced zero belief promotions ever on real data (resolves #121 patches 1+2).
+- Consolidation clustering fix (#126, @filhocf): restores `include_embeddings=True` at the three `_get_memories_for_horizon()` call sites, fixing a regression from #985 that caused zero clusters and zero associations on real databases.
+- Bootstrap profile now injects derived beliefs and supports task-aware retrieval (#127, @filhocf): new `task_summary` and `budget_tokens` params on `get_bootstrap_profile`, gated behind `MCP_BELIEFS_ENABLED` (default `false`). Resolves #120 and #121 patch 4.
 
 ---
 
 **Previous Releases**:
+- **v11.4.0** - MINOR: memory merge action + pluggable domain NER extractors + mcpmemory.services landing page (#100, #54, @filhocf) (July 4, 2026)
 - **v11.3.3** - PATCH: fix(cli): memory CLI commands respect MCP_HTTPS_ENABLED (fixes silent failures when TLS is enabled) (July 1, 2026)
 - **v11.3.2** - PATCH: declare numpy>=1.24.0 as core dependency (fixes uvx bare install crash, closes #98) (June 30, 2026)
 - **v11.3.1** - PATCH: claude-hooks noise reduction - auto-capture moved to Stop event and gated on substantive content (June 22, 2026)

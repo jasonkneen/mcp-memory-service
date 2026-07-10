@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Memory for AI Agents — REST, MCP, OAuth, CLI · mcp-memory-service v11.4.0</title>
+<title>Memory for AI Agents — REST, MCP, OAuth, CLI · mcp-memory-service v11.5.0</title>
 <meta name="description" content="Memory layer for AI agents. REST API + MCP + OAuth + CLI + dashboard — one self-hosted service, every transport. 14+ client integrations, knowledge graph, automatic consolidation. LongMemEval R@5 86%, session ingestion, zero cloud cost.">
-<meta property="og:title" content="MCP Memory Service v11.4.0">
-<meta property="og:description" content="Memory merge action, pluggable domain entity extractors, in-browser semantic demo (sqlite-vec WASM). Self-hosted AI memory — REST, MCP, OAuth 2.1, CLI. LongMemEval R@5 86%.">
+<meta property="og:title" content="MCP Memory Service v11.5.0">
+<meta property="og:description" content="Conditional temporal decay, functional belief derivation, consolidation clustering fix, bootstrap belief injection. Self-hosted AI memory — REST, MCP, OAuth 2.1, CLI. LongMemEval R@5 86%.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://mcpmemory.services/">
 <meta property="twitter:card" content="summary_large_image">
@@ -121,7 +121,7 @@ footer a{color:var(--cyan)}
 <!-- Hero -->
 <header class="hero">
   <img src="brain-icon.png" alt="Memory for AI Agents" class="hero-logo">
-  <span class="hero-badge">mcp-memory-service v11.4 &mdash; Now Available</span>
+  <span class="hero-badge">mcp-memory-service v11.5 &mdash; Now Available</span>
   <h1>Memory for AI Agents</h1>
   <p>Persistent memory for AI agents &mdash; REST API, MCP, OAuth, CLI, dashboard. Semantic search, knowledge graph, automatic consolidation. One self-hosted service, every transport.</p>
   <div class="hero-buttons">
@@ -161,23 +161,23 @@ footer a{color:var(--cyan)}
 <!-- Features -->
 <section id="features">
   <div class="container">
-    <h2 class="section-title">What's New in v11.4</h2>
-    <p class="section-subtitle">MINOR release: memory merge action, pluggable domain-specific entity extractors, and this very site &mdash; mcpmemory.services with a fully client-side demo. ~2,602 tests.</p>
+    <h2 class="section-title">What's New in v11.5</h2>
+    <p class="section-subtitle">MINOR release: conditional temporal decay, a functional belief derivation pipeline, a consolidation clustering fix, and bootstrap belief injection with task-aware retrieval. ~2,647 tests.</p>
     <div class="features-grid">
       <div class="feature-card" data-delay="0">
-        <div class="feature-icon consolidation">&#129504;</div>
-        <h3>Memory Merge</h3>
-        <p>New merge action for the memory_consolidate tool: combine N source memories into one consolidated entry with store-first/delete-after ordering. Tags default to the union of all source tags, memory_type is inherited, and partial deletion failures are reported correctly. (#100, PR #105, @filhocf)</p>
+        <div class="feature-icon consolidation">&#128337;</div>
+        <h3>Conditional Temporal Decay</h3>
+        <p>Opt-in temporal decay for search relevance via MEMORY_DECAY_WINDOW_DAYS (default 0 = disabled, zero behavior change for existing users). When enabled, recent memories rank above older ones with equivalent similarity. (#123, @filhocf)</p>
       </div>
       <div class="feature-card" data-delay="150">
-        <div class="feature-icon http">&#128101;</div>
-        <h3>Pluggable Domain Entity Extractors</h3>
-        <p>New DomainExtractor protocol: register domain-specific NER extractors via the MCP_ENTITY_EXTRACTOR_MODULES env var. Lazily loaded and cached, failures isolated per extractor, results deduplicated against built-in extraction — wired into the graph handler, quality maintenance, and the store path. (#54, PR #107, @filhocf)</p>
+        <div class="feature-icon http">&#129504;</div>
+        <h3>Functional Belief Derivation</h3>
+        <p>Semantic grouping plus a noise filter make derive_beliefs actually work — the prior exact-content-equality grouping produced zero belief promotions ever on real data. Consolidation clustering also gets an embeddings fix restoring clusters and associations on real databases. (#124, #126, @filhocf)</p>
       </div>
       <div class="feature-card" data-delay="300">
         <div class="feature-icon privacy">&#128203;</div>
-        <h3>mcpmemory.services + In-Browser Demo</h3>
-        <p>This landing page: a galaxy hero video rendered from 3,134 connected memories, a claude.ai setup tutorial, and a semantic memory demo running entirely in your browser — sqlite-vec WASM plus transformers.js embeddings, no server, no data leaves the page. (PR #106)</p>
+        <h3>Bootstrap Belief Injection</h3>
+        <p>The bootstrap profile now injects derived beliefs and supports task-aware retrieval via new task_summary and budget_tokens params on get_bootstrap_profile. Belief derivation is gated behind MCP_BELIEFS_ENABLED (default false). (#127, @filhocf)</p>
       </div>
     </div>
   </div>
@@ -228,7 +228,7 @@ footer a{color:var(--cyan)}
     <p class="section-subtitle">Battle-tested with comprehensive testing and optimized for performance.</p>
     <div class="stats-grid">
       <div class="stat-card" data-delay="0">
-        <div class="stat-number" data-target="2539">0</div>
+        <div class="stat-number" data-target="2647">0</div>
         <div class="stat-label">Tests</div>
       </div>
       <div class="stat-card" data-delay="100">
@@ -290,7 +290,7 @@ footer a{color:var(--cyan)}
       <a href="blog/remote-mcp-tutorial.html" class="btn btn-secondary">
         Blog: 5-Min claude.ai Setup
       </a>
-      <a href="https://codeberg.org/doobidoo/mcp-memory-service/releases/tag/v11.4.0" class="btn btn-secondary" target="_blank">
+      <a href="https://codeberg.org/doobidoo/mcp-memory-service/releases/tag/v11.5.0" class="btn btn-secondary" target="_blank">
         Release Notes
       </a>
     </div>

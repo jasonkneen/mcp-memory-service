@@ -10,6 +10,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [11.5.0] - 2026-07-10
+
+MINOR release: conditional temporal decay for search relevance, functional belief derivation pipeline, consolidation clustering fix, and bootstrap profile belief injection with task-aware retrieval. Special thanks to @filhocf for all four contributions.
+
+### Added
+
+- feat(retrieve): conditional temporal decay for search relevance (#123, @filhocf). Opt-in via `MEMORY_DECAY_WINDOW_DAYS` (default `0` = disabled, zero behavior change for existing users). When enabled, recent memories rank above older ones with equivalent similarity.
+- feat(bootstrap): inject derived beliefs into the bootstrap profile and support task-aware retrieval (#120, #121 patch 4, PR #127, @filhocf). New `task_summary` and `budget_tokens` params on `get_bootstrap_profile`. Belief derivation is gated behind `MCP_BELIEFS_ENABLED` (default `false`).
+
+### Fixed
+
+- fix(beliefs): semantic grouping + noise filter make `derive_beliefs` functional (#121 patches 1+2, PR #124, @filhocf). Previously grouped by exact content equality, resulting in zero belief promotions ever on real data.
+- fix(consolidation): restore `include_embeddings=True` at the three `_get_memories_for_horizon()` call sites in the consolidation scheduler (PR #126, @filhocf). Regression from #985 caused zero clusters and zero associations on real databases because clustering filtered out all memories when embeddings were `None`.
+
 ## [11.4.0] - 2026-07-04
 
 MINOR release: memory merge action, pluggable domain NER extractors, mcpmemory.services landing page. Special thanks to @filhocf for both feature contributions.
