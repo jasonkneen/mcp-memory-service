@@ -14,7 +14,7 @@ context in 5ms — without cloud lock-in or API costs.
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![PyPI version](https://img.shields.io/pypi/v/mcp-memory-service?color=blue&logo=pypi&logoColor=white)](https://pypi.org/project/mcp-memory-service/)
 [![Python](https://img.shields.io/pypi/pyversions/mcp-memory-service?logo=python&logoColor=white)](https://pypi.org/project/mcp-memory-service/)
-[![GitHub stars](https://img.shields.io/github/stars/doobidoo/mcp-memory-service?style=social)](https://github.com/doobidoo/mcp-memory-service/stargazers)
+[![Codeberg stars](https://img.shields.io/gitea/stars/doobidoo/mcp-memory-service?gitea_url=https%3A%2F%2Fcodeberg.org&logo=codeberg&label=stars)](https://codeberg.org/doobidoo/mcp-memory-service)
 [![Works with LangGraph](https://img.shields.io/badge/Works%20with-LangGraph-green)](https://github.com/langchain-ai/langgraph)
 [![Works with CrewAI](https://img.shields.io/badge/Works%20with-CrewAI-orange)](https://crewai.com)
 [![Works with AutoGen](https://img.shields.io/badge/Works%20with-AutoGen-purple)](https://github.com/microsoft/autogen)
@@ -23,7 +23,6 @@ context in 5ms — without cloud lock-in or API costs.
 [![Remote MCP](https://img.shields.io/badge/MCP-Remote%20Support-blue?logo=anthropic)](docs/remote-mcp-setup.md)
 [![claude.ai Browser Compatible](https://img.shields.io/badge/claude.ai-Browser%20Compatible-orange?logo=anthropic)](docs/remote-mcp-setup.md)
 [![OAuth 2.0](https://img.shields.io/badge/Auth-OAuth%202.0%20%2B%20DCR-green)](docs/oauth-setup.md)
-[![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-pink?logo=github)](https://github.com/sponsors/doobidoo)
 
 ---
 
@@ -85,7 +84,7 @@ cloudflared tunnel --url http://localhost:8765
 ```
 
 **Production Setup:** See [Remote MCP Setup Guide](docs/remote-mcp-setup.md) for Let's Encrypt, nginx, and firewall configuration.
-**Step-by-Step Tutorial:** [Blog: 5-Minute claude.ai Setup](https://mcpmemory.services/blog/remote-mcp-tutorial.html) | [Wiki Guide](https://github.com/doobidoo/mcp-memory-service/wiki/Claude-AI-Remote-MCP-Integration)
+**Step-by-Step Tutorial:** [Blog: 5-Minute claude.ai Setup](https://mcpmemory.services/blog/remote-mcp-tutorial.html) | [Wiki Guide](https://codeberg.org/doobidoo/mcp-memory-service/wiki/Claude-AI-Remote-MCP-Integration)
 
 ---
 
@@ -147,7 +146,7 @@ asyncio.run(main())
 ### Real-World: Multi-Agent Cluster with Shared Memory
 
 > *"After I work with one of the cluster agents on something I want my local agent to know about, the cluster agent adds a special tag to the memory entry that my local agent recognizes as a message from a cluster agent. So they end up using it as a comms bridge — and it's pretty delightful."*
-> — [@jeremykoerber](https://github.com/jeremykoerber), [issue #591](https://github.com/doobidoo/mcp-memory-service/issues/591)
+> — [@jeremykoerber](https://github.com/jeremykoerber) (originally GitHub issue #591)
 
 A 5-agent openclaw cluster uses mcp-memory-service as shared state **and** as an inter-agent messaging bus — without any custom protocol. Cluster agents tag memories with a sentinel like `msg:cluster`, and the local agent filters on that tag to receive cross-cluster signals. The memory service becomes the coordination layer with zero additional infrastructure.
 
@@ -170,7 +169,7 @@ This pattern — **tags as inter-agent signals** — emerges naturally from the 
 ### Real-World: Self-Hosted Docker Stack with Cloudflare Tunnel
 
 > *"The quality of life that session-independent memory adds to AI workflows is immense. File-based memory demands constant discipline. Semantic recall from a live database doesn't. Storing data on my own hardware while making it remotely accessible across platforms turned out to be a feature I didn't know I needed."*
-> — [@PL-Peter](https://github.com/PL-Peter), [discussion #602](https://github.com/doobidoo/mcp-memory-service/discussions/602)
+> — [@PL-Peter](https://github.com/PL-Peter) (originally GitHub discussion #602)
 
 A production-tested self-hosted deployment using Docker containers behind a Cloudflare tunnel, with [AuthMCP Gateway](https://github.com/loglux/authmcp-gateway) handling authentication:
 
@@ -272,7 +271,7 @@ It automatically captures your project context, architecture decisions, and code
 
 **Works seamlessly with any MCP-compatible client or HTTP client** - whether you're building agent pipelines, coding in the terminal, IDE, or browser.
 
-> **💡 NEW**: ChatGPT now supports MCP! Enable Developer Mode to connect your memory service directly. [See setup guide →](https://github.com/doobidoo/mcp-memory-service/discussions/377#discussioncomment-15605174)
+> **💡 NEW**: ChatGPT now supports MCP! Enable Developer Mode to connect your memory service directly. [See setup guide →](docs/remote-mcp-setup.md)
 
 ---
 
@@ -334,7 +333,7 @@ MCP_ALLOW_ANONYMOUS_ACCESS=true memory server --http
 Install the local plugin:
 
 ```bash
-git clone https://github.com/doobidoo/mcp-memory-service.git
+git clone https://codeberg.org/doobidoo/mcp-memory-service.git
 cd mcp-memory-service
 mkdir -p ~/.config/opencode/plugins
 cp opencode/memory-plugin.js ~/.config/opencode/plugins/
@@ -392,7 +391,7 @@ See [Remote MCP Setup Guide](docs/remote-mcp-setup.md) for production deployment
 For production deployments, team collaboration, or cloud sync:
 
 ```bash
-git clone https://github.com/doobidoo/mcp-memory-service.git
+git clone https://codeberg.org/doobidoo/mcp-memory-service.git
 cd mcp-memory-service
 python scripts/installation/install.py
 ```
@@ -504,7 +503,7 @@ MCP Memory Service is **fully compatible** with the [SHODH Unified Memory API Sp
 | Implementation | Backend | Embeddings | Use Case |
 |----------------|---------|------------|----------|
 | **[shodh-memory](https://github.com/varun29ankuS/shodh-memory)** | RocksDB | MiniLM-L6-v2 (ONNX) | Reference implementation |
-| **[shodh-cloudflare](https://github.com/doobidoo/shodh-cloudflare)** | Cloudflare Workers + Vectorize | Workers AI (bge-small) | Edge deployment, multi-device sync |
+| **shodh-cloudflare** | Cloudflare Workers + Vectorize | Workers AI (bge-small) | Edge deployment, multi-device sync |
 | **mcp-memory-service** (this) | SQLite-vec / Hybrid | MiniLM-L6-v2 (ONNX) | Desktop AI assistants (MCP) |
 
 ### Unified Schema Support
@@ -557,12 +556,12 @@ The `:quality-cpu` image pre-exports both models at build time and ships only `o
 ### 🖥️ Dashboard Preview
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/wiki/doobidoo/mcp-memory-service/images/dashboard/mcp-memory-dashboard-v9.3.0-tour.gif" alt="MCP Memory Dashboard Tour" width="800"/>
+  <img src="https://codeberg.org/doobidoo/mcp-memory-service/wiki/raw/images/dashboard/mcp-memory-dashboard-v9.3.0-tour.gif" alt="MCP Memory Dashboard Tour" width="800"/>
 </p>
 
 **8 Dashboard Tabs:** Dashboard • Search • Browse • Documents • Manage • Analytics • Quality • API Docs
 
-📖 See [Web Dashboard Guide](https://github.com/doobidoo/mcp-memory-service/wiki/Web-Dashboard-Guide) for complete documentation.
+📖 See [Web Dashboard Guide](https://codeberg.org/doobidoo/mcp-memory-service/wiki/Web-Dashboard-Guide) for complete documentation.
 
 ---
 
@@ -674,7 +673,7 @@ The `:quality-cpu` image pre-exports both models at build time and ships only `o
 - **v10.36.5** - fix: Cloudflare Vectorize API v1 to v2 + test script fixes — fixed error 1010 "incorrect_api_version", content_hash arg, sys.path correction (PR #689, @mychaelgo, 1,537 tests)
 - **v10.36.4** - fix(windows): hotfix for Get-McpApiKey returning first char instead of full API key — PowerShell array-enumeration trap fixed (PR #687, 1,537 tests)
 
-**Full version history**: [CHANGELOG.md](CHANGELOG.md) | [Older versions (v10.36.3 and earlier)](docs/archive/CHANGELOG-HISTORIC.md) | [All Releases](https://github.com/doobidoo/mcp-memory-service/releases)
+**Full version history**: [CHANGELOG.md](CHANGELOG.md) | [Older versions (v10.36.3 and earlier)](docs/archive/CHANGELOG-HISTORIC.md) | [All Releases](https://codeberg.org/doobidoo/mcp-memory-service/releases)
 
 ---
 
@@ -759,7 +758,7 @@ result = storage.find_connected(
 )
 ```
 
-If you encounter issues: [Troubleshooting Guide](docs/troubleshooting/) · [CHANGELOG.md](CHANGELOG.md) · [Open an issue](https://github.com/doobidoo/mcp-memory-service/issues)
+If you encounter issues: [Troubleshooting Guide](docs/troubleshooting/) · [CHANGELOG.md](CHANGELOG.md) · [Open an issue](https://codeberg.org/doobidoo/mcp-memory-service/issues)
 
 </details>
 
@@ -777,8 +776,8 @@ If you encounter issues: [Troubleshooting Guide](docs/troubleshooting/) · [CHAN
 - **[Knowledge Graph Dashboard](docs/features/knowledge-graph-dashboard.md)** 🆕 – Interactive graph visualization guide
 - **[Memory Type Ontology](docs/memory-ontology.md)** 🆕 – Built-in taxonomy and `MCP_CUSTOM_MEMORY_TYPES` env var
 - **[Troubleshooting](docs/troubleshooting/)** – Common issues and solutions
-- **[API Reference](https://github.com/doobidoo/mcp-memory-service/wiki)** – Programmatic usage
-- **[Wiki](https://github.com/doobidoo/mcp-memory-service/wiki)** – Complete documentation
+- **[API Reference](https://codeberg.org/doobidoo/mcp-memory-service/wiki)** – Programmatic usage
+- **[Wiki](https://codeberg.org/doobidoo/mcp-memory-service/wiki)** – Complete documentation
 - [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/doobidoo/mcp-memory-service) – AI-powered documentation assistant
 - **[MCP Starter Kit](https://kruppster57.gumroad.com/l/glbhd)** – Build your own MCP server using the patterns from this project
 
@@ -790,7 +789,7 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 **Quick Development Setup:**
 ```bash
-git clone https://github.com/doobidoo/mcp-memory-service.git
+git clone https://codeberg.org/doobidoo/mcp-memory-service.git
 cd mcp-memory-service
 pip install -e .  # Editable install
 pytest tests/      # Run test suite
