@@ -1,23 +1,40 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with this MCP Memory Service repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with this MCP Memory Service repository. It is written to be self-sufficient: a model should be able to work correctly here from this file alone, without filling gaps from prior knowledge.
 
-> **📝 Personal Customizations**: You can create `CLAUDE.local.md` (gitignored) for personal notes, custom workflows, or environment-specific instructions. This file contains shared project conventions.
+> **Personal Customizations**: You can create `CLAUDE.local.md` (gitignored) for personal notes, custom workflows, or environment-specific instructions. This file contains shared project conventions.
 
-> **Information Lookup**: Files first, memory second, user last. See [`.claude/directives/memory-first.md`](.claude/directives/memory-first.md) for strategy. Comprehensive project context stored in memory with tags `claude-code-reference`.
+> **Information Lookup**: Files first, memory second, user last. See [`.claude/directives/memory-first.md`](.claude/directives/memory-first.md) for strategy. Comprehensive project context is stored in the MCP Memory Server with tag `claude-code-reference`.
 
-## 🔴 Critical Directives
+## Non-Negotiables (hard rules)
+
+Quick reference; each rule is expanded in the sections below. Violations cause real incidents.
+
+1. **This repo lives on Codeberg, not GitHub.** `origin` is `codeberg.org:doobidoo/mcp-memory-service`; CI is Forgejo Actions (`.forgejo/workflows/`). The `github` remote is a suspended mirror — do **not** use `gh` or `github.com` URLs for CI, releases, or issues.
+2. **Never manually bump versions.** Use the `codeberg-release-manager` agent for every version bump and release.
+3. **Run `bash scripts/pr/pre_pr_check.sh` before every PR.** It is the mandatory pre-PR gate and must pass.
+4. **Use the project venv.** Run `.venv/bin/python` and `.venv/bin/pytest` (Python 3.11) — the system interpreters are not the project environment.
+5. **Store context in the MCP Memory Server, tagged `mcp-memory-service` first.** Never write `MEMORY.md` or local memory files unless the user explicitly asks for file-based storage.
+6. **Access `Memory` fields by attribute** (`memory.tags`), never via `memory.metadata.get('tags')`. This has caused 3 production bugs.
+7. **Sanitize user-provided values in logs** with `_sanitize_log_value()` (from `mcp_memory_service.compat`).
+8. **MCP server configs go in `.mcp.json`**, not `settings.json`.
+9. **Update `site/index.html` version strings on every MINOR/MAJOR release** (a CI gate enforces this).
+10. **Never click "Always allow" on heredoc commands** — it corrupts `.claude/settings.local.json`.
+11. **Before any SSH/network task, verify `hostname` and connection direction** (source → target).
+12. **Report outcomes faithfully.** "Tests pass" means you ran them and saw them pass; if a step was skipped or failed, say so with the output.
+
+## Critical Directives
 
 **IMPORTANT**: Before working with this project, read:
 - **`.claude/directives/memory-tagging.md`** - MANDATORY: Always tag memories with `mcp-memory-service` as first tag
 - **`.claude/directives/README.md`** - Additional topic-specific directives
 
-## 🔴 Operational Rules
+## Operational Rules
 
 **These rules apply to every session. Violations cause real incidents — follow them exactly.**
 
 ### Memory Storage
-- **Always use MCP Memory Server** (`mcp__memory__memory_store`) for storing context, learnings, and decisions
+- **Always use the MCP Memory Server** (`mcp__memory__memory_store`) for storing context, learnings, and decisions
 - **Never write to `MEMORY.md` or local memory files** unless the user explicitly asks for file-based storage
 - Tag all memories with `mcp-memory-service` as the first tag (per `memory-tagging.md`)
 
@@ -31,27 +48,44 @@ This file provides guidance to Claude Code (claude.ai/code) when working with th
 - This prevents accidental operations on production machines or reverse-direction tunnels
 
 ### Auto-Save Learnings
-- **After completing tasks**: automatically save key learnings, decisions, and patterns to MCP Memory without being asked
+- **After completing tasks**: automatically save key learnings, decisions, and patterns to the MCP Memory Server without being asked
 - Include relevant tags: `mcp-memory-service`, task-specific tags, and `learnings`
+
+### Source Control & Hosting (Codeberg, not GitHub)
+- **`origin` is Codeberg**: `git@codeberg.org:doobidoo/mcp-memory-service.git`. CI runs as **Forgejo Actions** in `.forgejo/workflows/` (`ci.yml`, `release.yml`, `deploy-site.yml`, `cleanup-images.yml`). There is no `.github/workflows/` directory.
+- **The `github` remote is a suspended mirror.** Do not use `gh` CLI, `github.com` URLs, or GitHub Actions for CI/release/issue work. Issues and PRs are on Codeberg.
+- **GHSA identifiers** (e.g. `GHSA-2r68-g678-7qr3`) are just advisory IDs and remain valid references.
 
 ### Release Workflow Checklist
 Before merging or releasing:
-1. Verify CI is green on the target branch (`gh run list --branch <branch>`)
+1. **Verify CI is green on the target branch** (Forgejo Actions on Codeberg). Most convenient: let the `codeberg-release-manager` agent check and drive the release. Manual check: `tea` CLI (Forgejo/Gitea) if configured, otherwise the Actions tab at `https://codeberg.org/doobidoo/mcp-memory-service`.
 2. **Update `site/index.html` version strings** whenever MAJOR.MINOR changes (i.e. every MINOR or MAJOR release — PATCH releases are exempt). The `version-drift-check` CI gate enforces this and will fail if skipped. Update ALL occurrences: `<title>`, `<meta og:title>`, hero badge, "What's New" section, release link `href`. Use `grep -n "v11\." site/index.html` to find them. This is MANDATORY — not optional for "incremental" releases. The site auto-deploys to Cloudflare Pages (mcpmemory.services) when the change lands on main (`.forgejo/workflows/deploy-site.yml`).
-3. Clean up merged branches after release (`git branch -d`, `git push origin --delete`)
-4. Use `codeberg-release-manager` agent — never manually bump versions
+3. Clean up merged branches after release (`git branch -d`, `git push origin --delete`).
+4. Use the `codeberg-release-manager` agent — never manually bump versions.
 
 ## Overview
 
 MCP Memory Service is a semantic memory layer for AI applications, accessible via REST API and MCP transport. It provides persistent storage for 14+ AI clients including Claude Desktop, OpenCode, LangGraph, CrewAI, and any HTTP client. It uses vector embeddings for semantic search, supports multiple storage backends (SQLite-vec, Cloudflare, Hybrid), and includes advanced features like memory consolidation, quality scoring, and OAuth 2.1 team collaboration.
 
-**Current Version:** v11.5.0 - MINOR release: conditional temporal decay (#123, @filhocf), functional belief derivation pipeline (#124, @filhocf), consolidation clustering fix (#126, @filhocf), bootstrap belief injection + task-aware retrieval (#127, @filhocf) — see [CHANGELOG.md](CHANGELOG.md) for details
+**Current Version:** v11.4.0 - MINOR release: memory merge action (#100, @filhocf), pluggable domain NER extractors (#54, @filhocf), mcpmemory.services landing page — see [CHANGELOG.md](CHANGELOG.md) for details. (Issue/PR numbers refer to Codeberg.)
 
-> **🎯 v10.0.0 Milestone**: This major release represents a complete API consolidation - 34 tools unified into 12 with enhanced capabilities. All deprecated tools continue working with warnings until v11.0. See `docs/MIGRATION.md` for migration guide.
+> **History (v10.0.0):** The v10 API consolidation unified 34 tools into 12. The deprecated tool-name alias layer (`compat.DEPRECATED_TOOLS`) was later **removed in v11** (Issue #53) — old tool names no longer resolve. The registry has since grown to ~28 tools (see `src/mcp_memory_service/tools/registry.py`).
 
-> **📊 Q1 2026 Status** (Feb 1, 2026): Quarterly roadmap review completed - 6/9 high-priority items delivered ahead of schedule including Python 3.14 support, backup scheduler fix, and full CI/CD stability. See [Development Roadmap](https://github.com/doobidoo/mcp-memory-service/wiki/13-Development-Roadmap) and [Issue #399](https://github.com/doobidoo/mcp-memory-service/issues/399) for details.
+> **History (Feb 2026 roadmap review):** The Q1 2026 quarterly review delivered 6/9 high-priority items ahead of schedule (Python 3.14 support, backup scheduler fix, CI/CD stability). Current roadmap: the **Development Roadmap** page on the Codeberg wiki.
 
 ## Essential Commands
+
+### Python Environment
+
+This repo uses a project virtualenv at `.venv` (Python 3.11). The system `python`/`pytest` are **not** the project interpreter. Always use the venv binaries:
+
+```bash
+.venv/bin/python -m mcp_memory_service.server   # run a module
+.venv/bin/pytest                                # run the test suite
+.venv/bin/python -m pip install -e .            # editable install
+```
+
+The commands below are written as bare `python`/`pytest` for brevity — run them via `.venv/bin/...`. For `git commit`, the pre-commit hook uses **system** Python and will fail with "Package not installed"; prefix commits with `PATH=".venv/bin:$PATH"` (see Troubleshooting). `uv` is also used (`uv.lock` present); `uv pip install -e .` and `uv run memory ...` work too.
 
 ### Development Server
 
@@ -77,7 +111,7 @@ memory logs
 memory logs -n 50
 ```
 
-**Legacy shell scripts (still available, but CLI is preferred):**
+**Legacy entry points (still available, but the CLI is preferred):**
 ```bash
 # MCP server (for Claude Desktop integration)
 python -m mcp_memory_service.server
@@ -85,21 +119,19 @@ python -m mcp_memory_service.server
 # HTTP API server (dashboard + REST API)
 python scripts/server/run_http_server.py
 
-# Both servers simultaneously
-./start_all_servers.sh
-
-# Quick update after git pull
+# Quick update after git pull (installs deps, restarts server)
 ./scripts/update_and_restart.sh
 ```
 
 > **Note:** The `memory launch/stop/restart/info/logs` CLI commands are the
-> preferred way to manage the server going forward. The shell scripts
-> (`start_all_servers.sh`, `update_and_restart.sh`) still work but may be
-> deprecated in a future release. For new deployments, use the CLI.
+> preferred way to manage the server going forward. The legacy scripts
+> (`scripts/server/run_http_server.py`, `scripts/update_and_restart.sh`) still
+> work but may be deprecated in a future release. For new deployments, use the CLI.
 
 ### Testing
 ```bash
-# Run all tests (~1,780 tests total)
+# Run all tests (~2,400+ tests across ~216 files)
+# Exact count: .venv/bin/pytest --collect-only -q | tail -1
 pytest
 
 # Run specific test file
@@ -148,30 +180,49 @@ python scripts/validation/diagnose_backend_config.py
 ## Code Architecture
 
 ### High-Level Structure
+
+Principal packages under `src/mcp_memory_service/` (not exhaustive — run `ls src/mcp_memory_service/` for the full list):
+
 ```
 src/mcp_memory_service/
-├── server/           # MCP server layer (modular, cache-optimized)
-├── server_impl.py    # Main MCP handlers (12 Tools)
-├── storage/          # Storage backends (Strategy Pattern)
-├── web/              # FastAPI dashboard + REST API + OAuth
+├── server/           # MCP server layer (modular, cache-optimized) + handlers/
+├── server_impl.py    # MemoryServer: list_tools()/call_tool() + tool-handler methods
+├── mcp_server.py     # MCP server entry wiring
+├── tools/            # Declarative tool registry (registry.py) + dispatch table (routing.py)
+├── storage/          # Storage backends (Strategy Pattern) + graph.py
+├── web/              # FastAPI dashboard + REST API + OAuth + MCP-over-HTTP
+├── api/              # Shared API layer (compact types, operations)
 ├── services/         # Business logic (MemoryService orchestrator)
 ├── quality/          # AI quality scoring (multi-tier)
+├── scoring/          # Scoring / ranking helpers
 ├── consolidation/    # Dream-inspired memory maintenance
+├── reasoning/        # Relationship / inference logic
 ├── embeddings/       # ONNX embeddings (sentence-transformers)
-├── ingestion/        # Document loaders (PDF, DOCX, TXT, JSON)
+├── ingestion/        # Document loaders (PDF, DOCX, TXT, JSON, CSV)
+├── harvest/          # Memory harvesting
+├── sync/             # Hybrid backend sync
+├── discovery/        # mDNS / service discovery
+├── backup/           # Backup scheduler
+├── health/           # Health checks
+├── cli/              # `memory` lifecycle CLI (launch/stop/restart/info/logs)
+├── config/           # Configuration
+├── plugins/          # Plugin hooks
 ├── models/           # Data models and schemas
+├── compat.py         # Compatibility shims + _sanitize_log_value()
 └── utils/            # Utilities (health checks, startup orchestrator)
 ```
 
 ### MCP Server Layer (`server/`)
 
-**Evolution:** Extracted from monolithic 5000+ line `server.py` to modular architecture (v8.59.0)
+**Evolution:** Extracted from a monolithic 5000+ line `server.py` to a modular architecture (v8.59.0). In v11 the tool definitions and dispatch were made fully declarative.
 
 **Key Components:**
-- **`server_impl.py`** - Main MemoryServer class with 35 MCP tool handlers
-- **`cache_manager.py`** - Global caching for 534,628x performance boost
+- **`server_impl.py`** - Main `MemoryServer` class. `list_tools()` builds the tool list from the declarative registry; `call_tool()` dispatches via the routing table. Also holds the `handle_*` tool-handler methods.
+- **`tools/registry.py`** - `TOOL_REGISTRY`: the declarative list of `ToolDef` objects (28 tools as of v11.4.0). Each `ToolDef` maps 1:1 to a `types.Tool`. Count: `grep -c 'ToolDef(' src/mcp_memory_service/tools/registry.py`.
+- **`tools/routing.py`** - `ROUTING_TABLE` (name → handler) + `resolve_handler(name)` (lazy import). Replaced the former ~59-branch elif chain in `call_tool()`.
+- **`server/handlers/`** - Modular request handlers: `memory.py`, `quality.py`, `consolidation.py`, `graph.py`, `documents.py`, `mistake_notes.py`, `utility.py`. Signature: `async def handle_X(server, arguments) -> List[types.TextContent]`.
+- **`cache_manager.py`** - Global caching for a large performance boost (see Performance Characteristics)
 - **`client_detection.py`** - Adapts behavior for Claude Desktop vs LM Studio
-- **`handlers/`** - Modular request handlers (memory, quality, consolidation, graph)
 - **`logging_config.py`** - Client-aware logging
 - **`environment.py`** - Python path setup, version checks
 
@@ -179,17 +230,17 @@ src/mcp_memory_service/
 
 ### Storage Backend Architecture (`storage/`)
 
-**Strategy Pattern** with 3 implementations sharing `BaseStorage` interface:
+**Strategy Pattern** with 3 implementations sharing the `BaseStorage` interface:
 
-| Backend | File | Size | Performance | Use Case |
-|---------|------|------|-------------|----------|
-| **SQLite-Vec** | `sqlite_vec.py` | 116KB | 5ms reads | Development, single-user |
-| **Cloudflare** | `cloudflare.py` | 85KB | Network-dependent | Cloud-only, edge deployment |
-| **Hybrid** | `hybrid.py` | 84KB | 5ms local + cloud sync | **Production (RECOMMENDED)** |
+| Backend | File | Performance | Use Case |
+|---------|------|-------------|----------|
+| **SQLite-Vec** | `sqlite_vec.py` | 5ms reads | Development, single-user |
+| **Cloudflare** | `cloudflare.py` | Network-dependent | Cloud-only, edge deployment |
+| **Hybrid** | `hybrid.py` | 5ms local + cloud sync | **Production (RECOMMENDED)** |
 
 **Key Features:**
 - All implement `BaseStorage` interface (`base.py`)
-- SQLite-Vec uses sqlite-vec extension for KNN semantic search
+- SQLite-Vec uses the sqlite-vec extension for KNN semantic search
 - Cloudflare uses D1 (SQL) + Vectorize (vector index)
 - Hybrid: Local SQLite-Vec for reads, background Cloudflare sync
 - Graph storage in `graph.py` (v8.51.0) - 30x query performance
@@ -206,7 +257,7 @@ src/mcp_memory_service/
 - **`sse.py`** - Server-Sent Events for real-time updates
 - **`static/`** - Single-page dashboard application
 
-**Key Pattern:** HTTP API provides same functionality as MCP tools for team collaboration. The MCP-over-HTTP endpoint is a thin protocol shim — its tool surface and dispatch logic are inherited from the shared `MemoryServer`.
+**Key Pattern:** The HTTP API provides the same functionality as the MCP tools for team collaboration. The MCP-over-HTTP endpoint is a thin protocol shim — its tool surface and dispatch logic are inherited from the shared `MemoryServer`. Tools that read caller-supplied filesystem paths are filtered out of the remote transport by `local_only_tools()` (confused-deputy guard).
 
 ### Quality System (`quality/`)
 
@@ -233,7 +284,7 @@ src/mcp_memory_service/
 **Components:**
 - `decay.py` - Exponential decay scoring (importance × recency)
 - `association_discovery.py` - Find semantic relationships
-- `relationship_inference.py` - **NEW (v9.3.0+):** Intelligent relationship type classification
+- `relationship_inference.py` - Intelligent relationship type classification (v9.3.0+)
 - `compression.py` - Semantic clustering and merging
 - `forgetting.py` - Quality-based archival (High: 365d, Medium: 180d, Low: 30-90d)
 - `scheduler.py` - Automatic consolidation scheduling (daily/weekly/monthly)
@@ -260,12 +311,14 @@ src/mcp_memory_service/
 
 ## Test Architecture
 
-### Structure (~1,780 tests)
+### Structure (~2,400+ tests across ~216 files)
+
+Illustrative layout (subdirectories mirror `src/`):
 ```
 tests/
 ├── api/              # API layer tests (compact types, operations)
 ├── storage/          # Backend-specific tests (sqlite_vec, cloudflare, hybrid)
-├── server/           # MCP server handler tests (35 handlers)
+├── server/           # MCP server handler tests
 ├── consolidation/    # Memory maintenance tests
 ├── quality/          # Quality scoring tests
 ├── web/              # HTTP API and OAuth tests
@@ -281,8 +334,8 @@ tests/
 
 ### Test Safety (Critical - PR #438)
 **Triple Safety System** prevents production database deletion:
-1. **Forced Test Database Path**: `conftest.py` creates isolated temp directory with `mcp-test-` prefix at module import time
-2. **Pre-Test Verification**: `pytest_sessionstart` aborts test run if production path detected
+1. **Forced Test Database Path**: `conftest.py` creates an isolated temp directory with `mcp-test-` prefix at module import time
+2. **Pre-Test Verification**: `pytest_sessionstart` aborts the test run if a production path is detected
 3. **Triple-Check Cleanup**: `pytest_sessionfinish` validates temp location + no production indicators + test markers present
 
 **Backend Isolation**: Tests automatically override `MCP_MEMORY_STORAGE_BACKEND` to `sqlite_vec` unless `MCP_TEST_ALLOW_CLOUD_BACKEND=true`
@@ -346,15 +399,15 @@ export MCP_MEMORY_SQLITE_PRAGMAS=journal_mode=WAL,busy_timeout=15000,cache_size=
 
 **Configuration Precedence:** Environment variables > .env file > Global Claude Config > defaults
 
-**Important:** After updating `.env`, always restart servers. Use `memory restart` (preferred CLI) or `./scripts/update_and_restart.sh` (legacy) for automated workflow.
+**Important:** After updating `.env`, always restart servers. Use `memory restart` (preferred CLI) or `./scripts/update_and_restart.sh` (legacy) for the automated workflow.
 
-**CRITICAL:** `MCP_MEMORY_SQLITE_PRAGMAS` must include `journal_mode=WAL` for concurrent access. Omitting WAL disables concurrent reads/writes and causes "database is locked" errors when HTTP server and MCP server run simultaneously.
+**CRITICAL:** `MCP_MEMORY_SQLITE_PRAGMAS` must include `journal_mode=WAL` for concurrent access. Omitting WAL disables concurrent reads/writes and causes "database is locked" errors when the HTTP server and MCP server run simultaneously.
 
 **RECOMMENDED for Hybrid mode:** Set `MCP_HYBRID_SYNC_OWNER=http` so that only the HTTP server syncs to Cloudflare. With this setting the MCP server (Claude Desktop) skips Cloudflare initialization entirely and uses SQLite-Vec directly — no Cloudflare credentials needed in `claude_desktop_config.json`. The HTTP server (running `run_http_server.py` with `.env`) handles all background sync. This is the correct separation of concerns: Claude Desktop = memory access, HTTP server = sync infrastructure.
 
 ### External Embedding APIs
 
-**Note:** Only supported with `sqlite_vec` backend (not compatible with `hybrid` or `cloudflare`).
+**Note:** Only supported with the `sqlite_vec` backend (not compatible with `hybrid` or `cloudflare`).
 
 ```bash
 export MCP_EXTERNAL_EMBEDDING_URL=http://localhost:8890/v1/embeddings
@@ -384,7 +437,7 @@ export MCP_EXTERNAL_EMBEDDING_API_KEY=sk-xxx  # Optional
 }
 ```
 
-**Alternative:** Use `uv run memory server` or direct script path (see v6.17.0+ migration notes in README).
+**Alternative:** Use `uv run memory server` or a direct script path (see v6.17.0+ migration notes in README).
 
 ## Development Guidelines
 
@@ -396,9 +449,9 @@ export MCP_EXTERNAL_EMBEDDING_API_KEY=sk-xxx  # Optional
 3. **Periodic Review** (weekly) - pyscn analysis + trend tracking
 
 **Health Score Thresholds:**
-- `<50`: 🔴 Release blocker (cannot merge)
-- `50-69`: 🟡 Action required (refactor within 2 weeks)
-- `70+`: ✅ Continue development
+- `<50`: Release blocker (cannot merge)
+- `50-69`: Action required (refactor within 2 weeks)
+- `70+`: Continue development
 
 **Utility Modules Pattern** (v8.61.0 - Phase 3 Refactoring):
 - Strategy Pattern: `utils/health_check.py` (5 strategies)
@@ -409,7 +462,7 @@ export MCP_EXTERNAL_EMBEDDING_API_KEY=sk-xxx  # Optional
 **Target:** All complexity A-B grade (complexity ≤8)
 
 **Log Injection Guard** (added v10.68.0 — CodeQL GHSA-84hp-mqvj-3p8h lessons):
-- **NEVER** log user-provided values in raw f-strings: `logger.info(f"Stored: {content}")` → CodeQL `py/log-injection`
+- **NEVER** log user-provided values in raw f-strings: `logger.info(f"Stored: {content}")` triggers CodeQL `py/log-injection`
 - **ALWAYS** wrap with `_sanitize_log_value()` from `src/mcp_memory_service/compat.py`:
   ```python
   from mcp_memory_service.compat import _sanitize_log_value
@@ -417,7 +470,7 @@ export MCP_EXTERNAL_EMBEDDING_API_KEY=sk-xxx  # Optional
   ```
 - `_sanitize_log_value()` strips `\n`, `\r`, `\x1b` — prevents log-forging and ANSI injection
 - `pre_pr_check.sh` now detects f-string logger calls without this wrapper (check 6.5)
-- Path injection: always validate with `Path(user_input).resolve()` and check it's under the expected base dir
+- Path injection: always validate with `Path(user_input).resolve()` and check it is under the expected base dir
 
 ### External Data Parsers
 - **Always inspect real data first**: Download and inspect a sample of the real data BEFORE writing parsers or tests. Never trust API docs or project pages alone — real JSON structures often differ from descriptions (e.g., LoCoMo observations are nested dicts, not newline-separated strings).
@@ -432,42 +485,43 @@ export MCP_EXTERNAL_EMBEDDING_API_KEY=sk-xxx  # Optional
 - [`.claude/directives/release-cadence.md`](.claude/directives/release-cadence.md) - Release batching (WHEN)
 
 **Quick workflow:**
-1. `pip install -e .` - Install in editable mode
+1. `pip install -e .` - Install in editable mode (via `.venv`)
 2. Make changes
-3. `pytest` - Run tests
+3. `pytest` - Run tests (`.venv/bin/pytest`)
 4. `bash scripts/pr/pre_pr_check.sh` - Pre-PR validation (MANDATORY)
-5. Create PR - **IMPORTANT: Use `codeberg-release-manager` agent for ALL version bumps and releases**
+5. Create PR - **IMPORTANT: Use the `codeberg-release-manager` agent for ALL version bumps and releases**
 
-**🚨 Release Protocol (MANDATORY)**:
-- **NEVER manually bump versions** - always use `codeberg-release-manager` agent
-- Agent handles: version bump, CHANGELOG update, _version.py sync, PR creation, release notes
-- Ensures consistency across `pyproject.toml`, `_version.py`, CHANGELOG, and GitHub releases
-- Example: After merging feature PR, invoke codeberg-release-manager agent to create release
+**Release Protocol (MANDATORY)**:
+- **NEVER manually bump versions** - always use the `codeberg-release-manager` agent
+- The agent handles: version bump, CHANGELOG update, `_version.py` sync, PR creation, release notes
+- Ensures consistency across `pyproject.toml`, `_version.py`, CHANGELOG, and the Codeberg release
+- Example: After merging a feature PR, invoke the `codeberg-release-manager` agent to create the release
 
-**Dashboard changes (`web/static/`):** Verify in browser before merging. Dashboard JS lacks automated test coverage — PRs touching this area should include manual testing evidence or screenshots.
+**Dashboard changes (`web/static/`):** Verify in a browser before merging. Dashboard JS lacks automated test coverage — PRs touching this area should include manual testing evidence or screenshots.
 
 **Memory Tagging:** Always tag memories with `mcp-memory-service` as first tag (see `.claude/directives/memory-tagging.md`)
 
-**Removing a feature:** When removing a feature or changing a port/command, run `grep -r "<term>" docs/ README.md` and clean up references in the same PR. CI catches new dead refs via `scripts/ci/check_dead_refs.sh` (also run as GitHub Action on docs changes).
+**Removing a feature:** When removing a feature or changing a port/command, run `grep -r "<term>" docs/ README.md` and clean up references in the same PR. CI catches new dead refs via `scripts/ci/check_dead_refs.sh` (also run as a Forgejo Actions workflow on docs changes).
 
 ### Common Development Tasks
 
-**Add a new MCP tool:**
-1. Add a handler function (or method) — these live in `src/mcp_memory_service/server/handlers/*.py` and follow the `async def handle_X(server, arguments) -> List[types.TextContent]` shape.
-2. Add a `types.Tool(...)` entry to `MemoryServer.list_tools()` in `src/mcp_memory_service/server_impl.py` with name, description, `inputSchema`, and `annotations`. Set `annotations=types.ToolAnnotations(readOnlyHint=True, ...)` if the tool does not mutate state — otherwise the HTTP `/mcp` layer will treat it as a write tool and require the OAuth `write` scope to call it (GHSA-2r68-g678-7qr3).
-3. Add a dispatch branch in `MemoryServer.call_tool()` routing the tool name to your handler.
-4. Renaming an existing tool is a **breaking change**. As of V11 there is no legacy tool-name alias layer (`compat.DEPRECATED_TOOLS` was removed in Issue #53), so a rename drops the old name outright. Avoid renames; if unavoidable, treat it as a major-version change and document the migration in `docs/MIGRATION.md`.
-5. Add tests in `tests/server/test_handlers.py`.
+**Add a new MCP tool:** Tools are declarative as of v11 — the old inline `types.Tool(...)` list in `list_tools()` and the `call_tool()` elif chain were **both removed**. The current flow:
+1. **Define the tool:** add a `ToolDef(name, description, input_schema, annotations)` to `TOOL_REGISTRY` in `src/mcp_memory_service/tools/registry.py`. Each `ToolDef` maps 1:1 to a `types.Tool`. Set `annotations={"readOnlyHint": True, ...}` if the tool does not mutate state — annotations drive OAuth scope; without `readOnlyHint` the HTTP `/mcp` layer treats it as a write tool and requires the OAuth `write` scope (GHSA-2r68-g678-7qr3).
+2. **Implement the handler** in `src/mcp_memory_service/server/handlers/*.py` with the shape `async def handle_X(server, arguments) -> List[types.TextContent]`.
+3. **Route it:** add `"<tool_name>": <handler>` to `ROUTING_TABLE` in `src/mcp_memory_service/tools/routing.py`. Use a module-function reference for handler-module functions, or the `("__self__", "handle_X")` tuple to dispatch to a `MemoryServer` method. `call_tool()` resolves handlers via `resolve_handler(name)` (lazy import).
+4. **If the tool reads a caller-supplied filesystem path** (`project_path`, `file_path`, `directory_path`), add its name to `local_only_tools()` in `server_impl.py` so the HTTP shim will not expose it (confused-deputy guard).
+5. **Add tests** in `tests/server/test_handlers.py`.
+6. **Renaming a tool is a breaking change.** The v11 alias layer (`compat.DEPRECATED_TOOLS`) was removed (Issue #53), so a rename drops the old name outright. Avoid renames; if unavoidable, treat it as a major-version change and document the migration in `docs/MIGRATION.md`.
 
 **Add a new storage backend:**
-1. Implement `BaseStorage` interface from `src/mcp_memory_service/storage/base.py`
-2. Add factory method in `src/mcp_memory_service/storage/factory.py`
+1. Implement the `BaseStorage` interface from `src/mcp_memory_service/storage/base.py`
+2. Add a factory method in `src/mcp_memory_service/storage/factory.py`
 3. Add tests in `tests/storage/test_<backend>.py`
 4. Update configuration options
 
 **Add a new document loader:**
-1. Implement `DocumentLoader` interface from `src/mcp_memory_service/ingestion/base.py`
-2. Register loader in `src/mcp_memory_service/ingestion/registry.py`
+1. Implement the `DocumentLoader` interface from `src/mcp_memory_service/ingestion/base.py`
+2. Register the loader in `src/mcp_memory_service/ingestion/registry.py`
 3. Add tests in `tests/ingestion/test_<loader>.py`
 
 **Improve memory ontology and relationship types:**
@@ -478,7 +532,7 @@ export MCP_EXTERNAL_EMBEDDING_API_KEY=sk-xxx  # Optional
 
 ### Memory Field Access Pattern (CRITICAL)
 
-**ALWAYS use direct attribute access on Memory objects. NEVER access via metadata dict.**
+**ALWAYS use direct attribute access on Memory objects. NEVER access via the metadata dict.**
 
 This anti-pattern has caused 3 production bugs (v10.13.1: PRs #466, #467, #469).
 
@@ -493,7 +547,7 @@ class Memory:
     metadata: Dict[str, Any] = field(default_factory=dict)  # SEPARATE - for custom data only
 ```
 
-**❌ WRONG - Common Anti-Patterns:**
+**WRONG - Common Anti-Patterns:**
 ```python
 # WRONG - reads from metadata dict (returns default even if field exists)
 memory.metadata.get('tags', [])           # Always returns []
@@ -504,7 +558,7 @@ memory['content_hash']
 memory['tags']
 ```
 
-**✅ CORRECT - Direct Attribute Access:**
+**CORRECT - Direct Attribute Access:**
 ```python
 # CORRECT - access top-level fields directly
 memory.tags              # Returns actual tags list
@@ -518,8 +572,8 @@ memory.memory_type or ''
 ```
 
 **Production Bugs Caused by This Pattern:**
-1. **PR #466 (CRITICAL)**: `retrieve_memories()` broke REST API - all filtered queries returned 0 results
-2. **PR #467 (HIGH)**: Tags displayed as individual characters ("python" → "p,y,t,h,o,n")
+1. **PR #466 (CRITICAL)**: `retrieve_memories()` broke the REST API - all filtered queries returned 0 results
+2. **PR #467 (HIGH)**: Tags displayed as individual characters ("python" -> "p,y,t,h,o,n")
 3. **PR #469 (HIGH)**: Prompt handlers crashed with AttributeError
 
 **Key Insight:** `Memory.metadata` is for **custom key-value pairs only**, NOT standard fields (tags, memory_type, etc.). Standard fields are top-level dataclass attributes.
@@ -527,11 +581,32 @@ memory.memory_type or ''
 **Prevention:**
 - Use type hints to catch dict-style access
 - Code review: Flag any `metadata.get('tags')` or `metadata.get('memory_type')` patterns
-- Add linting rule to detect this anti-pattern
+- Add a linting rule to detect this anti-pattern
+
+## Definition of Done
+
+Work is not "done" until the relevant checks below have been run and pass. Report results plainly — paste the command output; if a check was skipped or failed, say so rather than claiming success.
+
+**Every code change:**
+- [ ] Relevant tests pass: `.venv/bin/pytest tests/<area>` (or `.venv/bin/pytest -k <pattern>`); run the full suite before a release.
+- [ ] `bash scripts/pr/pre_pr_check.sh` passes — the MANDATORY pre-PR gate (blocks on security findings and health score <50, includes the log-injection check).
+- [ ] New code stays within the complexity budget (A-B grade, complexity ≤8).
+- [ ] User-provided values in `logger.*` calls are wrapped with `_sanitize_log_value()`.
+- [ ] `Memory` fields are accessed by attribute (`memory.tags`), never `memory.metadata.get('tags')`.
+- [ ] If a feature/port/command was removed: `grep -r "<term>" docs/ README.md` and clean up references in the same change.
+
+**Dashboard changes (`web/static/`):** verified in a browser (no automated JS coverage) — include a screenshot or a note of what was exercised.
+
+**Before a release / version bump:**
+- [ ] CI is green on the target branch (Forgejo Actions on Codeberg).
+- [ ] Version bumped via the `codeberg-release-manager` agent (never by hand) — keeps `pyproject.toml`, `_version.py`, CHANGELOG, and the Codeberg release in sync.
+- [ ] `site/index.html` version strings updated if MAJOR.MINOR changed (see the Release Workflow Checklist).
+
+**After finishing a task:** save key learnings/decisions to the MCP Memory Server, tagged `mcp-memory-service` first (per the Auto-Save rule).
 
 ## Troubleshooting
 
-### ⚠️ Heredoc Permission Corruption
+### Heredoc Permission Corruption
 
 **NEVER click "Always allow" on heredoc/here-document commands** (e.g. `cat << 'EOF' > /tmp/report.md`). Claude Code stores the **entire command including multi-page content** as a Bash permission pattern in `.claude/settings.local.json`. This causes parsing errors on next startup (garbled tree-character artifacts, ":* pattern must be at the end" errors).
 
@@ -540,7 +615,7 @@ memory.memory_type or ''
 - For report generation, prefer `tee`, `python -c`, or write files via the `Write` tool instead of shell heredocs
 - Agents generating reports should write files directly, not via `cat << EOF`
 
-**Recovery:** Remove the corrupted entries from `.claude/settings.local.json` `permissions.allow` array. They are identifiable by their massive size (entire reports embedded as permission strings).
+**Recovery:** Remove the corrupted entries from the `.claude/settings.local.json` `permissions.allow` array. They are identifiable by their massive size (entire reports embedded as permission strings).
 
 ### Common Issues
 
@@ -548,18 +623,18 @@ memory.memory_type or ''
 |-------|-----------|
 | Wrong backend showing | `python scripts/validation/diagnose_backend_config.py` |
 | Port mismatch (hooks timeout) | Verify same port in `~/.claude/hooks/config.json` and server (default: 8000) |
-| Schema validation errors after PR merge | Run `/mcp` in Claude Code to reconnect with new schema |
+| Schema validation errors after PR merge | Run `/mcp` in Claude Code to reconnect with the new schema |
 | Database lock errors | Add `journal_mode=WAL` to `MCP_MEMORY_SQLITE_PRAGMAS` in `.env`, restart servers |
 | Tests failing after git pull | Run `memory restart` or `./scripts/update_and_restart.sh` (installs deps, restarts server) |
 | MCP fails on every session (Windows) | Set `MCP_INIT_TIMEOUT=120` in your MCP server env config (issue #474) |
-| Cloudflare 401 on MCP server startup (hybrid mode) | Set `MCP_HYBRID_SYNC_OWNER=http` in `.env` — MCP server then uses SQLite-Vec only, no Cloudflare token needed in Claude Desktop config |
-| Cloudflare 403 / sync not running (IPv6) | Python prefers IPv6 but token IP allowlist may only have IPv4. Add your IPv6 /64 network to token's Client IP Address Filtering, or remove IP filtering entirely |
+| Cloudflare 401 on MCP server startup (hybrid mode) | Set `MCP_HYBRID_SYNC_OWNER=http` in `.env` — the MCP server then uses SQLite-Vec only, no Cloudflare token needed in Claude Desktop config |
+| Cloudflare 403 / sync not running (IPv6) | Python prefers IPv6 but the token IP allowlist may only have IPv4. Add your IPv6 /64 network to the token's Client IP Address Filtering, or remove IP filtering entirely |
 | Strict stdio client times out during handshake (e.g. Codex, 10s budget) | Set `MCP_INIT_TIMEOUT=5` to force lazy loading — storage initializes on first tool call instead (issue #561) |
-| uv.lock revision downgraded (revision=2 vs revision=3) | Local uv 0.7.16 silently downgrades lockfile. Restore with `git checkout uv.lock` or upgrade uv. Don't include revision-only changes in PRs |
-| Pre-commit hook fails "Package not installed" | Hook uses system Python, not venv. Use `PATH=".venv/bin:$PATH" git commit -m "..."` for all commits |
-| Editable install replaced PyPI version | `uv pip install -e .` replaces PyPI package with local source. After commit, restore with `uv pip install mcp-memory-service==<version>` |
-| Cloudflare 401 after upgrade/restart | First search Memory (`cloudflare 401`), then verify `.env` token matches Cloudflare Dashboard. Token rotation in dashboard does NOT update local `.env` |
-| zeroconf DLL load fails / Symantec flags it as trojan (Windows) | False positive on the mDNS C extension. Set `MCP_MDNS_ENABLED=false` (core service works without mDNS). See [docs/troubleshooting/mdns-symantec-false-positive.md](docs/troubleshooting/mdns-symantec-false-positive.md) |
+| uv.lock revision downgraded (revision=2 vs revision=3) | Local uv 0.7.16 silently downgrades the lockfile. Restore with `git checkout uv.lock` or upgrade uv. Don't include revision-only changes in PRs |
+| Pre-commit hook fails "Package not installed" | The hook uses system Python, not the venv. Use `PATH=".venv/bin:$PATH" git commit -m "..."` for all commits |
+| Editable install replaced PyPI version | `uv pip install -e .` replaces the PyPI package with local source. After commit, restore with `uv pip install mcp-memory-service==<version>` |
+| Cloudflare 401 after upgrade/restart | First search Memory (`cloudflare 401`), then verify the `.env` token matches the Cloudflare Dashboard. Token rotation in the dashboard does NOT update local `.env` |
+| zeroconf DLL load fails / Symantec flags it as a trojan (Windows) | False positive on the mDNS C extension. Set `MCP_MDNS_ENABLED=false` (core service works without mDNS). See [docs/troubleshooting/mdns-symantec-false-positive.md](docs/troubleshooting/mdns-symantec-false-positive.md) |
 
 **Comprehensive troubleshooting:** [docs/troubleshooting/hooks-quick-reference.md](docs/troubleshooting/hooks-quick-reference.md)
 
@@ -572,8 +647,8 @@ python scripts/validation/diagnose_backend_config.py          # Backend-specific
 ## Agent Integrations
 
 **Workflow automation:**
-- **changelog-archival** - Maintains lean CHANGELOG by archiving older versions
-- **codeberg-release-manager** - Complete release workflow (version bump, CHANGELOG, PR creation)
+- **codeberg-release-manager** - Complete release workflow (version bump, CHANGELOG, `_version.py` sync, PR creation, release notes). Use for ALL releases.
+- **changelog-archival** - Maintains a lean CHANGELOG by archiving older versions
 - **amp-automation** - Coding tasks + PR quality analysis with Amp CLI
 - **code-quality-guard** - Quality analysis before commits
 - **gemini-pr-automator** - Automated PR reviews and fixes
@@ -585,7 +660,7 @@ python scripts/validation/diagnose_backend_config.py          # Backend-specific
 1. **Strategy Pattern** - Storage backends, health checks, quality analytics
 2. **Orchestrator Pattern** - Startup orchestrator, consolidation scheduler
 3. **Processor Pattern** - Document ingestion, file processing
-4. **Registry Pattern** - Document loaders, storage factory
+4. **Registry Pattern** - Document loaders, storage factory, declarative tool registry
 5. **Singleton Pattern** - Global caching (storage, service instances)
 
 ## Performance Characteristics
@@ -606,13 +681,13 @@ python scripts/validation/diagnose_backend_config.py          # Backend-specific
 - **scripts/README.md** - Complete script reference
 - **site/** - mcpmemory.services landing page + in-browser demo (Cloudflare Pages, auto-deployed)
 - **docs/** - Guides, troubleshooting, architecture specs
-- **Wiki** - Comprehensive documentation (https://github.com/doobidoo/mcp-memory-service/wiki)
+- **Wiki** - Comprehensive documentation (https://codeberg.org/doobidoo/mcp-memory-service/wiki)
 - **`.claude/directives/`** - Topic-specific directives for Claude Code
 
 **When to update each:**
 - **CLAUDE.md** - Architecture changes, new patterns, development workflows
 - **README.md** - New features, installation changes, user-facing updates
-- **CHANGELOG.md** - Every version bump (use codeberg-release-manager agent)
+- **CHANGELOG.md** - Every version bump (use the `codeberg-release-manager` agent)
 - **site/index.html** - Landing page: MINOR/MAJOR releases only (title, og:title, hero badge, "What's New" cards, test count, release link). No manual publish step: merging to main triggers `.forgejo/workflows/deploy-site.yml`, which deploys `site/` to Cloudflare Pages (mcpmemory.services). GitHub Pages and the here.now mirror are retired; `docs/index.html` is only a redirect stub — never put version strings or content there.
 - **Wiki** - Detailed guides, troubleshooting, tutorials
 
@@ -627,12 +702,12 @@ python scripts/validation/diagnose_backend_config.py          # Backend-specific
 ---
 
 **Quick Start Checklist for New Contributors:**
-1. ✅ Read this file (CLAUDE.md)
-2. ✅ Read `.claude/directives/memory-tagging.md` (MANDATORY)
-3. ✅ Run `pip install -e .` (editable install)
-4. ✅ Run `pytest` (verify tests pass)
-5. ✅ Read relevant directive files for your work area
-6. ✅ Make changes and run `bash scripts/pr/pre_pr_check.sh` before PR
+1. [ ] Read this file (CLAUDE.md), especially the Non-Negotiables
+2. [ ] Read `.claude/directives/memory-tagging.md` (MANDATORY)
+3. [ ] Run `pip install -e .` into `.venv` (editable install)
+4. [ ] Run `.venv/bin/pytest` (verify tests pass)
+5. [ ] Read the relevant directive files for your work area
+6. [ ] Make changes and run `bash scripts/pr/pre_pr_check.sh` before a PR (see Definition of Done)
 
 ## Skill routing
 
