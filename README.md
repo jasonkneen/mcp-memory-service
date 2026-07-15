@@ -324,6 +324,15 @@ A production-tested self-hosted deployment using Docker containers behind a Clou
 - For long-running browser sessions, request the `offline_access` scope during authorization to receive a rotating `refresh_token` (lifetime via `MCP_OAUTH_REFRESH_TOKEN_EXPIRE_DAYS`, default 30 days). Without this scope, access tokens are the only credential — extend `MCP_OAUTH_ACCESS_TOKEN_EXPIRE_MINUTES` up to `1440` (24h) if you need longer single-shot sessions.
 - Consider an auth proxy like [AuthMCP](https://github.com/loglux/authmcp-gateway) or [mcp-auth-proxy](https://github.com/sigbit/mcp-auth-proxy) for robust session management
 
+### Fully-Offline Shared Memory Across Four Agents
+
+> *"mcp-memory-service has been the shared memory layer for all my coding agents since February — Claude Code, Claude Desktop, Codex CLI and OpenCode all talk to the same sqlite-vec DB over stdio on my Mac. ~5,900 memories and counting. Every session starts by pulling a bootstrap profile from memory and ends by committing a session summary, so any agent can pick up where another left off — work context, project state, even a 'mistakes I made before' log. It's the closest thing to persistent identity my agents have."*
+> — Mingjian Shao (AI PM & AI consultant, via LinkedIn)
+
+A single local `sqlite-vec` database on a Mac acts as the shared brain for four different agents over stdio — no server, no cloud. Embeddings run fully offline via a local **Qwen3-Embedding-0.6B (1024-dim) on MPS**, with daily automated backups, scheduled consolidation, and the dashboard kept alive by a LaunchAgent.
+
+**Lesson worth stealing (offline embeddings):** when the custom embedding model fails to load, the service can silently fall back to the default MiniLM (384-dim) and subsequent writes fail with dimension mismatches. If you pin a non-default embedding model, also pin the model path and set the Hugging Face offline flags so a load failure surfaces loudly instead of degrading — then a dimension mismatch can't corrupt the store.
+
 ---
 
 ## Comparison with Alternatives

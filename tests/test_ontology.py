@@ -26,6 +26,20 @@ is_symmetric_relationship = ontology.is_symmetric_relationship
 MemoryTypeOntology = ontology.MemoryTypeOntology
 
 
+@pytest.fixture(autouse=True)
+def _isolate_custom_memory_types(monkeypatch):
+    """Keep ontology tests hermetic against an ambient custom-type config.
+
+    ``get_all_types()`` merges ``MCP_CUSTOM_MEMORY_TYPES`` at call time, so a
+    developer who exports custom types (e.g. in a local ``.env``) would
+    otherwise see the built-in count/consistency assertions fail with spurious
+    counts. Clear it before every test; the cases in
+    ``TestBurst21CustomMemoryTypeConfiguration`` set it explicitly, which still
+    wins because they call ``monkeypatch.setenv`` inside the test body.
+    """
+    monkeypatch.delenv('MCP_CUSTOM_MEMORY_TYPES', raising=False)
+
+
 class TestBurst11BaseMemoryTypes:
     """Tests for Burst 1.1: Base Memory Types Enum"""
 
