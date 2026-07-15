@@ -240,7 +240,9 @@ class EmbeddingsMixin:
                 if not getattr(self, '_hash_fallback_warned', False):
                     logger.warning(
                         "No embedding backend available; using hash embeddings (reduced quality). "
-                        "Install ML dependencies for semantic search: pip install mcp-memory-service[ml]"
+                        "Install ML dependencies for semantic search: pip install mcp-memory-service[ml]. "
+                        "The hash fallback is refused on databases that already contain memories; "
+                        "set MCP_MEMORY_ALLOW_HASH_EMBEDDINGS=1 to override for testing."
                     )
                     _HASH_FALLBACK_WARNED = True
                     self._hash_fallback_warned = True
@@ -349,14 +351,79 @@ class EmbeddingsMixin:
             if not getattr(self, '_hash_fallback_warned', False):
                 logger.warning(
                     "No embedding backend available; using hash embeddings (reduced quality). "
-                    "Install ML dependencies for semantic search: pip install mcp-memory-service[ml]"
+                    "Install ML dependencies for semantic search: pip install mcp-memory-service[ml]. "
+                    "The hash fallback is refused on databases that already contain memories; "
+                    "set MCP_MEMORY_ALLOW_HASH_EMBEDDINGS=1 to override for testing."
                 )
                 _HASH_FALLBACK_WARNED = True
                 self._hash_fallback_warned = True
             await self._initialize_hash_embedding_fallback()
 
+    def _count_existing_memory_rows(self) -> int:
+        """Return the number of existing memory rows, treating missing tables as empty.
+
+        Counts both the primary ``memories`` table and the ``memory_embeddings`` vec0
+        table so that a database holding real embeddings is never treated as empty.
+        """
+        total = 0
+        for table in ("memories", "memory_embeddings"):
+            try:
+                cursor = self.conn.execute(f"SELECT COUNT(*) FROM {table}")
+                row = cursor.fetchone()
+                if row and row[0]:
+                    total += int(row[0])
+            except Exception as exc:
+                # Missing table (fresh DB) or unreadable — treat as empty for this table.
+                logger.debug("Could not count rows in %s: %s", table, exc)
+        return total
+
+    def _hash_fallback_allowed(self) -> bool:
+        """Decide whether writing hash pseudo-vectors into this database is safe.
+
+        Policy:
+          - MCP_MEMORY_ALLOW_HASH_EMBEDDINGS=1/true/yes force-allows the fallback.
+          - MCP_MEMORY_ALLOW_HASH_EMBEDDINGS=0/false/no force-refuses it.
+          - Unset: allow only when the database is effectively empty (no existing
+            ``memories`` or ``memory_embeddings`` rows). A database that already
+            contains real memories is protected, because hash pseudo-vectors would
+            silently poison semantic search with no per-row marker to find them later.
+
+        Raises RuntimeError with an actionable message when the fallback is refused.
+        """
+        override = os.environ.get('MCP_MEMORY_ALLOW_HASH_EMBEDDINGS', '').strip().lower()
+        if override in ('1', 'true', 'yes'):
+            return True
+        if override in ('0', 'false', 'no'):
+            existing = self._count_existing_memory_rows() if self.conn else 0
+            raise RuntimeError(
+                "The configured embedding backend is unavailable and "
+                "MCP_MEMORY_ALLOW_HASH_EMBEDDINGS is set to refuse the hash fallback. "
+                f"Refusing to write hash pseudo-vectors into a database with {existing} "
+                "existing memories. Install a real embedding backend "
+                "(pip install 'mcp-memory-service[sqlite-ml]' or 'mcp-memory-service[ml]') "
+                "or set MCP_MEMORY_ALLOW_HASH_EMBEDDINGS=1 to override for testing."
+            )
+
+        # Default policy: allow only on an effectively-empty database.
+        existing = self._count_existing_memory_rows() if self.conn else 0
+        if existing == 0:
+            return True
+        raise RuntimeError(
+            "The configured embedding backend is unavailable; refusing to write hash "
+            f"pseudo-vectors into a database with {existing} existing memories "
+            "(this would permanently poison semantic search with no per-row marker to "
+            "find affected rows later). Install a real embedding backend "
+            "(pip install 'mcp-memory-service[sqlite-ml]' or 'mcp-memory-service[ml]') "
+            "or set MCP_MEMORY_ALLOW_HASH_EMBEDDINGS=1 to override for testing."
+        )
+
     async def _initialize_hash_embedding_fallback(self):
         """Initialize hash embedding model, matching existing DB dimension if possible."""
+        # Guard: never silently poison a database that already holds real memories.
+        # Called synchronously (a quick COUNT read) — initialization is single-threaded,
+        # and this raises RuntimeError when the fallback is refused.
+        self._hash_fallback_allowed()
+
         existing_dim = await self._run_in_thread(self._get_existing_db_embedding_dimension)
         if existing_dim and existing_dim != self.embedding_dimension:
             logger.warning(
@@ -365,6 +432,7 @@ class EmbeddingsMixin:
             )
             self.embedding_dimension = existing_dim
         self.embedding_model = _HashEmbeddingModel(self.embedding_dimension)
+        self.embedding_backend_degraded = True
 
     def _generate_embedding(self, text: str) -> List[float]:
         """Generate embedding for text."""
