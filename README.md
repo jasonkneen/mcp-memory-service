@@ -486,17 +486,16 @@ MCP Memory Service is **fully compatible** with the [SHODH Unified Memory API Sp
 
 ---
 
-## Latest Release: **v11.5.0** (July 10, 2026)
+## Latest Release: **v11.5.1** (July 15, 2026)
 
-**MINOR: conditional temporal decay + functional belief derivation + consolidation clustering fix + bootstrap belief injection**
+**PATCH: multi-store migration dimension safety + embedding-backend verification in `memory status`**
 
 **What's New:**
-- Conditional temporal decay for search relevance (#123, @filhocf): opt-in via `MEMORY_DECAY_WINDOW_DAYS` (default `0` = disabled, zero behavior change for existing users). Recent memories rank above older ones with equivalent similarity.
-- Belief pipeline is now functional (#124, @filhocf): semantic grouping + noise filter replace the exact-content-equality grouping that produced zero belief promotions ever on real data (resolves #121 patches 1+2).
-- Consolidation clustering fix (#126, @filhocf): restores `include_embeddings=True` at the three `_get_memories_for_horizon()` call sites, fixing a regression from #985 that caused zero clusters and zero associations on real databases.
-- Bootstrap profile now injects derived beliefs and supports task-aware retrieval (#127, @filhocf): new `task_summary` and `budget_tokens` params on `get_bootstrap_profile`, gated behind `MCP_BELIEFS_ENABLED` (default `false`). Resolves #120 and #121 patch 4.
+- Multi-store migration now derives the vec0 dimension from the existing table's DDL instead of the hardcoded 384 default, and adds a crash-safe durable backup with automatic recovery, so migrating a non-384 database no longer destroys all embeddings (#134, @nxxxsooo).
+- `memory status` now verifies the embedding backend instead of claiming "healthy" after only reading storage stats (#136, @nxxxsooo): reports backend class, model, model dimension, and the vec0 table's declared dimension; flags degraded hash-fallback and model↔database dimension mismatches; exits non-zero on either problem. New `--deep` flag runs a real store→search→delete round trip.
 
 **Previous Releases** (v11 series — full history for all earlier versions in [CHANGELOG.md](CHANGELOG.md)):
+- **v11.5.0** - MINOR: conditional temporal decay + functional belief derivation + consolidation clustering fix + bootstrap belief injection (#123, #124, #126, #127, @filhocf) (July 10, 2026)
 - **v11.4.0** - MINOR: memory merge action + pluggable domain NER extractors + mcpmemory.services landing page (#100, #54, @filhocf) (July 4, 2026)
 - **v11.3.3** - PATCH: fix(cli): memory CLI commands respect MCP_HTTPS_ENABLED (fixes silent failures when TLS is enabled) (July 1, 2026)
 - **v11.3.2** - PATCH: declare numpy>=1.24.0 as core dependency (fixes uvx bare install crash, closes #98) (June 30, 2026)
