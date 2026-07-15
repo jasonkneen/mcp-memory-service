@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- fix(storage): add a `delete_memory` proxy to the sqlite_vec `DeleteMixin`, delegating to `delete()` and unpacking its `(bool, str)` result (#140, @jonatanbellido). `DreamInspiredConsolidator` calls `storage.delete_memory()` during forgetting/archival; `HybridMemoryStorage` and `MilvusMemoryStorage` already implemented it, but the sqlite_vec backend did not, so consolidation forgetting/archival raised `AttributeError` and failed silently on sqlite_vec. First-time contribution — thanks!
+
 ## [11.5.1] - 2026-07-15
 
 PATCH release: multi-store migration dimension safety + embedding-backend verification in `memory status`. Special thanks to @nxxxsooo for both contributions.
