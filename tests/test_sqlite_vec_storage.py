@@ -256,6 +256,25 @@ class TestSqliteVecStorage:
         assert memory is None, "Deleted memory should not be returned by get_by_hash"
     
     @pytest.mark.asyncio
+    async def test_delete_memory_proxy_returns_bool(self, storage, sample_memory):
+        """delete_memory is the consolidation-protocol alias for delete().
+
+        It must return a plain ``bool`` (not a tuple) so that
+        DreamInspiredConsolidator.compression / forgetting stages work on
+        the sqlite_vec backend. Regression guard: without this proxy, those
+        stages raise AttributeError on sqlite_vec (mirrors the existing
+        HybridMemoryStorage/MilvusMemoryStorage proxy).
+        """
+        await storage.store(sample_memory)
+        result = await storage.delete_memory(sample_memory.content_hash)
+        assert result is True
+        assert await storage.get_by_hash(sample_memory.content_hash) is None
+
+        # Deleting again should surface as False, never raise.
+        missed = await storage.delete_memory(sample_memory.content_hash)
+        assert missed is False
+
+    @pytest.mark.asyncio
     async def test_store_after_delete_same_content(self, storage, sample_memory):
         """Test that re-storing content after soft-delete succeeds (#644).
 

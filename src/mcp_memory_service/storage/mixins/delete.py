@@ -75,6 +75,20 @@ class DeleteMixin:
             logger.error(error_msg)
             return False, error_msg
 
+    # ── Consolidation Protocol Proxy Methods ──────────────────────────
+    # These methods are required by the DreamInspiredConsolidator's
+    # StorageProtocol but were missing from this mixin, causing
+    # consolidation forgetting/archival to fail silently.
+    # See the project issue tracker for related consolidation bug details.
+
+    async def delete_memory(self, content_hash: str) -> bool:
+        """Delete a memory by content hash (consolidation protocol).
+
+        Delegates to delete() to avoid duplicating sync logic.
+        """
+        success, _ = await self.delete(content_hash)
+        return success
+
     async def is_deleted(self, content_hash: str) -> bool:
         """Check if a memory has been soft-deleted (tombstone exists)."""
         try:
