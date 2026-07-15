@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- fix(storage): derive the multi-store vec0 migration dimension from the existing table's DDL instead of the hardcoded 384 default, and add a crash-safe durable backup with automatic recovery, so migrating a non-384 database no longer destroys all embeddings (#134).
+
 ## [11.5.0] - 2026-07-10
 
 MINOR release: conditional temporal decay for search relevance, functional belief derivation pipeline, consolidation clustering fix, and bootstrap profile belief injection with task-aware retrieval. Special thanks to @filhocf for all four contributions.

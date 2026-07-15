@@ -2,6 +2,7 @@
 
 import sqlite3
 import logging
+import re
 import traceback
 import time
 import os
@@ -153,16 +154,107 @@ class MigrationsMixin:
                             )
                             row = cursor.fetchone()
                             if row and 'partition' in (row[0] or '').lower():
+                                # Already migrated. Recover from an interrupted prior
+                                # migration: if a durable backup table survives, it means
+                                # a previous run dropped/recreated the vec0 table but
+                                # crashed before removing the backup. Restore any rows
+                                # that are missing from the (possibly empty) new table
+                                # instead of silently accepting the loss (issue #134).
+                                backup_exists = self.conn.execute(
+                                    "SELECT name FROM sqlite_master WHERE type='table' "
+                                    "AND name='memory_embeddings_migration_backup'"
+                                ).fetchone() is not None
+                                if backup_exists:
+                                    backup_count = self.conn.execute(
+                                        "SELECT COUNT(*) FROM memory_embeddings_migration_backup"
+                                    ).fetchone()[0]
+                                    current_count = self.conn.execute(
+                                        "SELECT COUNT(*) FROM memory_embeddings"
+                                    ).fetchone()[0]
+                                    if current_count < backup_count:
+                                        logger.warning(
+                                            "Detected interrupted multi-store migration: vec0 table "
+                                            "has %s rows but backup has %s; restoring missing embeddings "
+                                            "from memory_embeddings_migration_backup...",
+                                            current_count, backup_count
+                                        )
+                                        # vec0 virtual tables do NOT honor INSERT OR IGNORE:
+                                        # a rowid conflict raises a UNIQUE constraint error
+                                        # regardless. Skip rows already present by checking
+                                        # existing rowids first, then plain-INSERT the rest,
+                                        # so a partial (mid-reinsert) restore does not crash.
+                                        existing_rowids = {
+                                            r[0] for r in self.conn.execute(
+                                                "SELECT rowid FROM memory_embeddings"
+                                            ).fetchall()
+                                        }
+                                        for bk_row in self.conn.execute(
+                                            "SELECT rowid, content_embedding "
+                                            "FROM memory_embeddings_migration_backup"
+                                        ).fetchall():
+                                            if bk_row[0] in existing_rowids:
+                                                continue
+                                            self.conn.execute(
+                                                "INSERT INTO memory_embeddings "
+                                                "(rowid, content_embedding, store) VALUES (?, ?, ?)",
+                                                (bk_row[0], bk_row[1], 'default')
+                                            )
+                                        restored_count = self.conn.execute(
+                                            "SELECT COUNT(*) FROM memory_embeddings"
+                                        ).fetchone()[0]
+                                        logger.info(
+                                            "Recovery complete: vec0 table now has %s embeddings",
+                                            restored_count
+                                        )
+                                    self.conn.execute(
+                                        "DROP TABLE IF EXISTS memory_embeddings_migration_backup"
+                                    )
+                                    self.conn.commit()
                                 return False  # Already migrated
 
                             logger.info("Migrating memory_embeddings to add store partition key...")
+                            # Derive the embedding dimension from the EXISTING vec0 table's
+                            # DDL, NOT from self.embedding_dimension. The embedding model has
+                            # not been initialized yet at this point, so that attribute still
+                            # holds the hardcoded constructor default (384) and would silently
+                            # destroy the embeddings of any database built with a different
+                            # dimension (issue #134). Refuse to drop anything if we cannot
+                            # determine the dimension.
+                            dim_match = re.search(r'FLOAT\[(\d+)\]', row[0] or '')
+                            if not dim_match:
+                                raise RuntimeError(
+                                    "Cannot determine embedding dimension from existing "
+                                    "memory_embeddings table; refusing to drop it. "
+                                    f"DDL was: {row[0]!r}"
+                                )
+                            embedding_dim_val = int(dim_match.group(1))
+
                             # Snapshot existing embeddings into memory. The `memories`
                             # table is the source of truth and embeddings are derivable,
                             # so re-inserting from this snapshot is a safe migration path.
                             existing = self.conn.execute(
                                 "SELECT rowid, content_embedding FROM memory_embeddings"
                             ).fetchall()
-                            embedding_dim_val = self.embedding_dimension
+
+                            # Crash-safety: persist the snapshot to a real (non-virtual)
+                            # table and COMMIT it BEFORE the destructive DROP. Under sqlite3
+                            # legacy isolation, DDL autocommits, so the rollback below cannot
+                            # restore a dropped vec0 table; this durable backup lets the next
+                            # startup recover the data instead of losing it (issue #134).
+                            self.conn.execute(
+                                "DROP TABLE IF EXISTS memory_embeddings_migration_backup"
+                            )
+                            self.conn.execute(
+                                "CREATE TABLE memory_embeddings_migration_backup ("
+                                "rowid INTEGER, content_embedding BLOB)"
+                            )
+                            for bk_row in existing:
+                                self.conn.execute(
+                                    "INSERT INTO memory_embeddings_migration_backup "
+                                    "(rowid, content_embedding) VALUES (?, ?)",
+                                    (bk_row[0], bk_row[1])
+                                )
+                            self.conn.commit()
 
                             try:
                                 # Drop-and-recreate instead of rename. `memory_embeddings`
@@ -177,7 +269,8 @@ class MigrationsMixin:
                                 # earlier aborted run (parent virtual table already gone).
                                 orphans = self.conn.execute(
                                     "SELECT name FROM sqlite_master WHERE type='table' "
-                                    "AND name LIKE 'memory_embeddings\\_%' ESCAPE '\\'"
+                                    "AND name LIKE 'memory_embeddings\\_%' ESCAPE '\\' "
+                                    "AND name != 'memory_embeddings_migration_backup'"
                                 ).fetchall()
                                 for (orphan_name,) in orphans:
                                     self.conn.execute(f'DROP TABLE IF EXISTS "{orphan_name}"')
@@ -203,6 +296,12 @@ class MigrationsMixin:
                                     )
                                 self.conn.commit()
                                 logger.info("Multi-store migration complete: %s embeddings migrated", new_count)
+                                # Verification passed and committed: the durable backup is
+                                # no longer needed, so drop it and commit the cleanup.
+                                self.conn.execute(
+                                    "DROP TABLE IF EXISTS memory_embeddings_migration_backup"
+                                )
+                                self.conn.commit()
                             except Exception as e:
                                 self.conn.rollback()
                                 logger.error("Multi-store migration failed: %s", e)
