@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- fix(cli): `memory status` now verifies the embedding backend instead of claiming "healthy" after only reading storage stats (#136). It reports the loaded embedding backend class, configured model, model dimension, and the vec0 table's declared dimension; flags a degraded hash-pseudo-embedding fallback (semantic search non-functional) and a model↔database dimension mismatch (writes will fail); and exits non-zero when either problem is present. New `--deep` flag runs a real store→search→delete round trip to prove memories can be stored and semantically retrieved.
+
 ## [11.5.0] - 2026-07-10
 
 MINOR release: conditional temporal decay for search relevance, functional belief derivation pipeline, consolidation clustering fix, and bootstrap profile belief injection with task-aware retrieval. Special thanks to @filhocf for all four contributions.
