@@ -218,6 +218,20 @@ class EmbeddingsMixin:
                         return
                     onnx_model = get_onnx_embedding_model(self.embedding_model_name)
                     if onnx_model:
+                        # The ONNX path currently serves only all-MiniLM-L6-v2 (384-dim).
+                        # If a different model was requested, say so loudly instead of
+                        # logging plain success — otherwise the requested model is silently
+                        # ignored and the user is unaware they are getting MiniLM-384 (#143).
+                        requested_base = (self.embedding_model_name or '').split('/')[-1]
+                        if requested_base != 'all-MiniLM-L6-v2':
+                            logger.warning(
+                                "ONNX backend does not honor the requested embedding model '%s'; "
+                                "it only serves all-MiniLM-L6-v2 (%s-dim). The requested model is "
+                                "being ignored. Set MCP_MEMORY_USE_ONNX=0 to load it via "
+                                "SentenceTransformers, or configure an external embedding API "
+                                "(MCP_EXTERNAL_EMBEDDING_URL).",
+                                self.embedding_model_name, onnx_model.embedding_dimension,
+                            )
                         self.embedding_model = onnx_model
                         self.embedding_dimension = onnx_model.embedding_dimension
                         _MODEL_CACHE[cache_key] = onnx_model

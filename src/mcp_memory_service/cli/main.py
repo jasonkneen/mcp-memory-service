@@ -263,7 +263,9 @@ def status(storage_backend, deep):
         problems = []
         try:
             from .utils import get_storage
-            storage = await get_storage(storage_backend)
+            # Read-only diagnostic: open even a dimension-mismatched database so we can
+            # report the mismatch (the #143 guard would otherwise raise during init).
+            storage = await get_storage(storage_backend, strict_dimension_check=False)
             stats = await storage.get_stats() if hasattr(storage, 'get_stats') else {}
 
             click.echo("📊 MCP Memory Service Status\n")
