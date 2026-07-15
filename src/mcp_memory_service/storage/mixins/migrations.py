@@ -99,8 +99,16 @@ class MigrationsMixin:
         except Exception as e:
             logger.warning(f"FTS5 initialization failed (non-fatal): {e}")
 
-    async def initialize(self):
-        """Initialize the SQLite database with vec0 extension."""
+    async def initialize(self, strict_dimension_check: bool = True):
+        """Initialize the SQLite database with vec0 extension.
+
+        Args:
+            strict_dimension_check: When True (default), a mismatch between the
+                loaded embedding model's dimension and an existing database's vec0
+                table raises a RuntimeError (fail fast, #143). Read-only diagnostics
+                (e.g. `memory status`) pass False so they can open a mismatched
+                database and report the problem instead of crashing.
+        """
         if self._initialized:
             return
 
@@ -332,6 +340,26 @@ class MigrationsMixin:
                     await self._run_in_thread(self._ensure_fts5_initialized)
 
                     await self._initialize_embedding_model()
+                    # Guard (#143): fail loudly if the loaded model's dimension does not
+                    # match the existing vec0 table. Without this, the mismatch first
+                    # surfaces as a hard INSERT error far from its cause (it reads as data
+                    # corruption rather than a config problem). The hash fallback adapts its
+                    # dimension to the existing DB, so this only trips for a fixed-dimension
+                    # model (ONNX / SentenceTransformer) configured against a DB built at a
+                    # different dimension.
+                    existing_dim = await self._run_in_thread(self._get_existing_db_embedding_dimension)
+                    if existing_dim is not None and existing_dim != self.embedding_dimension:
+                        mismatch_msg = (
+                            f"Embedding dimension mismatch: the existing database's "
+                            f"memory_embeddings table is FLOAT[{existing_dim}], but the configured "
+                            f"embedding model '{self.embedding_model_name}' produces dimension "
+                            f"{self.embedding_dimension}. All store and search operations would fail. "
+                            f"Use an embedding model that outputs {existing_dim}-dim vectors, or "
+                            f"re-embed the database to {self.embedding_dimension} dimensions."
+                        )
+                        if strict_dimension_check:
+                            raise RuntimeError(mismatch_msg)
+                        logger.warning("%s (continuing: strict dimension check disabled)", mismatch_msg)
                     self._initialized = True
                     logger.info(f"SQLite-vec storage initialized successfully (existing database) with embedding dimension: {self.embedding_dimension}")
                     return

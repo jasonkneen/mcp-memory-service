@@ -22,12 +22,16 @@ from typing import Optional
 from ..storage.base import MemoryStorage
 
 
-async def get_storage(backend: Optional[str] = None) -> MemoryStorage:
+async def get_storage(backend: Optional[str] = None, strict_dimension_check: bool = True) -> MemoryStorage:
     """
     Get storage backend for CLI operations.
 
     Args:
         backend: Storage backend name ('sqlite_vec', 'cloudflare', 'hybrid', or 'milvus')
+        strict_dimension_check: Passed to the sqlite_vec backend's initialize().
+            When False, an existing-database embedding-dimension mismatch is logged
+            as a warning instead of raising, so read-only diagnostics (`memory status`)
+            can open and report on a mismatched database (#143).
 
     Returns:
         Initialized storage backend
@@ -42,7 +46,7 @@ async def get_storage(backend: Optional[str] = None) -> MemoryStorage:
         from ..storage.sqlite_vec import SqliteVecMemoryStorage
         from ..config import SQLITE_VEC_PATH
         storage = SqliteVecMemoryStorage(SQLITE_VEC_PATH)
-        await storage.initialize()
+        await storage.initialize(strict_dimension_check=strict_dimension_check)
         return storage
     elif backend == 'cloudflare':
         from ..storage.cloudflare import CloudflareStorage
