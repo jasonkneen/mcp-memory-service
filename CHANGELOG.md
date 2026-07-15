@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Fixed
 
 - fix(storage): derive the multi-store vec0 migration dimension from the existing table's DDL instead of the hardcoded 384 default, and add a crash-safe durable backup with automatic recovery, so migrating a non-384 database no longer destroys all embeddings (#134).
+- fix(cli): `memory status` now verifies the embedding backend instead of claiming "healthy" after only reading storage stats (#136). It reports the loaded embedding backend class, configured model, model dimension, and the vec0 table's declared dimension; flags a degraded hash-pseudo-embedding fallback (semantic search non-functional) and a model↔database dimension mismatch (writes will fail); and exits non-zero when either problem is present. New `--deep` flag runs a real store→search→delete round trip to prove memories can be stored and semantically retrieved.
 
 ## [11.5.0] - 2026-07-10
 

@@ -175,14 +175,92 @@ def server(debug, http, http_host, http_port, sse, streamable_http, sse_host, ss
 
 # ─── Database status command ──────────────────────────────────────────────────
 
+async def _deep_round_trip(storage, problems):
+    """Run a real store→search→delete round trip to prove memories work end-to-end.
+
+    Appends any failure descriptions to ``problems`` and echoes each step.
+    Returns True only if every step succeeded.
+    """
+    import time
+    from ..models.memory import Memory
+    from ..utils.hashing import generate_content_hash
+
+    tag = '__status_smoke_test__'
+    content = f"status smoke test probe {time.time()}"
+    content_hash = generate_content_hash(content)
+    memory = Memory(content=content, content_hash=content_hash, tags=[tag], memory_type='note')
+
+    ok = True
+
+    # 1. Store
+    try:
+        success, msg = await storage.store(memory)
+        if success:
+            click.echo(f"   ✅ store: memory persisted ({content_hash[:12]}…)")
+        else:
+            click.echo(f"   ❌ store: {msg}")
+            problems.append(f"deep round trip: store failed ({msg})")
+            return False
+    except Exception as e:
+        click.echo(f"   ❌ store: {e}")
+        problems.append(f"deep round trip: store raised {e}")
+        return False
+
+    # 2. Semantic search — the stored probe must come back
+    try:
+        results = await storage.retrieve(content, n_results=5, tags=[tag])
+        if any(r.memory.content_hash == content_hash for r in results):
+            click.echo(f"   ✅ search: probe retrieved via semantic search ({len(results)} result(s))")
+        else:
+            click.echo(f"   ❌ search: probe not found in {len(results)} result(s)")
+            problems.append("deep round trip: stored memory not returned by semantic search")
+            ok = False
+    except Exception as e:
+        click.echo(f"   ❌ search: {e}")
+        problems.append(f"deep round trip: search raised {e}")
+        ok = False
+
+    # 3. Delete by content hash
+    try:
+        del_ok, del_msg = await storage.delete(content_hash)
+        if del_ok:
+            click.echo(f"   ✅ delete: probe removed ({del_msg})")
+        else:
+            click.echo(f"   ❌ delete: {del_msg}")
+            problems.append(f"deep round trip: delete failed ({del_msg})")
+            ok = False
+    except Exception as e:
+        click.echo(f"   ❌ delete: {e}")
+        problems.append(f"deep round trip: delete raised {e}")
+        ok = False
+
+    # 4. Verify deletion
+    try:
+        if await storage.get_by_hash(content_hash) is None:
+            click.echo("   ✅ verify: probe no longer present")
+        else:
+            click.echo("   ❌ verify: probe still present after delete")
+            problems.append("deep round trip: memory still present after delete")
+            ok = False
+    except Exception as e:
+        click.echo(f"   ❌ verify: {e}")
+        problems.append(f"deep round trip: verify raised {e}")
+        ok = False
+
+    return ok
+
+
 @cli.command()
 @click.option('--storage-backend', '-s', default='sqlite_vec',
               type=click.Choice(['sqlite_vec', 'sqlite-vec', 'cloudflare', 'hybrid']), help='Storage backend to use')
-def status(storage_backend):
-    """Show memory database status and statistics."""
+@click.option('--deep', is_flag=True,
+              help='Run a real store→search→delete round trip to verify memories can be stored and retrieved.')
+def status(storage_backend, deep):
+    """Show memory database status and verify the embedding backend is healthy."""
     import asyncio
 
     async def show_status():
+        problems = []
         try:
             from .utils import get_storage
             storage = await get_storage(storage_backend)
@@ -197,8 +275,66 @@ def status(storage_backend):
                 click.echo(f"   Database size: {stats.get('database_size_mb', 'Unknown')} MB")
                 click.echo(f"   Unique tags: {stats.get('unique_tags', 'Unknown')}")
 
-            click.echo("\n✅ Service is healthy")
+            # ── Embedding backend ────────────────────────────────────────────
+            embedding_model = getattr(storage, 'embedding_model', None)
+            backend_class = type(embedding_model).__name__ if embedding_model is not None else 'None'
+            model_name = getattr(storage, 'embedding_model_name', 'unknown')
+            model_dim = getattr(storage, 'embedding_dimension', None)
+
+            db_dim = 'n/a'
+            if hasattr(storage, '_get_existing_db_embedding_dimension'):
+                try:
+                    if hasattr(storage, '_run_in_thread'):
+                        db_dim = await storage._run_in_thread(storage._get_existing_db_embedding_dimension)
+                    else:
+                        db_dim = storage._get_existing_db_embedding_dimension()
+                except Exception as e:
+                    db_dim = f"error ({e})"
+                if db_dim is None:
+                    db_dim = 'n/a'
+
+            click.echo("\n🔡 Embedding:")
+            click.echo(f"   Backend class: {backend_class}")
+            click.echo(f"   Model: {model_name}")
+            click.echo(f"   Model dimension: {model_dim}")
+            click.echo(f"   Database dimension: {db_dim}")
+
+            # ── Health verdicts ──────────────────────────────────────────────
+            click.echo("\n🩺 Health checks:")
+
+            degraded = (
+                backend_class == '_HashEmbeddingModel'
+                or getattr(storage, 'embedding_backend_degraded', False)
+            )
+            if degraded:
+                msg = ("degraded: hash pseudo-embeddings active (semantic search "
+                       "non-functional); install mcp-memory-service[sqlite-ml]")
+                problems.append(msg)
+                click.echo(f"   ⚠️  {msg}")
+
+            if isinstance(db_dim, int) and isinstance(model_dim, int) and db_dim != model_dim:
+                msg = (f"dimension mismatch: model outputs {model_dim}, database table "
+                       f"is FLOAT[{db_dim}] — writes will fail")
+                problems.append(msg)
+                click.echo(f"   ❌ {msg}")
+
+            if not degraded and not any('dimension mismatch' in p for p in problems):
+                click.echo("   ✅ embedding backend and dimensions look consistent")
+
+            # ── Deep round trip ──────────────────────────────────────────────
+            if deep:
+                click.echo("\n🔬 Deep round-trip smoke test:")
+                await _deep_round_trip(storage, problems)
+
             await storage.close()
+
+            if problems:
+                click.echo("\n❌ Service is NOT healthy")
+                sys.exit(1)
+            else:
+                click.echo("\n✅ Service is healthy")
+        except SystemExit:
+            raise
         except Exception as e:
             click.echo(f"❌ Error connecting to storage: {str(e)}", err=True)
             sys.exit(1)
