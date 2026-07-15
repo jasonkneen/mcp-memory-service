@@ -495,15 +495,17 @@ MCP Memory Service is **fully compatible** with the [SHODH Unified Memory API Sp
 
 ---
 
-## Latest Release: **v11.5.1** (July 15, 2026)
+## Latest Release: **v11.5.2** (July 15, 2026)
 
-**PATCH: multi-store migration dimension safety + embedding-backend verification in `memory status`**
+**PATCH: sqlite_vec delete_memory proxy, hash-embedding fallback guard, and embedding-dimension mismatch guard**
 
 **What's New:**
-- Multi-store migration now derives the vec0 dimension from the existing table's DDL instead of the hardcoded 384 default, and adds a crash-safe durable backup with automatic recovery, so migrating a non-384 database no longer destroys all embeddings (#134, @nxxxsooo).
-- `memory status` now verifies the embedding backend instead of claiming "healthy" after only reading storage stats (#136, @nxxxsooo): reports backend class, model, model dimension, and the vec0 table's declared dimension; flags degraded hash-fallback and model↔database dimension mismatches; exits non-zero on either problem. New `--deep` flag runs a real store→search→delete round trip.
+- Added a `delete_memory` proxy to the sqlite_vec `DeleteMixin`, fixing `AttributeError` during consolidation forgetting/archival on sqlite_vec (#140, @jonatanbellido).
+- The hash-embedding fallback is now refused on non-empty databases, preventing silent poisoning of semantic search with SHA256 pseudo-vectors when no ML backend is available (#135, @nxxxsooo).
+- Opening an existing database with a mismatched embedding dimension now raises a clear error at init instead of silently degrading and failing later at insert time; the ONNX path also warns when a non-MiniLM model is requested instead of silently ignoring it (#143).
 
 **Previous Releases** (v11 series — full history for all earlier versions in [CHANGELOG.md](CHANGELOG.md)):
+- **v11.5.1** - PATCH: multi-store migration dimension safety + embedding-backend verification in `memory status` (#134, #136, @nxxxsooo) (July 15, 2026)
 - **v11.5.0** - MINOR: conditional temporal decay + functional belief derivation + consolidation clustering fix + bootstrap belief injection (#123, #124, #126, #127, @filhocf) (July 10, 2026)
 - **v11.4.0** - MINOR: memory merge action + pluggable domain NER extractors + mcpmemory.services landing page (#100, #54, @filhocf) (July 4, 2026)
 - **v11.3.3** - PATCH: fix(cli): memory CLI commands respect MCP_HTTPS_ENABLED (fixes silent failures when TLS is enabled) (July 1, 2026)
