@@ -4,9 +4,12 @@ Unit tests for Memory Type Ontology
 Tests the formal ontology layer for memory classification and type validation.
 """
 
+import importlib.util
+import json
+import os
 import sys
 from pathlib import Path
-import importlib.util
+
 import pytest
 
 # Load ontology module directly without importing the package
@@ -24,6 +27,20 @@ get_all_types = ontology.get_all_types
 validate_relationship = ontology.validate_relationship
 is_symmetric_relationship = ontology.is_symmetric_relationship
 MemoryTypeOntology = ontology.MemoryTypeOntology
+
+
+@pytest.fixture(autouse=True)
+def _isolate_custom_memory_types(monkeypatch):
+    """Keep ontology tests hermetic against an ambient custom-type config.
+
+    ``get_all_types()`` merges ``MCP_CUSTOM_MEMORY_TYPES`` at call time, so a
+    developer who exports custom types (e.g. in a local ``.env``) would
+    otherwise see the built-in count/consistency assertions fail with spurious
+    counts. Clear it before every test; the cases in
+    ``TestBurst21CustomMemoryTypeConfiguration`` set it explicitly, which still
+    wins because they call ``monkeypatch.setenv`` inside the test body.
+    """
+    monkeypatch.delenv('MCP_CUSTOM_MEMORY_TYPES', raising=False)
 
 
 class TestBurst11BaseMemoryTypes:
@@ -441,23 +458,17 @@ class TestBurst21CustomMemoryTypeConfiguration:
     """Test configurable memory types via MCP_CUSTOM_MEMORY_TYPES."""
 
     def setup_method(self):
-        """Clear caches and environment before each test."""
-        import os
-        # Remove any custom types from environment to ensure clean state
+        """Clear caches and environment before each test."""        # Remove any custom types from environment to ensure clean state
         os.environ.pop('MCP_CUSTOM_MEMORY_TYPES', None)
         ontology.clear_ontology_caches()
 
     def teardown_method(self):
-        """Clear caches and environment after each test."""
-        import os
-        # Remove any custom types from environment
+        """Clear caches and environment after each test."""        # Remove any custom types from environment
         os.environ.pop('MCP_CUSTOM_MEMORY_TYPES', None)
         ontology.clear_ontology_caches()
 
     def test_load_custom_types_json(self, monkeypatch):
         """Test loading custom types from JSON environment variable."""
-        import json
-
         # Set custom types
         custom_config = json.dumps({
             "legal": ["contract", "clause", "obligation"],
@@ -481,8 +492,6 @@ class TestBurst21CustomMemoryTypeConfiguration:
 
     def test_merge_with_builtin_types(self, monkeypatch):
         """Test that custom types merge with (not replace) built-in types."""
-        import json
-
         custom_config = json.dumps({"meeting": ["board_meeting"]})
         monkeypatch.setenv('MCP_CUSTOM_MEMORY_TYPES', custom_config)
 
@@ -517,8 +526,6 @@ class TestBurst21CustomMemoryTypeConfiguration:
         dropped, so the bare custom type never reached the validator and
         kept getting coerced to 'observation'.
         """
-        import json
-
         monkeypatch.setenv('MCP_CUSTOM_MEMORY_TYPES', json.dumps({"foo": []}))
         ontology.clear_ontology_caches()
 
@@ -530,8 +537,6 @@ class TestBurst21CustomMemoryTypeConfiguration:
 
     def test_custom_type_with_only_invalid_subtypes_still_registers_base(self, monkeypatch):
         """If every subtype is filtered out, the base type must still register."""
-        import json
-
         # `@@bad` fails the `replace('_','').isalnum()` check
         monkeypatch.setenv('MCP_CUSTOM_MEMORY_TYPES', json.dumps({"foo": ["@@bad"]}))
         ontology.clear_ontology_caches()
@@ -542,8 +547,6 @@ class TestBurst21CustomMemoryTypeConfiguration:
 
     def test_no_custom_types_default_behavior(self, monkeypatch):
         """Test default behavior when no custom types configured."""
-        import os
-
         # Ensure env var is not set - must be done BEFORE clearing caches
         # Use both monkeypatch AND direct removal to ensure clean state
         monkeypatch.delenv('MCP_CUSTOM_MEMORY_TYPES', raising=False)

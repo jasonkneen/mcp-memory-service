@@ -255,6 +255,11 @@ class TestHarvesterLLMIntegration:
             )
         ]
         harvester._classifier = mock_classifier
+        # Force the legacy classifier path: harvest() prefers the LLM rewriter
+        # whenever a provider key is configured (e.g. GROQ_API_KEY in a local
+        # .env), which would bypass the classifier this test asserts on. Pin the
+        # rewriter off so the test is hermetic regardless of ambient env.
+        harvester._rewriter = None
 
         results = harvester.harvest(config)
         assert len(results) == 1
