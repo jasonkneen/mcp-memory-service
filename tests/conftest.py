@@ -14,6 +14,15 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'src
 # which would be caught by semantic dedup and cause unexpected failures
 os.environ['MCP_SEMANTIC_DEDUP_ENABLED'] = 'false'
 
+# Opt the test harness into the hash-embedding fallback (#135). Tests run against
+# ephemeral temp databases and, in ML-free environments (CI installs [dev,sqlite],
+# no sentence-transformers), legitimately fall back to hash embeddings after seeding
+# rows. Without this, the non-empty-database guard added in #135 would raise
+# RuntimeError on those tests. setdefault so an explicit outer value still wins;
+# tests that assert the guard fires (test_hash_fallback_guard.py) monkeypatch/delenv
+# this per-test, which overrides the default.
+os.environ.setdefault('MCP_MEMORY_ALLOW_HASH_EMBEDDINGS', '1')
+
 # CRITICAL: Force sqlite_vec backend for tests to prevent accidental Cloudflare operations
 # This prevents tests from soft-deleting production memories in Cloudflare D1
 #
