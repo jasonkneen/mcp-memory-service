@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- fix(milvus): restore the multi-store `store` keyword on the Milvus backend's `store()`, `count_all_memories()`, and `search_memories()` (#133). The #57 Phase 1 partition-key change added `store` to the BaseStorage interface and all call sites but missed these three Milvus overrides, so `memory status`/`list_memories` and store/search paths crashed with `count_all_memories() got an unexpected keyword argument 'store'` on the Milvus backend. The Milvus backend is single-collection and does not partition by store, so the argument is accepted for interface parity and ignored (matching the existing `get_all_memories`). Added a backend signature-conformance test so the multi-store contract can no longer silently drift per backend, and added `milvus` to the bug-report storage-backend dropdown. Thanks to @ghulands for the precise report.
+
 ## [11.5.2] - 2026-07-15
 
 PATCH release: sqlite_vec `delete_memory` proxy fix, hash-embedding fallback guard, and embedding-dimension mismatch guard. Special thanks to @jonatanbellido (first-time contributor) and @nxxxsooo.
