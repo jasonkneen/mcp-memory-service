@@ -170,25 +170,41 @@ def _get_onboarding_guide(client_type: str = "generic") -> str:
         "kiro": f"""## Integration Guide: mcp-memory-service → Kiro CLI
 
 ### On session start (REQUIRED):
-1. `get_bootstrap_profile(agent_ids=["kiro"])` — returns behavioral rules
-   (avoidances, conventions, preferences). Follow them.
-2. `mistake_note_search(query="<current task context>")` — check known pitfalls
-   before starting work.
+1. `memory_search(query="session checkpoint", time_expr="last 3 days", limit=3)`
+   → recall what was done recently (cross-session continuity)
+2. `mistake_note_search(query="<likely task context>")`
+   → check known pitfalls before starting work
+3. `get_bootstrap_profile(agent_ids=["kiro"])` — behavioral rules (avoidances,
+   conventions, beliefs). Best cached to disk 1x/day rather than fetched every session.
 
-### On session end (REQUIRED):
-1. `commit_session_legacy` with: session_id, agent_id, task_summary, outcome,
-   decisions (what+why), errors (tool+message+count+severity), user_corrections.
-   This triggers server-side learning automatically.
-2. `memory_harvest(sessions=1, dry_run=false)` — extracts insights from the
-   current session JSONL via LLM. Fallback if commit_session_legacy is unavailable.
-3. Rate memories consulted during the session (≥3 ratings).
+### Before significant tasks (>15min):
+1. `memory_search(query="<task summary>", mode="hybrid", limit=5)`
+   → relevant context from past sessions and decisions
+2. `memory_graph(action="connected", hash="<top result hash>", max_hops=2)`
+   → discover connections that semantic search alone misses
+3. `mistake_note_search(query="<task domain>")`
+   → errors already made in this specific area
+
+### For topic exploration:
+1. `memory_explore(query="<topic>", max_entities=5, chunks_per_entity=2)`
+   → knowledge map: which entities exist + relevant chunks per entity
+2. `memory_detail(entity_id="<id>")` → deep dive into one entity
+3. `memory_search(query="<topic>", scoring="composite")`
+   → ranked by recency × quality × graph centrality
 
 {_DURING_SESSION}
-### Advanced tools:
-- `memory_harvest(sessions=N, use_llm=true)`: batch-extract insights from N sessions.
-- `memory_distill(batch_size=20)`: extract insights from existing long memories via LLM.
-- `get_bootstrap_profile(agent_ids=["kiro"])`: re-fetch profile mid-session if needed.
-- `memory_quality(action="maintain")`: run maintenance cycle (decay, stale, entities).
+### On session end:
+- `commit_session_legacy` with decisions, errors, corrections (triggers
+  server-side harvest automatically). OR:
+- `memory_harvest(sessions=1, dry_run=false)` as fallback if commit is unavailable.
+- Rate memories consulted during the session (aim ≥3 ratings).
+
+### Rules:
+- NEVER decide without searching. `memory_search` before any architectural decision.
+- NEVER store generic text. Content must be specific, actionable, with ≥2 tags.
+- ALWAYS check mistakes before a task. 5 seconds that prevent 30min of rework.
+- Checkpoint every 45min OR after each milestone (commit, decision, research done).
+- Keep stored content under 500 chars — long text pollutes the bootstrap profile.
 
 {_SERVER_DOES}""",
 
