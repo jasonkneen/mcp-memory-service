@@ -876,7 +876,13 @@ class DreamInspiredConsolidator:
             # 'archived' memories are handled by the forgetting engine
 
     async def _prune_orphaned_graph_edges(self) -> int:
-        """Remove graph edges referencing deleted or non-existent memories (#632)."""
+        """Remove graph edges referencing deleted or non-existent memories (#632).
+
+        Note: has_entity edges use target_hash for entity *names* (not content
+        hashes), so the target-existence check must exclude them. Source-orphan
+        pruning still applies to has_entity (if the memory is deleted, its
+        entity links should go too).
+        """
         try:
             conn = getattr(self.storage, 'conn', None)
             # For hybrid backend, access the primary (sqlite) storage
@@ -894,10 +900,13 @@ class DreamInspiredConsolidator:
                     WHERE m.content_hash = memory_graph.source_hash
                     AND m.deleted_at IS NULL
                 )
-                OR NOT EXISTS (
-                    SELECT 1 FROM memories m
-                    WHERE m.content_hash = memory_graph.target_hash
-                    AND m.deleted_at IS NULL
+                OR (
+                    memory_graph.relationship_type != 'has_entity'
+                    AND NOT EXISTS (
+                        SELECT 1 FROM memories m
+                        WHERE m.content_hash = memory_graph.target_hash
+                        AND m.deleted_at IS NULL
+                    )
                 )
             """)
             conn.commit()
