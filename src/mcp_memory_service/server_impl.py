@@ -189,7 +189,7 @@ def _get_onboarding_guide(client_type: str = "generic") -> str:
 1. `memory_explore(query="<topic>", max_entities=5, chunks_per_entity=2)`
    → knowledge map: which entities exist + relevant chunks per entity
 2. `memory_detail(entity_id="<id>")` → deep dive into one entity
-3. `memory_search(query="<topic>", scoring="composite")`
+3. `memory_search(query="<topic>", mode="ranked")`
    → ranked by recency × quality × graph centrality
 
 {_DURING_SESSION}
