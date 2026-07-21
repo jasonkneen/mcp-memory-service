@@ -32,6 +32,7 @@ _NOISE_PREFIXES = (
     "[MINED:",
     "# Session Summary",
     "## Session Summary",
+    "Session: ",  # commit_session_legacy entries (#121 follow-up)
 )
 
 _NOISE_PATTERNS = [
@@ -41,6 +42,7 @@ _NOISE_PATTERNS = [
     re.compile(r"<task-notification>", re.IGNORECASE),
     re.compile(r"<ide_opened_file>", re.IGNORECASE),
     re.compile(r"^Topics Discussed:", re.MULTILINE | re.IGNORECASE),
+    re.compile(r"^Session:\s+[0-9a-f]{8}-", re.IGNORECASE),  # UUID session IDs (#121)
 ]
 
 
