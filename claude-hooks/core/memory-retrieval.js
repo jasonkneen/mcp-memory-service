@@ -5,6 +5,7 @@
 
 const fs = require('fs').promises;
 const path = require('path');
+const { resolveConfigPath } = require('../utilities/config-loader');
 const https = require('https');
 
 // Import utilities
@@ -17,7 +18,7 @@ const { formatMemoriesForContext } = require('../utilities/context-formatter');
  */
 async function loadConfig() {
     try {
-        const configPath = path.join(__dirname, '../config.json');
+        const configPath = resolveConfigPath(__dirname);
         const configData = await fs.readFile(configPath, 'utf8');
         return JSON.parse(configData);
     } catch (error) {
