@@ -53,6 +53,20 @@ You are an elite Release Manager for the MCP Memory Service project, which is ho
 
 > **Lite-package gotcha (fixed in the workflow):** `mcp-memory-service-lite` was stuck at 10.39.1 for many releases because `pyproject-lite.toml` had a static version that never got bumped, so `twine upload --skip-existing` silently skipped an already-published version (green no-op). The workflow now force-syncs the lite version from `_version.py` before building, so lite always matches the release. If you ever see a release where lite did not advance, check that step.
 
+### 2b. Claude Code Plugin Manifest Version (decoupled — check EVERY release)
+
+The Claude Code plugin (`claude-hooks/`) carries its OWN version in `claude-hooks/.claude-plugin/plugin.json`, independent of the service `_version.py`. The Marketplace caches each plugin under a version-keyed dir (`~/.claude/plugins/cache/mcp-memory-service/mcp-memory-service/<version>/`), so **already-installed users only re-fetch when that version changes.** A merged hook fix that does not bump this version never reaches them (Issue #155: the #156 config-path fix shipped but `plugin.json` stayed at `1.0.0`, so users kept editing the stale cache copy; fixed by the `1.0.1` bump in PR #161).
+
+Check whether the hooks changed since the last plugin bump, and bump if so:
+```bash
+# commit that last touched the manifest, then any claude-hooks/ changes since
+LAST=$(git log -1 --format=%H -- claude-hooks/.claude-plugin/plugin.json)
+git log "$LAST"..HEAD --oneline -- claude-hooks/
+```
+- **Non-empty output → bump `claude-hooks/.claude-plugin/plugin.json` `version`** (PATCH for hook fixes; MINOR for new hook features). This is the ONE version file the agent edits by hand — it is outside the `_version.py`/`pyproject.toml` set and has no lockfile.
+- Include the edit in the SAME release commit/PR. It does NOT need to match the service version (they drift on purpose: service `11.5.4`, plugin `1.0.1`).
+- Empty output → no hook changes, leave the plugin version untouched.
+
 ### 3. Documentation Updates
 
 **CHANGELOG.md** (validate FIRST):
@@ -147,6 +161,7 @@ If a periodic external scanner is wired up later, prefer it; until then this man
 ## Quality Checklist
 
 - [ ] Version follows semver strictly
+- [ ] Plugin manifest (`claude-hooks/.claude-plugin/plugin.json`): bumped IF `claude-hooks/` changed since the last plugin bump (Marketplace cache is version-keyed — see step 2b)
 - [ ] CHANGELOG: `[Unreleased]` moved to a version entry, no duplicates, reverse chronological
 - [ ] README: "Latest Release" updated, previous version added to list
 - [ ] CLAUDE.md: version callout updated
