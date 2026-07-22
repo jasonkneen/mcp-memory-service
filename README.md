@@ -495,16 +495,17 @@ MCP Memory Service is **fully compatible** with the [SHODH Unified Memory API Sp
 
 ---
 
-## Latest Release: **v11.5.2** (July 15, 2026)
+## Latest Release: **v11.5.3** (July 22, 2026)
 
-**PATCH: sqlite_vec delete_memory proxy, hash-embedding fallback guard, and embedding-dimension mismatch guard**
+**PATCH: Claude Code hooks config resolution under Marketplace install, graph orphan-prune fix, and belief-derivation noise filter**
 
 **What's New:**
-- Added a `delete_memory` proxy to the sqlite_vec `DeleteMixin`, fixing `AttributeError` during consolidation forgetting/archival on sqlite_vec (#140, @jonatanbellido).
-- The hash-embedding fallback is now refused on non-empty databases, preventing silent poisoning of semantic search with SHA256 pseudo-vectors when no ML backend is available (#135, @nxxxsooo).
-- Opening an existing database with a mismatched embedding dimension now raises a clear error at init instead of silently degrading and failing later at insert time; the ONNX path also warns when a non-MiniLM model is requested instead of silently ignoring it (#143).
+- Claude Code memory hooks now read `~/.claude/hooks/config.json` correctly under a Marketplace plugin install, instead of the version-pinned plugin cache dir that silently ignored and reverted user edits on every upgrade (#155, reported by @tecnobrat; #156).
+- Graph orphan-pruning no longer deletes valid `has_entity` edges (#150, #151, @filhocf).
+- Belief derivation now filters session-legacy noise, closing out #121 alongside the earlier dedup fix in #127 (#121, #152, @filhocf).
 
 **Previous Releases** (v11 series — full history for all earlier versions in [CHANGELOG.md](CHANGELOG.md)):
+- **v11.5.2** - PATCH: sqlite_vec `delete_memory` proxy fix + hash-embedding fallback guard + embedding-dimension mismatch guard (#140, #135, #143, @jonatanbellido, @nxxxsooo) (July 15, 2026)
 - **v11.5.1** - PATCH: multi-store migration dimension safety + embedding-backend verification in `memory status` (#134, #136, @nxxxsooo) (July 15, 2026)
 - **v11.5.0** - MINOR: conditional temporal decay + functional belief derivation + consolidation clustering fix + bootstrap belief injection (#123, #124, #126, #127, @filhocf) (July 10, 2026)
 - **v11.4.0** - MINOR: memory merge action + pluggable domain NER extractors + mcpmemory.services landing page (#100, #54, @filhocf) (July 4, 2026)

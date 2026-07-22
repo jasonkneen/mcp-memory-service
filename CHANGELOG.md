@@ -10,6 +10,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [11.5.3] - 2026-07-22
+
+PATCH release: Claude Code hooks config resolution under Marketplace install, graph orphan-prune fix, and belief-derivation noise filter. Special thanks to filhocf and @tecnobrat.
+
+### Fixed
+
+- fix(hooks): read `~/.claude/hooks/config.json` under Marketplace install (#155, reported by @tecnobrat; #156). The six core Claude Code memory hooks (`session-start`, `auto-capture-hook`, `memory-retrieval`, `session-end`, `session-end-harvest`, `topic-change`) resolved their config via `path.join(__dirname, '../config.json')`, which under a Marketplace plugin install resolves to the version-pinned plugin cache directory instead of the user-owned `~/.claude/hooks/config.json` — user edits were silently ignored and reverted on every plugin upgrade. New `claude-hooks/utilities/config-loader.js` `resolveConfigPath()` prefers the home-directory config, falling back to the bundled one.
+- fix(graph): exclude `has_entity` edges from target-orphan pruning (#150, #151, @filhocf). `_prune_orphaned_graph_edges()` treats `has_entity.target_hash` as an entity *name*, not a content hash; the target-existence check was deleting valid entity links because no `memories` row ever matches an entity name. Source-orphan pruning is unaffected — `has_entity` edges are still removed when the owning memory is deleted. Includes `scripts/maintenance/backfill_has_entity.py` to restore edges dropped by the bug on existing databases.
+- fix(beliefs): filter session-legacy noise from belief derivation (#121, #152, @filhocf). Completes the fix for #121 — the duplicate-belief half was already resolved by #127; this adds the missing noise filter in `belief_service.py` so session-legacy content no longer produces spurious derived beliefs.
+
 ## [11.5.2] - 2026-07-15
 
 PATCH release: sqlite_vec `delete_memory` proxy fix, hash-embedding fallback guard, and embedding-dimension mismatch guard. Special thanks to @jonatanbellido (first-time contributor) and @nxxxsooo.
