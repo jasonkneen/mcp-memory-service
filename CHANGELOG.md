@@ -10,6 +10,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [11.5.4] - 2026-07-22
+
+PATCH release: web dashboard GitHub references replaced with Codeberg. Special thanks to @sunnyagain.
+
+### Fixed
+
+- fix(dashboard): replace stale github.com references with Codeberg (#158, #159, reported by @sunnyagain). The web dashboard footer still linked to `github.com` after the Codeberg migration (missed in #74). Wiki/repo/LICENSE links now point to `codeberg.org` (LICENSE uses the Forgejo `/src/branch/main/` path form), the footer and all 7 i18n locales (en/de/es/fr/ja/ko/zh) now read "Codeberg Repository" instead of "GitHub Repository", and the GitHub octocat icon was swapped for a brand-neutral git icon. `app.py`'s server-rendered fallback page link was updated to match.
+
 ## [11.5.3] - 2026-07-22
 
 PATCH release: Claude Code hooks config resolution under Marketplace install, graph orphan-prune fix, and belief-derivation noise filter. Special thanks to filhocf and @tecnobrat.
