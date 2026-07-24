@@ -11,7 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with th
 Quick reference; each rule is expanded in the sections below. Violations cause real incidents.
 
 1. **This repo lives on Codeberg, not GitHub.** `origin` is `codeberg.org:doobidoo/mcp-memory-service`; CI is Forgejo Actions (`.forgejo/workflows/`). The `github` remote is a suspended mirror — do **not** use `gh` or `github.com` URLs for CI, releases, or issues.
-2. **Never manually bump versions.** Use the `codeberg-release-manager` agent for every version bump and release.
+2. **Never manually bump versions.** Follow the documented release workflow for every version bump and release.
 3. **Run `bash scripts/pr/pre_pr_check.sh` before every PR.** It is the mandatory pre-PR gate and must pass.
 4. **Use the project venv.** Run `.venv/bin/python` and `.venv/bin/pytest` (Python 3.11) — the system interpreters are not the project environment.
 5. **Store context in the MCP Memory Server, tagged `mcp-memory-service` first.** Never write `MEMORY.md` or local memory files unless the user explicitly asks for file-based storage.
@@ -22,6 +22,7 @@ Quick reference; each rule is expanded in the sections below. Violations cause r
 10. **Never click "Always allow" on heredoc commands** — it corrupts `.claude/settings.local.json`.
 11. **Before any SSH/network task, verify `hostname` and connection direction** (source → target).
 12. **Report outcomes faithfully.** "Tests pass" means you ran them and saw them pass; if a step was skipped or failed, say so with the output.
+13. **Write in the maintainer's or contributor's own voice.** Commit messages, PR descriptions, CHANGELOG entries, issue/PR comments, and release notes read as authored by the maintainer or contributor.
 
 ## Critical Directives
 
@@ -55,13 +56,14 @@ Quick reference; each rule is expanded in the sections below. Violations cause r
 - **`origin` is Codeberg**: `git@codeberg.org:doobidoo/mcp-memory-service.git`. CI runs as **Forgejo Actions** in `.forgejo/workflows/` (`ci.yml`, `release.yml`, `deploy-site.yml`, `cleanup-images.yml`). There is no `.github/workflows/` directory.
 - **The `github` remote is a suspended mirror.** Do not use `gh` CLI, `github.com` URLs, or GitHub Actions for CI/release/issue work. Issues and PRs are on Codeberg.
 - **GHSA identifiers** (e.g. `GHSA-2r68-g678-7qr3`) are just advisory IDs and remain valid references.
+- **Authorship voice.** Commit messages, PR descriptions, CHANGELOG entries, issue/PR comments, and release notes are written in the maintainer's or contributor's own voice.
 
 ### Release Workflow Checklist
 Before merging or releasing:
-1. **Verify CI is green on the target branch** (Forgejo Actions on Codeberg). Most convenient: let the `codeberg-release-manager` agent check and drive the release. Manual check: `tea` CLI (Forgejo/Gitea) if configured, otherwise the Actions tab at `https://codeberg.org/doobidoo/mcp-memory-service`.
+1. **Verify CI is green on the target branch** (Forgejo Actions on Codeberg). Check via the `tea` CLI (Forgejo/Gitea) if configured, otherwise the Actions tab at `https://codeberg.org/doobidoo/mcp-memory-service`.
 2. **Update `site/index.html` version strings** whenever MAJOR.MINOR changes (i.e. every MINOR or MAJOR release — PATCH releases are exempt). The `version-drift-check` CI gate enforces this and will fail if skipped. Update ALL occurrences: `<title>`, `<meta og:title>`, hero badge, "What's New" section, release link `href`. Use `grep -n "v11\." site/index.html` to find them. This is MANDATORY — not optional for "incremental" releases. The site auto-deploys to Cloudflare Pages (mcpmemory.services) when the change lands on main (`.forgejo/workflows/deploy-site.yml`).
 3. Clean up merged branches after release (`git branch -d`, `git push origin --delete`).
-4. Use the `codeberg-release-manager` agent — never manually bump versions.
+4. Follow the release workflow — never manually bump versions.
 
 ## Overview
 
@@ -444,7 +446,7 @@ export MCP_EXTERNAL_EMBEDDING_API_KEY=sk-xxx  # Optional
 ### Code Quality Standards
 
 **Three-layer quality strategy:**
-1. **Pre-commit** (<5s) - Groq/Gemini complexity + security (blocks: complexity >8, security issues)
+1. **Pre-commit** (<5s) - automated complexity + security checks (blocks: complexity >8, security issues)
 2. **PR Quality Gate** (10-60s) - `bash scripts/pr/pre_pr_check.sh` (blocks: security, health <50)
 3. **Periodic Review** (weekly) - pyscn analysis + trend tracking
 
@@ -489,13 +491,13 @@ export MCP_EXTERNAL_EMBEDDING_API_KEY=sk-xxx  # Optional
 2. Make changes
 3. `pytest` - Run tests (`.venv/bin/pytest`)
 4. `bash scripts/pr/pre_pr_check.sh` - Pre-PR validation (MANDATORY)
-5. Create PR - **IMPORTANT: Use the `codeberg-release-manager` agent for ALL version bumps and releases**
+5. Create PR - **IMPORTANT: Follow the release workflow for ALL version bumps and releases**
 
 **Release Protocol (MANDATORY)**:
-- **NEVER manually bump versions** - always use the `codeberg-release-manager` agent
+- **NEVER manually bump versions** - always follow the release workflow
 - The agent handles: version bump, CHANGELOG update, `_version.py` sync, PR creation, release notes
 - Ensures consistency across `pyproject.toml`, `_version.py`, CHANGELOG, and the Codeberg release
-- Example: After merging a feature PR, invoke the `codeberg-release-manager` agent to create the release
+- Example: After merging a feature PR, run the release workflow to create the release
 
 **Dashboard changes (`web/static/`):** Verify in a browser before merging. Dashboard JS lacks automated test coverage — PRs touching this area should include manual testing evidence or screenshots.
 
@@ -599,7 +601,7 @@ Work is not "done" until the relevant checks below have been run and pass. Repor
 
 **Before a release / version bump:**
 - [ ] CI is green on the target branch (Forgejo Actions on Codeberg).
-- [ ] Version bumped via the `codeberg-release-manager` agent (never by hand) — keeps `pyproject.toml`, `_version.py`, CHANGELOG, and the Codeberg release in sync.
+- [ ] Version bumped via the release workflow (never by hand) — keeps `pyproject.toml`, `_version.py`, CHANGELOG, and the Codeberg release in sync.
 - [ ] `site/index.html` version strings updated if MAJOR.MINOR changed (see the Release Workflow Checklist).
 
 **After finishing a task:** save key learnings/decisions to the MCP Memory Server, tagged `mcp-memory-service` first (per the Auto-Save rule).
@@ -644,17 +646,6 @@ python scripts/validation/validate_configuration_complete.py  # Comprehensive
 python scripts/validation/diagnose_backend_config.py          # Backend-specific
 ```
 
-## Agent Integrations
-
-**Workflow automation:**
-- **codeberg-release-manager** - Complete release workflow (version bump, CHANGELOG, `_version.py` sync, PR creation, release notes). Use for ALL releases.
-- **changelog-archival** - Maintains a lean CHANGELOG by archiving older versions
-- **amp-automation** - Coding tasks + PR quality analysis with Amp CLI
-- **code-quality-guard** - Quality analysis before commits
-- **gemini-pr-automator** - Automated PR reviews and fixes
-
-**Usage:** See [`.claude/directives/agents.md`](.claude/directives/agents.md) for complete workflows.
-
 ## Key Design Patterns
 
 1. **Strategy Pattern** - Storage backends, health checks, quality analytics
@@ -687,7 +678,7 @@ python scripts/validation/diagnose_backend_config.py          # Backend-specific
 **When to update each:**
 - **CLAUDE.md** - Architecture changes, new patterns, development workflows
 - **README.md** - New features, installation changes, user-facing updates
-- **CHANGELOG.md** - Every version bump (use the `codeberg-release-manager` agent)
+- **CHANGELOG.md** - Every version bump (via the release workflow)
 - **site/index.html** - Landing page: MINOR/MAJOR releases only (title, og:title, hero badge, "What's New" cards, test count, release link). No manual publish step: merging to main triggers `.forgejo/workflows/deploy-site.yml`, which deploys `site/` to Cloudflare Pages (mcpmemory.services). GitHub Pages and the here.now mirror are retired; `docs/index.html` is only a redirect stub — never put version strings or content there.
 - **Wiki** - Detailed guides, troubleshooting, tutorials
 
