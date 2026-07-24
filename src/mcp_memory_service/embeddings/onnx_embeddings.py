@@ -105,7 +105,17 @@ class ONNXEmbeddingModel:
         if extracted_path.exists() and (extracted_path / "model.onnx").exists():
             logger.info(f"ONNX model already available at {extracted_path}")
             return
-        
+
+        # Offline guard: allow deployments (and the test harness) to opt out of the
+        # network fetch. When downloads are disabled and the model is not already
+        # cached, raise so the caller can fall back to another backend instead of
+        # blocking on a ~80MB download. See issue #162.
+        if os.environ.get('MCP_MEMORY_ONNX_ALLOW_DOWNLOAD', '1').lower() in ('0', 'false', 'no'):
+            raise RuntimeError(
+                "ONNX model is not cached and downloads are disabled "
+                "(MCP_MEMORY_ONNX_ALLOW_DOWNLOAD=0)."
+            )
+
         # Download if not present or invalid
         if not archive_path.exists() or not _verify_sha256(str(archive_path), self._MODEL_SHA256):
             logger.info(f"Downloading ONNX model from {self.MODEL_DOWNLOAD_URL}")
