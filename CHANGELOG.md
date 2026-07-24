@@ -10,6 +10,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [11.5.5] - 2026-07-24
+
+PATCH release: standard Docker image now ships tokenizers so the ONNX embedding backend actually loads. Special thanks to @peanutlasko and @stanthewizzard for the reports.
+
+### Fixed
+
+- fix(docker): add tokenizers to the `[sqlite]` extra so the ONNX backend loads (#162, #164). The published `standard`/`:latest` Docker image had onnxruntime but not tokenizers, so the ONNX embedding model could never initialize. On an empty database this degraded silently to SHA256 hash pseudo-vectors; on a database with existing data the v11.5.2 embedding-integrity guard correctly refused that silent fallback, which meant the container crash-looped at startup instead. Reported by @peanutlasko (#162); @stanthewizzard filed a duplicate (#163). `tokenizers>=0.22.2` is now a declared dependency of the `[sqlite]` extra, which also fixes a plain `pip install ".[sqlite]"`, and the Docker build's ONNX check is now a hard gate that imports both onnxruntime and tokenizers, so a missing dependency fails the build instead of shipping broken.
+- fix(tests): keep ONNX offline in the test harness after tokenizers landed. With tokenizers present, `ONNXEmbeddingModel` gained an `MCP_MEMORY_ONNX_ALLOW_DOWNLOAD` guard (enabled by default) to stop it from reaching out for the ~80MB model; the test harness sets it to `0` so CI stays deterministic and offline.
+
 ## [11.5.4] - 2026-07-22
 
 PATCH release: web dashboard GitHub references replaced with Codeberg. Special thanks to @sunnyagain.

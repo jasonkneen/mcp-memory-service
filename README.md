@@ -495,14 +495,16 @@ MCP Memory Service is **fully compatible** with the [SHODH Unified Memory API Sp
 
 ---
 
-## Latest Release: **v11.5.4** (July 22, 2026)
+## Latest Release: **v11.5.5** (July 24, 2026)
 
-**PATCH: web dashboard GitHub references replaced with Codeberg**
+**PATCH: standard Docker image ships tokenizers so the ONNX backend actually loads**
 
 **What's New:**
-- The web dashboard footer, LICENSE/wiki/repo links, and all 7 i18n locales now point to Codeberg instead of leftover `github.com` references missed in the original migration (#158, #159, reported by @sunnyagain).
+- The published `standard`/`:latest` Docker image had onnxruntime but not tokenizers, so the ONNX embedding backend couldn't initialize. On a fresh DB it silently degraded to SHA256 hash pseudo-vectors; on an existing DB the v11.5.2 integrity guard correctly refused that fallback and the container crash-looped at startup instead (#162, reported by @peanutlasko; #163 was a duplicate report from @stanthewizzard).
+- Added `tokenizers>=0.22.2` to the `[sqlite]` optional dependency, so this is fixed for `pip install ".[sqlite]"` too, and turned the Docker build's ONNX check into a hard gate that imports both onnxruntime and tokenizers so a missing dependency fails the build instead of shipping silently broken (#164).
 
 **Previous Releases** (v11 series — full history for all earlier versions in [CHANGELOG.md](CHANGELOG.md)):
+- **v11.5.4** - PATCH: web dashboard GitHub references replaced with Codeberg (#158, #159, @sunnyagain) (July 22, 2026)
 - **v11.5.3** - PATCH: Claude Code hooks config resolution under Marketplace install + graph orphan-prune `has_entity` fix + belief-derivation noise filter (#155, #156, #150, #151, #121, #152, @filhocf, @tecnobrat) (July 22, 2026)
 - **v11.5.2** - PATCH: sqlite_vec `delete_memory` proxy fix + hash-embedding fallback guard + embedding-dimension mismatch guard (#140, #135, #143, @jonatanbellido, @nxxxsooo) (July 15, 2026)
 - **v11.5.1** - PATCH: multi-store migration dimension safety + embedding-backend verification in `memory status` (#134, #136, @nxxxsooo) (July 15, 2026)
