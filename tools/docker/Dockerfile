@@ -67,6 +67,13 @@ RUN if [ "$FORCE_CPU_PYTORCH" = "true" ] || [ "$INSTALL_EXTRA" = "[sqlite]" ]; t
         python -m uv pip install -e ".${INSTALL_EXTRA}"; \
     fi
 
+# Verify the ONNX embedding backend is actually usable. It needs BOTH onnxruntime
+# and tokenizers; a missing tokenizers used to slip through unnoticed and left the
+# image falling back to hash pseudo-vectors (issue #162). Fail the build early
+# instead of shipping a broken image.
+RUN echo "Verifying ONNX embedding dependencies..." && \
+    python -c "import onnxruntime, tokenizers; print('onnxruntime', onnxruntime.__version__, '/ tokenizers', tokenizers.__version__, 'available')"
+
 # Conditionally pre-download ONNX models for lightweight embedding
 RUN if [ "$SKIP_MODEL_DOWNLOAD" != "true" ]; then \
         echo "Pre-downloading ONNX embedding models..." && \
