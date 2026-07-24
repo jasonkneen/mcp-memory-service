@@ -23,6 +23,16 @@ os.environ['MCP_SEMANTIC_DEDUP_ENABLED'] = 'false'
 # this per-test, which overrides the default.
 os.environ.setdefault('MCP_MEMORY_ALLOW_HASH_EMBEDDINGS', '1')
 
+# Keep the embedding backend deterministic and offline for the test harness (#162).
+# The suite is designed around the hash-embedding fallback above. Now that the
+# [sqlite] extra ships tokenizers alongside onnxruntime, the ONNX path initializes for
+# real and would pull the ~80MB all-MiniLM-L6-v2 model from S3 on first use — hanging
+# the minimal CI runner past the per-test timeout. Disabling the download lets an
+# uncached model raise, so storage tests fall back to hash embeddings as they did
+# before tokenizers was available, while a machine that already has the model cached
+# still exercises the real ONNX path. setdefault so a test can opt back in explicitly.
+os.environ.setdefault('MCP_MEMORY_ONNX_ALLOW_DOWNLOAD', '0')
+
 # CRITICAL: Force sqlite_vec backend for tests to prevent accidental Cloudflare operations
 # This prevents tests from soft-deleting production memories in Cloudflare D1
 #

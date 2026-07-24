@@ -90,8 +90,12 @@ nli = [
     "onnxruntime>=1.17.0",
 ]
 # SQLite-vec with lightweight ONNX embeddings (recommended for most users)
+# The ONNX embedding path needs both onnxruntime and tokenizers; shipping only
+# onnxruntime leaves the backend unable to initialize and silently falls back to
+# hash pseudo-vectors (see issue #162).
 sqlite = [
-    "onnxruntime>=1.14.1"
+    "onnxruntime>=1.14.1",
+    "tokenizers>=0.22.2"
 ]
 # SQLite-vec with full ML capabilities (for advanced features)
 sqlite-ml = [
