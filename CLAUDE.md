@@ -32,29 +32,12 @@ Quick reference; each rule is expanded in the sections below. Violations cause r
 
 ## Operational Rules
 
-**These rules apply to every session. Violations cause real incidents — follow them exactly.**
-
-### Memory Storage
-- **Always use the MCP Memory Server** (`mcp__memory__memory_store`) for storing context, learnings, and decisions
-- **Never write to `MEMORY.md` or local memory files** unless the user explicitly asks for file-based storage
-- Tag all memories with `mcp-memory-service` as the first tag (per `memory-tagging.md`)
-
-### MCP Configuration
-- **MCP server configs go in `.mcp.json`**, not in `settings.json`
-- `settings.json` is for Claude Code settings (hooks, plugins, permissions) only
-
-### SSH / Network Safety
-- **Before any SSH or network task**: confirm machine identity with `hostname` and verify connection direction (source → target)
-- **Never assume** which machine you're on or which direction a connection flows — always verify first
-- This prevents accidental operations on production machines or reverse-direction tunnels
-
 ### Auto-Save Learnings
 - **After completing tasks**: automatically save key learnings, decisions, and patterns to the MCP Memory Server without being asked
 - Include relevant tags: `mcp-memory-service`, task-specific tags, and `learnings`
 
 ### Source Control & Hosting (Codeberg, not GitHub)
-- **`origin` is Codeberg**: `git@codeberg.org:doobidoo/mcp-memory-service.git`. CI runs as **Forgejo Actions** in `.forgejo/workflows/` (`ci.yml`, `release.yml`, `deploy-site.yml`, `cleanup-images.yml`). There is no `.github/workflows/` directory.
-- **The `github` remote is a suspended mirror.** Do not use `gh` CLI, `github.com` URLs, or GitHub Actions for CI/release/issue work. Issues and PRs are on Codeberg.
+- CI runs as **Forgejo Actions** in `.forgejo/workflows/` (`ci.yml`, `release.yml`, `deploy-site.yml`, `cleanup-images.yml`). There is no `.github/workflows/` directory. Issues and PRs are on Codeberg.
 - **GHSA identifiers** (e.g. `GHSA-2r68-g678-7qr3`) are just advisory IDs and remain valid references.
 - **Authorship voice.** Commit messages, PR descriptions, CHANGELOG entries, issue/PR comments, and release notes are written in the maintainer's or contributor's own voice.
 
@@ -181,409 +164,233 @@ python scripts/validation/diagnose_backend_config.py
 
 ## Code Architecture
 
-### High-Level Structure
+Package layout: `ls src/mcp_memory_service/`. Non-obvious entry points:
 
-Principal packages under `src/mcp_memory_service/` (not exhaustive — run `ls src/mcp_memory_service/` for the full list):
+- `server_impl.py` - the `MemoryServer` class. `list_tools()` builds the tool list from the declarative registry, `call_tool()` dispatches through the routing table, and the `handle_*` methods live here too.
+- `tools/registry.py` - `TOOL_REGISTRY`, the declarative list of `ToolDef` objects, each mapping 1:1 to a `types.Tool`. Count: `grep -c 'ToolDef(' src/mcp_memory_service/tools/registry.py`.
+- `tools/routing.py` - `ROUTING_TABLE` (name -> handler) plus `resolve_handler(name)` with lazy import.
+- `server/handlers/*.py` - request handlers, signature `async def handle_X(server, arguments) -> List[types.TextContent]`.
+- `compat.py` - compatibility shims and `_sanitize_log_value()`.
+- `consolidation/` - dream-inspired memory maintenance, not a data-consolidation layer.
 
-```
-src/mcp_memory_service/
-├── server/           # MCP server layer (modular, cache-optimized) + handlers/
-├── server_impl.py    # MemoryServer: list_tools()/call_tool() + tool-handler methods
-├── mcp_server.py     # MCP server entry wiring
-├── tools/            # Declarative tool registry (registry.py) + dispatch table (routing.py)
-├── storage/          # Storage backends (Strategy Pattern) + graph.py
-├── web/              # FastAPI dashboard + REST API + OAuth + MCP-over-HTTP
-├── api/              # Shared API layer (compact types, operations)
-├── services/         # Business logic (MemoryService orchestrator)
-├── quality/          # AI quality scoring (multi-tier)
-├── scoring/          # Scoring / ranking helpers
-├── consolidation/    # Dream-inspired memory maintenance
-├── reasoning/        # Relationship / inference logic
-├── embeddings/       # ONNX embeddings (sentence-transformers)
-├── ingestion/        # Document loaders (PDF, DOCX, TXT, JSON, CSV)
-├── harvest/          # Memory harvesting
-├── sync/             # Hybrid backend sync
-├── discovery/        # mDNS / service discovery
-├── backup/           # Backup scheduler
-├── health/           # Health checks
-├── cli/              # `memory` lifecycle CLI (launch/stop/restart/info/logs)
-├── config/           # Configuration
-├── plugins/          # Plugin hooks
-├── models/           # Data models and schemas
-├── compat.py         # Compatibility shims + _sanitize_log_value()
-└── utils/            # Utilities (health checks, startup orchestrator)
-```
+Global singleton caching in `server/cache_manager.py` prevents redundant storage
+initialization across MCP tool calls. Do not instantiate storage per call.
 
-### MCP Server Layer (`server/`)
+### Storage backends (`storage/`)
 
-**Evolution:** Extracted from a monolithic 5000+ line `server.py` to a modular architecture (v8.59.0). In v11 the tool definitions and dispatch were made fully declarative.
+Strategy Pattern over `BaseStorage` (`base.py`), three implementations:
 
-**Key Components:**
-- **`server_impl.py`** - Main `MemoryServer` class. `list_tools()` builds the tool list from the declarative registry; `call_tool()` dispatches via the routing table. Also holds the `handle_*` tool-handler methods.
-- **`tools/registry.py`** - `TOOL_REGISTRY`: the declarative list of `ToolDef` objects (28 tools as of v11.4.0). Each `ToolDef` maps 1:1 to a `types.Tool`. Count: `grep -c 'ToolDef(' src/mcp_memory_service/tools/registry.py`.
-- **`tools/routing.py`** - `ROUTING_TABLE` (name → handler) + `resolve_handler(name)` (lazy import). Replaced the former ~59-branch elif chain in `call_tool()`.
-- **`server/handlers/`** - Modular request handlers: `memory.py`, `quality.py`, `consolidation.py`, `graph.py`, `documents.py`, `mistake_notes.py`, `utility.py`. Signature: `async def handle_X(server, arguments) -> List[types.TextContent]`.
-- **`cache_manager.py`** - Global caching for a large performance boost (see Performance Characteristics)
-- **`client_detection.py`** - Adapts behavior for Claude Desktop vs LM Studio
-- **`logging_config.py`** - Client-aware logging
-- **`environment.py`** - Python path setup, version checks
-
-**Pattern:** Global singleton caching prevents redundant storage initialization across MCP tool calls.
-
-### Storage Backend Architecture (`storage/`)
-
-**Strategy Pattern** with 3 implementations sharing the `BaseStorage` interface:
-
-| Backend | File | Performance | Use Case |
+| Backend | File | Performance | Use case |
 |---------|------|-------------|----------|
-| **SQLite-Vec** | `sqlite_vec.py` | 5ms reads | Development, single-user |
-| **Cloudflare** | `cloudflare.py` | Network-dependent | Cloud-only, edge deployment |
-| **Hybrid** | `hybrid.py` | 5ms local + cloud sync | **Production (RECOMMENDED)** |
+| SQLite-Vec | `sqlite_vec.py` | 5ms reads | Development, single-user |
+| Cloudflare | `cloudflare.py` | Network-dependent | Cloud-only, edge |
+| Hybrid | `hybrid.py` | 5ms local plus cloud sync | **Production (recommended)** |
 
-**Key Features:**
-- All implement `BaseStorage` interface (`base.py`)
-- SQLite-Vec uses the sqlite-vec extension for KNN semantic search
-- Cloudflare uses D1 (SQL) + Vectorize (vector index)
-- Hybrid: Local SQLite-Vec for reads, background Cloudflare sync
-- Graph storage in `graph.py` (v8.51.0) - 30x query performance
+SQLite-Vec uses the sqlite-vec extension for KNN search, Cloudflare uses D1 plus
+Vectorize, Hybrid reads locally and syncs to Cloudflare in the background. Graph
+storage sits in `graph.py`. Embeddings: ONNX, `sentence-transformers/all-MiniLM-L6-v2`.
 
-**Embeddings:** ONNX model (sentence-transformers/all-MiniLM-L6-v2) for lightweight vector generation
+### Web layer (`web/`)
 
-### Web Layer (`web/`)
+FastAPI dashboard plus REST API. Two things that are not visible from the file names:
 
-**FastAPI-based REST API and dashboard:**
-- **`app.py`** - Main FastAPI application
-- **`api/`** - REST endpoints mirroring MCP tools
-- **`api/mcp.py`** - MCP-over-HTTP transport
-- **`oauth/`** - OAuth 2.1 Dynamic Client Registration (v7.0.0+)
-- **`sse.py`** - Server-Sent Events for real-time updates
-- **`static/`** - Single-page dashboard application
+- `api/mcp.py` is a thin MCP-over-HTTP protocol shim. Its tool surface and dispatch
+  are inherited from the shared `MemoryServer`, so tools are not defined twice.
+- Tools that read caller-supplied filesystem paths are filtered out of the remote
+  transport by `local_only_tools()` in `server_impl.py`. This is the confused-deputy
+  guard, not an optimization.
 
-**Key Pattern:** The HTTP API provides the same functionality as the MCP tools for team collaboration. The MCP-over-HTTP endpoint is a thin protocol shim — its tool surface and dispatch logic are inherited from the shared `MemoryServer`. Tools that read caller-supplied filesystem paths are filtered out of the remote transport by `local_only_tools()` (confused-deputy guard).
+### Quality system (`quality/`)
 
-### Quality System (`quality/`)
+Three tiers, local first:
 
-**Multi-tier AI quality scoring** (v8.45.0+):
+| Tier | Provider | Latency | Cost | Role |
+|------|----------|---------|------|------|
+| 1 | Local ONNX | 80-150ms | 0 | Default |
+| 2 | Groq / Llama 3 | 500-800ms | 0.0015 | Fallback if local fails |
+| 3 | Gemini 1.5 Flash | 1-2s | 0.01 | High-accuracy scoring |
 
-| Tier | Provider | Latency | Cost | Use Case |
-|------|----------|---------|------|----------|
-| 1 | Local ONNX | 80-150ms | $0 | **DEFAULT** - Fast, private |
-| 2 | Groq/Llama 3 | 500-800ms | $0.0015 | Fallback if local fails |
-| 3 | Gemini 1.5 Flash | 1-2s | $0.01 | High-accuracy scoring |
+Scores are 0.0 to 1.0 and feed quality-boosted search and retention policy.
 
-**Files:**
-- `onnx_ranker.py` - Local ML-based quality scoring
-- `ai_evaluator.py` - Cloud LLM scoring (Groq, Gemini)
-- `async_scorer.py` - Async quality evaluation orchestrator
-- `implicit_signals.py` - Access count, recency signals
+### Consolidation (`consolidation/`)
 
-**Usage:** Quality scores (0.0-1.0) used in quality-boosted search and retention policies.
+Runs via the HTTP API, not the MCP tools (roughly 90 percent fewer tokens), scheduled
+with APScheduler. Retention by quality tier: high 365d, medium 180d, low 30-90d
+(`forgetting.py`). Relationship inference classifies associations as causes, fixes,
+contradicts, supports, follows or related, with a default confidence threshold of 0.6.
+For existing associations, backfill with
+`scripts/maintenance/update_graph_relationship_types.py`.
 
-### Consolidation System (`consolidation/`)
+### Document ingestion (`ingestion/`)
 
-**Dream-inspired memory maintenance** (v8.23.0+):
-
-**Components:**
-- `decay.py` - Exponential decay scoring (importance × recency)
-- `association_discovery.py` - Find semantic relationships
-- `relationship_inference.py` - Intelligent relationship type classification (v9.3.0+)
-- `compression.py` - Semantic clustering and merging
-- `forgetting.py` - Quality-based archival (High: 365d, Medium: 180d, Low: 30-90d)
-- `scheduler.py` - Automatic consolidation scheduling (daily/weekly/monthly)
-
-**Relationship Inference Engine (v9.3.0+):**
-- Multi-factor analysis: memory type combinations, content semantics, temporal patterns, contradictions
-- Automatic classification: causes, fixes, contradicts, supports, follows, related
-- Confidence scoring (0.0-1.0) with default threshold of 0.6
-- Integrated into association discovery - new associations automatically get inferred relationship types
-- Retroactive updates: Use `scripts/maintenance/update_graph_relationship_types.py` for existing relationships
-
-**Pattern:** Runs via HTTP API (90% token reduction vs MCP tools) with APScheduler.
-
-### Document Ingestion (`ingestion/`)
-
-**Pluggable loader architecture:**
-- **`base.py`** - Abstract `DocumentLoader` interface
-- **`registry.py`** - Automatic loader selection by file extension
-- **Loaders:** `pdf_loader.py`, `text_loader.py`, `json_loader.py`, `csv_loader.py`
-- **`semtools_loader.py`** - Optional LlamaParse integration (enhanced PDF/DOCX/PPTX)
-- **`chunker.py`** - Intelligent text chunking (1000 chars, 200 overlap)
-
-**Pattern:** Registry pattern allows easy addition of new document types.
+Registry pattern, loaders selected by file extension. Chunker defaults: 1000 chars
+with 200 overlap. `semtools_loader.py` is optional and adds LlamaParse for PDF, DOCX
+and PPTX.
 
 ## Test Architecture
 
-### Structure (~2,400+ tests across ~216 files)
+About 2,400 tests across roughly 216 files. `tests/` mirrors `src/`.
 
-Illustrative layout (subdirectories mirror `src/`):
-```
-tests/
-├── api/              # API layer tests (compact types, operations)
-├── storage/          # Backend-specific tests (sqlite_vec, cloudflare, hybrid)
-├── server/           # MCP server handler tests
-├── consolidation/    # Memory maintenance tests
-├── quality/          # Quality scoring tests
-├── web/              # HTTP API and OAuth tests
-├── conftest.py       # Shared fixtures
-└── pytest.ini        # Test configuration
-```
+### Test safety (critical, PR #438)
 
-### Key Fixtures (`conftest.py`)
-- **`temp_db_path`** - Temporary database directory (auto-cleanup)
-- **`unique_content`** - Generate unique test content to avoid duplicates
-- **`test_store`** - Auto-tags memories with `__test__` for cleanup
-- **`TEST_MEMORY_TAG = "__test__"`** - Reserved tag for automatic test cleanup
+On Feb 8, 2026 a test cleanup deleted 8,663 production memories. Recovery ran off an
+emergency backup. Three guards now stand between the suite and a production database,
+all in `conftest.py`:
 
-### Test Safety (Critical - PR #438)
-**Triple Safety System** prevents production database deletion:
-1. **Forced Test Database Path**: `conftest.py` creates an isolated temp directory with `mcp-test-` prefix at module import time
-2. **Pre-Test Verification**: `pytest_sessionstart` aborts the test run if a production path is detected
-3. **Triple-Check Cleanup**: `pytest_sessionfinish` validates temp location + no production indicators + test markers present
+1. An isolated temp directory with prefix `mcp-test-` is created at module import time.
+2. `pytest_sessionstart` aborts the run if a production path is detected.
+3. `pytest_sessionfinish` validates temp location, absence of production indicators,
+   and presence of test markers before deleting anything.
 
-**Backend Isolation**: Tests automatically override `MCP_MEMORY_STORAGE_BACKEND` to `sqlite_vec` unless `MCP_TEST_ALLOW_CLOUD_BACKEND=true`
+Tests force `MCP_MEMORY_STORAGE_BACKEND=sqlite_vec` unless
+`MCP_TEST_ALLOW_CLOUD_BACKEND=true`. Do not weaken any of this to make a test pass.
 
-**Incident History**: Feb 8, 2026 - Test cleanup deleted 8,663 production memories. Resolved via emergency backup recovery + comprehensive safeguards (PR #438).
+### Fixtures and conventions (`conftest.py`)
 
-### Test Markers (defined in `pytest.ini`)
-```python
-@pytest.mark.unit         # Fast unit tests
-@pytest.mark.integration  # Integration tests (require storage)
-@pytest.mark.performance  # Performance benchmarks
-@pytest.mark.asyncio      # Async tests (auto-detected)
-```
+`temp_db_path` gives an auto-cleaned temp directory, `unique_content` generates
+non-duplicate test content, and `test_store` auto-tags everything with
+`TEST_MEMORY_TAG = "__test__"`, which is reserved for automatic cleanup. Never use
+that tag for real data.
 
-### Running Tests by Category
-```bash
-pytest -m unit           # Unit tests only
-pytest -m integration    # Integration tests
-pytest -m performance    # Performance benchmarks
-pytest -k "test_store"   # Tests matching name pattern
-```
+Markers in `pytest.ini`: `unit`, `integration` (needs storage), `performance`,
+`asyncio` (auto-detected).
 
 ## Configuration
 
-### Environment Variables
+Full variable list: `.env.example`. Precedence: environment variables, then `.env`,
+then global Claude config, then defaults. After changing `.env`, restart with
+`memory restart`.
 
-**Quick Reference** (full list in `.env.example`):
+Three settings that cause real incidents when wrong:
 
-```bash
-# Storage Backend
-export MCP_MEMORY_STORAGE_BACKEND=hybrid  # hybrid|cloudflare|sqlite_vec
+- `MCP_MEMORY_SQLITE_PRAGMAS` must include `journal_mode=WAL`. Without it, concurrent
+  reads and writes are disabled and the HTTP server plus MCP server running together
+  produce "database is locked". Working value:
+  `journal_mode=WAL,busy_timeout=15000,cache_size=20000`.
+- `MCP_HYBRID_SYNC_OWNER=http` for hybrid mode. Then only the HTTP server syncs to
+  Cloudflare, the MCP server skips Cloudflare initialization entirely and talks to
+  SQLite-Vec directly, and `claude_desktop_config.json` needs no Cloudflare
+  credentials. Claude Desktop gets memory access, the HTTP server owns sync.
+- `MCP_INIT_TIMEOUT` defaults to 30s on Windows and 15s elsewhere, auto-doubled on
+  first run. Slow Windows machines need it raised.
 
-# Cloudflare (required for hybrid/cloudflare)
-export CLOUDFLARE_API_TOKEN="your-token"
-export CLOUDFLARE_ACCOUNT_ID="your-account"
-export CLOUDFLARE_D1_DATABASE_ID="your-db-id"
-export CLOUDFLARE_VECTORIZE_INDEX="mcp-memory-index"
+### External embedding APIs
 
-# HTTP Server
-export MCP_HTTP_ENABLED=true
-export MCP_HTTP_PORT=8000
-export MCP_API_KEY="your-secure-key"
+Only supported on the `sqlite_vec` backend, not on `hybrid` or `cloudflare`. Set
+`MCP_EXTERNAL_EMBEDDING_URL` and `MCP_EXTERNAL_EMBEDDING_MODEL`, optionally
+`MCP_EXTERNAL_EMBEDDING_API_KEY`. Works with vLLM, Ollama, TEI, OpenAI or any
+OpenAI-compatible `/v1/embeddings` endpoint. Embedding dimensions must match the
+database schema, and changing them requires re-embedding every memory. Details:
+[`docs/deployment/external-embeddings.md`](docs/deployment/external-embeddings.md).
 
-# OAuth (v9.0.6+)
-export MCP_OAUTH_STORAGE_BACKEND=sqlite   # memory|sqlite
-export MCP_OAUTH_SQLITE_PATH=./data/oauth.db
-
-# Quality System (v8.45.0+)
-export MCP_QUALITY_SYSTEM_ENABLED=true
-
-# Consolidation (v8.23.0+)
-export MCP_CONSOLIDATION_ENABLED=true
-
-# SQLite Concurrent Access (CRITICAL for HTTP + MCP servers)
-export MCP_MEMORY_SQLITE_PRAGMAS=journal_mode=WAL,busy_timeout=15000,cache_size=20000
-
-# Initialization Timeout (Windows users may need to increase this)
-# Default: 30s on Windows, 15s on Linux/macOS (auto-doubled on first run)
-# export MCP_INIT_TIMEOUT=120        # Increase for slow Windows systems
-```
-
-**Configuration Precedence:** Environment variables > .env file > Global Claude Config > defaults
-
-**Important:** After updating `.env`, always restart servers. Use `memory restart` (preferred CLI) or `./scripts/update_and_restart.sh` (legacy) for the automated workflow.
-
-**CRITICAL:** `MCP_MEMORY_SQLITE_PRAGMAS` must include `journal_mode=WAL` for concurrent access. Omitting WAL disables concurrent reads/writes and causes "database is locked" errors when the HTTP server and MCP server run simultaneously.
-
-**RECOMMENDED for Hybrid mode:** Set `MCP_HYBRID_SYNC_OWNER=http` so that only the HTTP server syncs to Cloudflare. With this setting the MCP server (Claude Desktop) skips Cloudflare initialization entirely and uses SQLite-Vec directly — no Cloudflare credentials needed in `claude_desktop_config.json`. The HTTP server (running `run_http_server.py` with `.env`) handles all background sync. This is the correct separation of concerns: Claude Desktop = memory access, HTTP server = sync infrastructure.
-
-### External Embedding APIs
-
-**Note:** Only supported with the `sqlite_vec` backend (not compatible with `hybrid` or `cloudflare`).
-
-```bash
-export MCP_EXTERNAL_EMBEDDING_URL=http://localhost:8890/v1/embeddings
-export MCP_EXTERNAL_EMBEDDING_MODEL=nomic-embed-text
-export MCP_EXTERNAL_EMBEDDING_API_KEY=sk-xxx  # Optional
-```
-
-**Supported backends:** vLLM, Ollama, Text Embeddings Inference (TEI), OpenAI, or any OpenAI-compatible `/v1/embeddings` endpoint.
-
-**Important:** Embedding dimensions must match your database schema. Changing dimensions requires re-embedding all memories. See [`docs/deployment/external-embeddings.md`](docs/deployment/external-embeddings.md) for details.
-
-### Claude Desktop Integration
-
-**Recommended configuration** (`~/.claude/config.json`):
-
-```json
-{
-  "mcpServers": {
-    "memory": {
-      "command": "python",
-      "args": ["-m", "mcp_memory_service.server"],
-      "env": {
-        "MCP_MEMORY_STORAGE_BACKEND": "hybrid"
-      }
-    }
-  }
-}
-```
-
-**Alternative:** Use `uv run memory server` or a direct script path (see v6.17.0+ migration notes in README).
+Claude Desktop wiring: see README.
 
 ## Development Guidelines
 
-### Code Quality Standards
+### Quality gates
 
-**Three-layer quality strategy:**
-1. **Pre-commit** (<5s) - automated complexity + security checks (blocks: complexity >8, security issues)
-2. **PR Quality Gate** (10-60s) - `bash scripts/pr/pre_pr_check.sh` (blocks: security, health <50)
-3. **Periodic Review** (weekly) - pyscn analysis + trend tracking
+Three layers: pre-commit (under 5s, Groq/Gemini complexity plus security, blocks on
+complexity above 8 or a security finding), the PR gate
+`bash scripts/pr/pre_pr_check.sh` (10-60s, blocks on security or health below 50), and
+a weekly pyscn review with trend tracking. Health score below 50 blocks a release,
+50-69 means refactor within two weeks, 70 and up is fine. Complexity target is grade
+A-B, meaning 8 or lower.
 
-**Health Score Thresholds:**
-- `<50`: Release blocker (cannot merge)
-- `50-69`: Action required (refactor within 2 weeks)
-- `70+`: Continue development
+### Log injection guard (v10.68.0, from CodeQL GHSA-84hp-mqvj-3p8h)
 
-**Utility Modules Pattern** (v8.61.0 - Phase 3 Refactoring):
-- Strategy Pattern: `utils/health_check.py` (5 strategies)
-- Orchestrator Pattern: `utils/startup_orchestrator.py` (3 orchestrators)
-- Processor Pattern: `utils/directory_ingestion.py` (3 processors)
-- Analyzer Pattern: `utils/quality_analytics.py` (3 analyzers)
+User-provided values in raw f-string log calls trigger CodeQL `py/log-injection`.
+Wrap them:
 
-**Target:** All complexity A-B grade (complexity ≤8)
-
-**Log Injection Guard** (added v10.68.0 — CodeQL GHSA-84hp-mqvj-3p8h lessons):
-- **NEVER** log user-provided values in raw f-strings: `logger.info(f"Stored: {content}")` triggers CodeQL `py/log-injection`
-- **ALWAYS** wrap with `_sanitize_log_value()` from `src/mcp_memory_service/compat.py`:
-  ```python
-  from mcp_memory_service.compat import _sanitize_log_value
-  logger.info(f"Stored: {_sanitize_log_value(content)}")
-  ```
-- `_sanitize_log_value()` strips `\n`, `\r`, `\x1b` — prevents log-forging and ANSI injection
-- `pre_pr_check.sh` now detects f-string logger calls without this wrapper (check 6.5)
-- Path injection: always validate with `Path(user_input).resolve()` and check it is under the expected base dir
-
-### External Data Parsers
-- **Always inspect real data first**: Download and inspect a sample of the real data BEFORE writing parsers or tests. Never trust API docs or project pages alone — real JSON structures often differ from descriptions (e.g., LoCoMo observations are nested dicts, not newline-separated strings).
-
-### Development Workflow
-
-**Read first:**
-- [`.claude/directives/development-setup.md`](.claude/directives/development-setup.md) - Editable install
-- [`.claude/directives/pr-workflow.md`](.claude/directives/pr-workflow.md) - Pre-PR checks (MANDATORY)
-- [`.claude/directives/refactoring-checklist.md`](.claude/directives/refactoring-checklist.md) - Refactoring safety
-- [`.claude/directives/version-management.md`](.claude/directives/version-management.md) - Release workflow (HOW)
-- [`.claude/directives/release-cadence.md`](.claude/directives/release-cadence.md) - Release batching (WHEN)
-
-**Quick workflow:**
-1. `pip install -e .` - Install in editable mode (via `.venv`)
-2. Make changes
-3. `pytest` - Run tests (`.venv/bin/pytest`)
-4. `bash scripts/pr/pre_pr_check.sh` - Pre-PR validation (MANDATORY)
-5. Create PR - **IMPORTANT: Follow the release workflow for ALL version bumps and releases**
-
-**Release Protocol (MANDATORY)**:
-- **NEVER manually bump versions** - always follow the release workflow
-- The agent handles: version bump, CHANGELOG update, `_version.py` sync, PR creation, release notes
-- Ensures consistency across `pyproject.toml`, `_version.py`, CHANGELOG, and the Codeberg release
-- Example: After merging a feature PR, run the release workflow to create the release
-
-**Dashboard changes (`web/static/`):** Verify in a browser before merging. Dashboard JS lacks automated test coverage — PRs touching this area should include manual testing evidence or screenshots.
-
-**Memory Tagging:** Always tag memories with `mcp-memory-service` as first tag (see `.claude/directives/memory-tagging.md`)
-
-**Removing a feature:** When removing a feature or changing a port/command, run `grep -r "<term>" docs/ README.md` and clean up references in the same PR. CI catches new dead refs via `scripts/ci/check_dead_refs.sh` (also run as a Forgejo Actions workflow on docs changes).
-
-### Common Development Tasks
-
-**Add a new MCP tool:** Tools are declarative as of v11 — the old inline `types.Tool(...)` list in `list_tools()` and the `call_tool()` elif chain were **both removed**. The current flow:
-1. **Define the tool:** add a `ToolDef(name, description, input_schema, annotations)` to `TOOL_REGISTRY` in `src/mcp_memory_service/tools/registry.py`. Each `ToolDef` maps 1:1 to a `types.Tool`. Set `annotations={"readOnlyHint": True, ...}` if the tool does not mutate state — annotations drive OAuth scope; without `readOnlyHint` the HTTP `/mcp` layer treats it as a write tool and requires the OAuth `write` scope (GHSA-2r68-g678-7qr3).
-2. **Implement the handler** in `src/mcp_memory_service/server/handlers/*.py` with the shape `async def handle_X(server, arguments) -> List[types.TextContent]`.
-3. **Route it:** add `"<tool_name>": <handler>` to `ROUTING_TABLE` in `src/mcp_memory_service/tools/routing.py`. Use a module-function reference for handler-module functions, or the `("__self__", "handle_X")` tuple to dispatch to a `MemoryServer` method. `call_tool()` resolves handlers via `resolve_handler(name)` (lazy import).
-4. **If the tool reads a caller-supplied filesystem path** (`project_path`, `file_path`, `directory_path`), add its name to `local_only_tools()` in `server_impl.py` so the HTTP shim will not expose it (confused-deputy guard).
-5. **Add tests** in `tests/server/test_handlers.py`.
-6. **Renaming a tool is a breaking change.** The v11 alias layer (`compat.DEPRECATED_TOOLS`) was removed (Issue #53), so a rename drops the old name outright. Avoid renames; if unavoidable, treat it as a major-version change and document the migration in `docs/MIGRATION.md`.
-
-**Add a new storage backend:**
-1. Implement the `BaseStorage` interface from `src/mcp_memory_service/storage/base.py`
-2. Add a factory method in `src/mcp_memory_service/storage/factory.py`
-3. Add tests in `tests/storage/test_<backend>.py`
-4. Update configuration options
-
-**Add a new document loader:**
-1. Implement the `DocumentLoader` interface from `src/mcp_memory_service/ingestion/base.py`
-2. Register the loader in `src/mcp_memory_service/ingestion/registry.py`
-3. Add tests in `tests/ingestion/test_<loader>.py`
-
-**Improve memory ontology and relationship types:**
-1. **Memory types:** Run `scripts/maintenance/improve_memory_ontology.py` to re-classify memory types using high-confidence patterns
-2. **Relationship types:** Run `scripts/maintenance/update_graph_relationship_types.py` to infer relationship types for existing associations
-3. **Test first:** Both scripts support `--dry-run` to preview changes before applying
-4. **Cleanup:** Use `scripts/maintenance/cleanup_memories.py` to remove test memories and orphaned data
-
-### Memory Field Access Pattern (CRITICAL)
-
-**ALWAYS use direct attribute access on Memory objects. NEVER access via the metadata dict.**
-
-This anti-pattern has caused 3 production bugs (v10.13.1: PRs #466, #467, #469).
-
-**Memory Dataclass Structure:**
 ```python
-@dataclass
-class Memory:
-    content: str
-    content_hash: str
-    tags: List[str] = field(default_factory=list)      # TOP-LEVEL FIELD
-    memory_type: Optional[str] = None                  # TOP-LEVEL FIELD
-    metadata: Dict[str, Any] = field(default_factory=dict)  # SEPARATE - for custom data only
+from mcp_memory_service.compat import _sanitize_log_value
+logger.info(f"Stored: {_sanitize_log_value(content)}")
 ```
 
-**WRONG - Common Anti-Patterns:**
-```python
-# WRONG - reads from metadata dict (returns default even if field exists)
-memory.metadata.get('tags', [])           # Always returns []
-memory.metadata.get('memory_type', '')    # Always returns ''
+The helper strips newline, carriage return and escape characters, which prevents log
+forging and ANSI injection. `pre_pr_check.sh` check 6.5 detects unwrapped f-string
+logger calls. For paths, validate with `Path(user_input).resolve()` and verify the
+result is under the expected base directory.
 
-# WRONG - dict-style access (raises AttributeError)
-memory['content_hash']
-memory['tags']
+### Memory field access (cause of three production bugs)
+
+`tags`, `memory_type`, `content_hash` and `created_at` are top-level attributes of the
+`Memory` dataclass. `metadata` is a separate dict for custom key-value pairs only and
+never holds standard fields.
+
+```python
+memory.tags               # correct
+memory.memory_type or ''  # correct, with fallback
+
+memory.metadata.get('tags', [])  # wrong, silently returns []
+memory['tags']                   # wrong, raises AttributeError
 ```
 
-**CORRECT - Direct Attribute Access:**
-```python
-# CORRECT - access top-level fields directly
-memory.tags              # Returns actual tags list
-memory.memory_type       # Returns actual memory type
-memory.content_hash      # Returns hash string
-memory.created_at        # Returns timestamp
+The metadata form fails silently, which is why it reached production three times
+(PRs #466, #467, #469 in v10.13.1): a broken REST filter returning zero results, tags
+rendered character by character, and crashing prompt handlers. Flag any
+`metadata.get('tags')` or `metadata.get('memory_type')` in review.
 
-# Safe with fallback
-memory.tags or []
-memory.memory_type or ''
-```
+### External data parsers
 
-**Production Bugs Caused by This Pattern:**
-1. **PR #466 (CRITICAL)**: `retrieve_memories()` broke the REST API - all filtered queries returned 0 results
-2. **PR #467 (HIGH)**: Tags displayed as individual characters ("python" -> "p,y,t,h,o,n")
-3. **PR #469 (HIGH)**: Prompt handlers crashed with AttributeError
+Download and inspect a real sample before writing a parser or its tests. API docs and
+project pages misdescribe structures often enough to matter, for example LoCoMo
+observations are nested dicts rather than newline-separated strings.
 
-**Key Insight:** `Memory.metadata` is for **custom key-value pairs only**, NOT standard fields (tags, memory_type, etc.). Standard fields are top-level dataclass attributes.
+### Directives to read before working
 
-**Prevention:**
-- Use type hints to catch dict-style access
-- Code review: Flag any `metadata.get('tags')` or `metadata.get('memory_type')` patterns
-- Add a linting rule to detect this anti-pattern
+- [`.claude/directives/development-setup.md`](.claude/directives/development-setup.md) - editable install
+- [`.claude/directives/pr-workflow.md`](.claude/directives/pr-workflow.md) - pre-PR checks
+- [`.claude/directives/refactoring-checklist.md`](.claude/directives/refactoring-checklist.md) - refactoring safety
+- [`.claude/directives/version-management.md`](.claude/directives/version-management.md) - release workflow (how)
+- [`.claude/directives/release-cadence.md`](.claude/directives/release-cadence.md) - release batching (when)
+
+Version bumps follow the documented release workflow, never by hand. It keeps
+`pyproject.toml`, `_version.py`, CHANGELOG and the Codeberg release in sync and writes
+the release notes.
+
+### Gotchas when changing things
+
+- Dashboard (`web/static/`): the JS has no automated coverage. Verify in a browser and
+  attach manual testing evidence or screenshots to the PR.
+- Removing a feature, port or command: run `grep -r "<term>" docs/ README.md` and clean
+  up references in the same PR. `scripts/ci/check_dead_refs.sh` catches new dead refs
+  in CI on docs changes.
+
+### Adding a new MCP tool
+
+Tools are declarative as of v11. The old inline `types.Tool(...)` list in `list_tools()`
+and the `call_tool()` elif chain are both gone.
+
+1. Add a `ToolDef(name, description, input_schema, annotations)` to `TOOL_REGISTRY` in
+   `tools/registry.py`. Set `annotations={"readOnlyHint": True, ...}` for non-mutating
+   tools: annotations drive OAuth scope, and without `readOnlyHint` the HTTP `/mcp`
+   layer treats the tool as a write tool and demands the OAuth `write` scope
+   (GHSA-2r68-g678-7qr3).
+2. Implement `async def handle_X(server, arguments) -> List[types.TextContent]` in
+   `server/handlers/*.py`.
+3. Add `"<tool_name>": <handler>` to `ROUTING_TABLE` in `tools/routing.py`. Use a module
+   function reference, or the `("__self__", "handle_X")` tuple to dispatch to a
+   `MemoryServer` method.
+4. If the tool reads a caller-supplied path (`project_path`, `file_path`,
+   `directory_path`), add its name to `local_only_tools()` in `server_impl.py` so the
+   HTTP shim will not expose it.
+5. Add tests in `tests/server/test_handlers.py`.
+
+Renaming a tool is a breaking change. The alias layer (`compat.DEPRECATED_TOOLS`) was
+removed in v11 (Issue #53), so a rename drops the old name outright. Treat it as a major
+version change and document the migration in `docs/MIGRATION.md`.
+
+### Other extension points
+
+New storage backend: implement `BaseStorage` (`storage/base.py`), add a factory method
+in `storage/factory.py`, add `tests/storage/test_<backend>.py`. New document loader:
+implement `DocumentLoader` (`ingestion/base.py`), register it in
+`ingestion/registry.py`, add `tests/ingestion/test_<loader>.py`.
+
+Maintenance scripts, all supporting `--dry-run`:
+`scripts/maintenance/improve_memory_ontology.py` re-classifies memory types,
+`update_graph_relationship_types.py` infers relationship types for existing
+associations, `cleanup_memories.py` removes test memories and orphaned data.
 
 ## Definition of Done
 
@@ -717,69 +524,6 @@ Key routing rules:
 - Ship/deploy/PR → invoke /ship or /land-and-deploy
 - Save progress → invoke /context-save
 - Resume context → invoke /context-restore
-
-# context-mode — MANDATORY routing rules
-
-You have context-mode MCP tools available. These rules are NOT optional — they protect your context window from flooding. A single unrouted command can dump 56 KB into context and waste the entire session.
-
-## BLOCKED commands — do NOT attempt these
-
-### curl / wget — BLOCKED
-Any Bash command containing `curl` or `wget` is intercepted and replaced with an error message. Do NOT retry.
-Instead use:
-- `ctx_fetch_and_index(url, source)` to fetch and index web pages
-- `ctx_execute(language: "javascript", code: "const r = await fetch(...)")` to run HTTP calls in sandbox
-
-### Inline HTTP — BLOCKED
-Any Bash command containing `fetch('http`, `requests.get(`, `requests.post(`, `http.get(`, or `http.request(` is intercepted and replaced with an error message. Do NOT retry with Bash.
-Instead use:
-- `ctx_execute(language, code)` to run HTTP calls in sandbox — only stdout enters context
-
-### WebFetch — BLOCKED
-WebFetch calls are denied entirely. The URL is extracted and you are told to use `ctx_fetch_and_index` instead.
-Instead use:
-- `ctx_fetch_and_index(url, source)` then `ctx_search(queries)` to query the indexed content
-
-## REDIRECTED tools — use sandbox equivalents
-
-### Bash (>20 lines output)
-Bash is ONLY for: `git`, `mkdir`, `rm`, `mv`, `cd`, `ls`, `npm install`, `pip install`, and other short-output commands.
-For everything else, use:
-- `ctx_batch_execute(commands, queries)` — run multiple commands + search in ONE call
-- `ctx_execute(language: "shell", code: "...")` — run in sandbox, only stdout enters context
-
-### Read (for analysis)
-If you are reading a file to **Edit** it → Read is correct (Edit needs content in context).
-If you are reading to **analyze, explore, or summarize** → use `ctx_execute_file(path, language, code)` instead. Only your printed summary enters context. The raw file content stays in the sandbox.
-
-### Grep (large results)
-Grep results can flood context. Use `ctx_execute(language: "shell", code: "grep ...")` to run searches in sandbox. Only your printed summary enters context.
-
-## Tool selection hierarchy
-
-1. **GATHER**: `ctx_batch_execute(commands, queries)` — Primary tool. Runs all commands, auto-indexes output, returns search results. ONE call replaces 30+ individual calls.
-2. **FOLLOW-UP**: `ctx_search(queries: ["q1", "q2", ...])` — Query indexed content. Pass ALL questions as array in ONE call.
-3. **PROCESSING**: `ctx_execute(language, code)` | `ctx_execute_file(path, language, code)` — Sandbox execution. Only stdout enters context.
-4. **WEB**: `ctx_fetch_and_index(url, source)` then `ctx_search(queries)` — Fetch, chunk, index, query. Raw HTML never enters context.
-5. **INDEX**: `ctx_index(content, source)` — Store content in FTS5 knowledge base for later search.
-
-## Subagent routing
-
-When spawning subagents (Agent/Task tool), the routing block is automatically injected into their prompt. Bash-type subagents are upgraded to general-purpose so they have access to MCP tools. You do NOT need to manually instruct subagents about context-mode.
-
-## Output constraints
-
-- Keep responses under 500 words.
-- Write artifacts (code, configs, PRDs) to FILES — never return them as inline text. Return only: file path + 1-line description.
-- When indexing content, use descriptive source labels so others can `ctx_search(source: "label")` later.
-
-## ctx commands
-
-| Command | Action |
-|---------|--------|
-| `ctx stats` | Call the `ctx_stats` MCP tool and display the full output verbatim |
-| `ctx doctor` | Call the `ctx_doctor` MCP tool, run the returned shell command, display as checklist |
-| `ctx upgrade` | Call the `ctx_upgrade` MCP tool, run the returned shell command, display as checklist |
 
 ## graphify
 
