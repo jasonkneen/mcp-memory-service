@@ -360,6 +360,29 @@ docker cp ./backup.json new-memory-service:/app/
 docker exec new-memory-service python scripts/restore_memories.py /app/backup.json
 ```
 
+### Maintenance and Migration Scripts
+
+The images ship `scripts/maintenance/` and `scripts/migration/`, so administrative
+tasks run in place instead of requiring a `docker cp` of the script first. Run
+them from `/app`, which is the working directory:
+
+```bash
+# List what is available
+docker exec memory-service ls scripts/maintenance scripts/migration
+
+# Re-embed everything after changing the embedding model. This rebuilds the
+# database from the memories table and carries graph edges and beliefs over.
+docker exec -it memory-service sh -c \
+    'python scripts/migration/migrate_sqlite_vec_embeddings.py "$MCP_MEMORY_SQLITE_PATH"'
+
+# Remove test memories and orphaned data (supports --dry-run)
+docker exec memory-service python scripts/maintenance/cleanup_memories.py --dry-run
+```
+
+The migration writes a timestamped `.backup_*` file next to the database before
+it changes anything. Keep it until you have confirmed the result, and note that
+`docker exec` needs `-it` for the confirmation prompt.
+
 ## Monitoring and Logging
 
 ### Container Health Checks
