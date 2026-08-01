@@ -211,8 +211,17 @@ echo -e "\n${YELLOW}[6/9]${NC} Checking for debug code..."
 DEBUG_ISSUES=0
 for file in $(echo "$STAGED_FILES" | grep '\.py$' | grep -v '^claude-hooks/' || true); do
     if [ -f "$file" ]; then
-        # Check for common debug patterns
-        if grep -n "import pdb\|breakpoint()\|print(" "$file" | grep -v "logger.debug\|# debug\|\"print" > /dev/null 2>&1; then
+        # A debugger left behind is always wrong, wherever it sits.
+        DEBUG_PATTERN="import pdb\|breakpoint()"
+
+        # print() only counts as debug code in the library. CLI scripts and
+        # tests print as their normal output, so flagging it there made the
+        # gate unpassable for any change under scripts/ (#188).
+        case "$file" in
+            src/*) DEBUG_PATTERN="$DEBUG_PATTERN\|print(" ;;
+        esac
+
+        if grep -n "$DEBUG_PATTERN" "$file" | grep -v "logger.debug\|# debug\|\"print" > /dev/null 2>&1; then
             echo -e "${YELLOW}   Found potential debug code in $file${NC}"
             DEBUG_ISSUES=$((DEBUG_ISSUES + 1))
         fi
