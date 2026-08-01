@@ -324,7 +324,11 @@ async function storeSessionMemory(endpoint, apiKey, content, projectContext, ana
     try {
         result = await client.storeMemory(content, {
             tags: uniqueTags,
-            memoryType: 'session-summary',
+            // 'session' is the observation subtype for this; 'session-summary'
+            // is not in the ontology and was coerced to 'observation' (#177).
+            // The 'claude-code-session' and 'session-consolidation' tags above
+            // remain the reliable way to find these.
+            memoryType: 'session',
             metadata: {
                 session_analysis: {
                     topics: analysis.topics,
