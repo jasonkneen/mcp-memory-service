@@ -20,7 +20,8 @@ import time
 import logging
 import calendar
 
-from mcp_memory_service.models.ontology import MemoryTypeOntology
+from mcp_memory_service.compat import _sanitize_log_value
+from mcp_memory_service.models.ontology import MemoryTypeOntology, canonicalize_memory_type
 from mcp_memory_service.models.tag_taxonomy import TagTaxonomy
 
 # Try to import dateutil, but fall back to standard datetime parsing if not available
@@ -66,11 +67,15 @@ class Memory:
         if self.memory_type is not None:
             if not MemoryTypeOntology.validate_memory_type(self.memory_type):
                 logger.warning(
-                    f"Invalid memory_type '{self.memory_type}'. "
+                    f"Invalid memory_type '{_sanitize_log_value(self.memory_type)}'. "
                     f"Valid types: {', '.join(MemoryTypeOntology.get_all_types()[:5])}... "
                     f"Defaulting to 'observation'."
                 )
                 self.memory_type = "observation"  # Default to base type
+            else:
+                # Store the canonical form so `Decision` and `decision` are one
+                # type on disk and type filters match either spelling (#176).
+                self.memory_type = canonicalize_memory_type(self.memory_type)
 
         # Default tag when no tags provided
         if not self.tags:
