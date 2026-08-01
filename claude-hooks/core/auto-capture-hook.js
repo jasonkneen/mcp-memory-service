@@ -282,7 +282,8 @@ async function main() {
         if (overrides.forceRemember) {
             detection = {
                 isValuable: true,
-                memoryType: 'Context',
+                // Canonical ontology type; 'Context' was coerced away on store (#177)
+                memoryType: 'note',
                 matchedPattern: 'user-override',
                 confidence: 1.0
             };
