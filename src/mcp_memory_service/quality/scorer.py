@@ -56,11 +56,14 @@ class QualityScorer:
         # Get implicit signals score
         implicit_score = self._implicit_evaluator.evaluate_quality(memory, query)
 
-        # Combine scores based on configuration
-        if self.config.boost_enabled and ai_score is not None:
+        # Combine scores based on configuration.
+        # These are the store-time knobs (#179): the search-side boost settings
+        # used to double as the blend control, so enabling quality-boosted
+        # search silently changed what was written to the database.
+        if self.config.implicit_blend_enabled and ai_score is not None:
             # Weighted combination of AI and implicit signals
-            ai_weight = 1.0 - self.config.boost_weight
-            implicit_weight = self.config.boost_weight
+            ai_weight = 1.0 - self.config.implicit_weight
+            implicit_weight = self.config.implicit_weight
             composite_score = ai_weight * ai_score + implicit_weight * implicit_score
         elif ai_score is not None:
             # Use AI score only
@@ -105,9 +108,13 @@ class QualityScorer:
             memory.metadata['ai_scores'] = ai_scores[-10:]
 
         # Store component scores for debugging
+        # Record the knobs that actually produced this score. 'boost_*' are kept
+        # for readers of older rows but now describe search-side reranking only.
         memory.metadata['quality_components'] = {
             'ai_score': ai_score,
             'implicit_score': implicit_score,
+            'implicit_blend_enabled': self.config.implicit_blend_enabled,
+            'implicit_weight': self.config.implicit_weight,
             'boost_enabled': self.config.boost_enabled,
             'boost_weight': self.config.boost_weight
         }
