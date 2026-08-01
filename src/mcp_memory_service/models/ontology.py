@@ -14,6 +14,7 @@ Usage:
     parent = MemoryTypeOntology.get_parent_type("code_edit")  # Returns "observation"
 """
 
+import re
 from enum import Enum
 from typing import Dict, List, Optional, Final
 
@@ -207,6 +208,33 @@ RELATIONSHIPS: Final[Dict[str, Dict[str, List[str]]]] = {
 SYMMETRIC_RELATIONSHIPS: Final[set] = {"related", "contradicts", "shares_entity"}
 
 
+def canonicalize_memory_type(memory_type: str) -> str:
+    """Return the canonical form of a memory type: stripped and lowercased.
+
+    Type names are labels, not Python identifiers, and callers disagree on
+    capitalization — the bundled hooks send ``Decision`` while the REST and MCP
+    examples use ``decision``. Registration already lowercased custom base
+    types while validation compared the raw string, so a capitalized type could
+    never be registered at all (issue #176). Canonicalizing on both sides keeps
+    them the same type.
+    """
+    if not isinstance(memory_type, str):
+        return memory_type
+    return memory_type.strip().lower()
+
+
+# Custom base type and subtype names: lowercase letters, digits, underscore and
+# hyphen, starting with a letter. `str.isidentifier()` used to guard this, which
+# rejected every hyphenated name (`session-summary`) even though nothing here
+# needs a valid Python identifier.
+_CUSTOM_TYPE_NAME_RE = re.compile(r'^[a-z][a-z0-9_-]*$')
+
+
+def _is_valid_custom_type_name(name: str) -> bool:
+    """Check a canonicalized custom type name against the allowed character set."""
+    return isinstance(name, str) and bool(_CUSTOM_TYPE_NAME_RE.match(name))
+
+
 def _load_custom_types_from_config() -> Dict[str, List[str]]:
     """Load custom memory types from MCP_CUSTOM_MEMORY_TYPES environment variable.
 
@@ -226,6 +254,15 @@ def _load_custom_types_from_config() -> Dict[str, List[str]]:
     except ImportError:
         logger = logging.getLogger(__name__)
 
+    # Type names come from an environment variable and end up in log lines, so
+    # they are sanitized before logging. The fallback mirrors compat's stripping
+    # for the standalone module load used by tests/test_ontology.py.
+    try:
+        from mcp_memory_service.compat import _sanitize_log_value
+    except ImportError:
+        def _sanitize_log_value(value):
+            return re.sub(r'[\r\n\x1b]', '', str(value))
+
     custom_types_json = os.getenv('MCP_CUSTOM_MEMORY_TYPES')
     if not custom_types_json:
         return {}
@@ -239,21 +276,35 @@ def _load_custom_types_from_config() -> Dict[str, List[str]]:
             return {}
 
         validated_types = {}
-        for base_type, subtypes in custom_types.items():
-            # Validate base type name
-            if not isinstance(base_type, str) or not base_type.isidentifier():
-                logger.warning(f"Invalid base type name '{base_type}', skipping")
+        for raw_base_type, subtypes in custom_types.items():
+            # Validate base type name (canonicalized, so `Decision` and
+            # `decision` register as the same type — issue #176)
+            base_type = canonicalize_memory_type(raw_base_type)
+            safe_name = _sanitize_log_value(raw_base_type)
+            if not _is_valid_custom_type_name(base_type):
+                logger.warning(
+                    f"Invalid base type name '{safe_name}', skipping. Names may "
+                    f"contain lowercase letters, digits, underscore and hyphen, "
+                    f"and must start with a letter."
+                )
                 continue
 
             # Validate subtypes
             if not isinstance(subtypes, list):
-                logger.warning(f"Subtypes for '{base_type}' must be a list, skipping")
+                logger.warning(f"Subtypes for '{safe_name}' must be a list, skipping")
                 continue
 
             valid_subtypes = [
-                st for st in subtypes
-                if isinstance(st, str) and st.replace('_', '').isalnum()
+                canonicalize_memory_type(st) for st in subtypes
+                if _is_valid_custom_type_name(canonicalize_memory_type(st))
             ]
+
+            if base_type in TAXONOMY:
+                logger.warning(
+                    f"Custom memory type '{safe_name}' matches the built-in type "
+                    f"'{base_type}'; its subtypes are merged into the built-in type. "
+                    f"Registering it is not needed — validation is case-insensitive."
+                )
 
             # Register the base type even when no (valid) subtypes were provided
             # so that callers can use `{"foo": []}` to add a bare custom type.
@@ -263,7 +314,7 @@ def _load_custom_types_from_config() -> Dict[str, List[str]]:
                     f"All subtypes for custom memory type '{base_type}' were invalid; "
                     f"registering base type with no subtypes"
                 )
-            validated_types[base_type.lower()] = valid_subtypes
+            validated_types[base_type] = valid_subtypes
             logger.info(
                 f"Loaded custom memory type '{base_type}' with {len(valid_subtypes)} subtypes"
             )
@@ -360,9 +411,11 @@ def validate_memory_type(memory_type: str) -> bool:
         >>> validate_memory_type("invalid")
         False
     """
-    # Use get_all_types which includes both built-in and custom types
+    # Use get_all_types which includes both built-in and custom types.
+    # Compare canonicalized, so `Decision` and `decision` are the same type
+    # (issue #176) — the taxonomy itself is stored canonicalized.
     all_types = get_all_types()
-    return memory_type in all_types
+    return canonicalize_memory_type(memory_type) in all_types
 
 
 def get_parent_type(subtype: str) -> Optional[str]:
@@ -402,7 +455,7 @@ def get_parent_type(subtype: str) -> Optional[str]:
                 _PARENT_TYPE_MAP_CACHE[st] = base_type
 
     # Return cached lookup result
-    return _PARENT_TYPE_MAP_CACHE.get(subtype)
+    return _PARENT_TYPE_MAP_CACHE.get(canonicalize_memory_type(subtype))
 
 
 def get_all_types() -> List[str]:
