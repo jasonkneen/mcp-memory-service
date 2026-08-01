@@ -41,7 +41,10 @@ if ! command -v gemini &> /dev/null; then
     echo "   This gate's complexity/security analysis requires the Gemini CLI."
     echo "   Skipped, NOT passed: code quality was not evaluated locally."
     echo "   Install the Gemini CLI to run the full gate, or rely on CI for these checks."
-    exit 0
+    # Exit 3 = skipped, distinct from 0 (passed) and 1 (failed). The text above
+    # already said "NOT passed", but callers only see the status code, and
+    # pre_pr_check.sh was reporting this as a green check.
+    exit 3
 fi
 
 echo "=== PR Quality Gate for #$PR_NUMBER ==="

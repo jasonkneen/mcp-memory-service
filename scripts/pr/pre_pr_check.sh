@@ -57,9 +57,11 @@ echo -e "${BLUE}╚════════════════════�
 echo ""
 
 FAILED_CHECKS=0
+SKIPPED_CHECKS=0
 TOTAL_CHECKS=0
 
 # Helper function for check status
+# status: 0 = pass, 3 = skipped (tool missing — neither pass nor fail), else fail
 check_status() {
     local name="$1"
     local status=$2
@@ -67,6 +69,9 @@ check_status() {
 
     if [ $status -eq 0 ]; then
         echo -e "${GREEN}✅ PASS${NC} - $name"
+    elif [ $status -eq 3 ]; then
+        echo -e "${YELLOW}SKIP${NC} - $name (not enforced — see note below)"
+        SKIPPED_CHECKS=$((SKIPPED_CHECKS + 1))
     else
         echo -e "${RED}❌ FAIL${NC} - $name"
         FAILED_CHECKS=$((FAILED_CHECKS + 1))
@@ -84,8 +89,17 @@ echo -e "${GREEN}✅${NC} Found $(echo "$STAGED_FILES" | wc -l) staged files"
 
 # Check 2: Run full quality gate
 echo -e "\n${YELLOW}[2/9]${NC} Running quality_gate.sh (complexity, security, PEP 8)..."
-if bash scripts/pr/quality_gate.sh --staged --with-pyscn; then
+set +e
+bash scripts/pr/quality_gate.sh --staged --with-pyscn
+QUALITY_GATE_EXIT=$?
+set -e
+if [ $QUALITY_GATE_EXIT -eq 0 ]; then
     check_status "Quality gate (complexity ≤8, no security issues)" 0
+elif [ $QUALITY_GATE_EXIT -eq 3 ]; then
+    # Gemini CLI missing — the gate ran nothing. Reporting this as a pass made
+    # the whole check meaningless on machines without the CLI.
+    check_status "Quality gate (complexity ≤8, no security issues)" 3
+    echo -e "${YELLOW}   Complexity and security were not evaluated locally — CI still checks them${NC}"
 else
     check_status "Quality gate (complexity ≤8, no security issues)" 1
     echo -e "${RED}   Fix high-complexity functions or security issues before creating PR${NC}"
@@ -100,12 +114,26 @@ if ! "$PYTHON_BIN" -c "import pytest_cov" 2>/dev/null; then
     "$PIP_BIN" install pytest-cov > /dev/null 2>&1
 fi
 
-# Run tests with coverage
+# Run tests with coverage.
+# `set +e` around the assignment is load-bearing: under `set -e` a failing
+# pytest inside $(...) aborts this script immediately, so the TEST_EXIT_CODE
+# handling below never ran and a failing suite looked like the gate itself
+# crashing with no message.
+# The selection mirrors .forgejo/workflows/ci.yml so that a green gate here
+# means the same thing CI will say. Benchmarks, consolidation and integration
+# are excluded there (heavy, network, or services the runner lacks); running
+# them here made the gate fail locally on tests CI never executes.
+set +e
 COVERAGE_OUTPUT=$($PYTEST_BIN tests/ -q --tb=short \
+    --ignore=tests/consolidation \
+    --ignore=tests/benchmarks \
+    --ignore=tests/integration \
+    -m "not benchmark" \
+    --timeout=120 \
     --cov=src/mcp_memory_service \
     --cov-report=term-missing 2>&1)
-
 TEST_EXIT_CODE=$?
+set -e
 COVERAGE_PERCENT=$(echo "$COVERAGE_OUTPUT" | grep "TOTAL" | awk '{print $4}' | sed 's/%//')
 
 if [ $TEST_EXIT_CODE -eq 0 ]; then
@@ -113,16 +141,26 @@ if [ $TEST_EXIT_CODE -eq 0 ]; then
 else
     check_status "Test suite" 1
     echo -e "${RED}   Fix failing tests before creating PR${NC}"
+    # Show what actually failed — the output was captured, so without this the
+    # user is told to fix failing tests without being told which ones.
+    echo "$COVERAGE_OUTPUT" | grep -E "^(FAILED|ERROR)" | head -20 | sed 's/^/     /'
 fi
 
-# Coverage threshold check
-if [ -n "$COVERAGE_PERCENT" ] && [ "$COVERAGE_PERCENT" -ge 80 ]; then
-    check_status "Test coverage (≥80%)" 0
+# Coverage threshold check.
+#
+# Advisory, not blocking — same stance as .forgejo/workflows/ci.yml, which runs
+# coverage without --cov-fail-under and says so: "coverage is report-only for
+# now, re-introduce a gate once the deterministic-subset baseline is known and
+# stable". The deterministic subset currently sits near 60%, so a hard 80% here
+# meant this gate could not be passed by anyone, on any branch.
+COVERAGE_TARGET=80
+if [ -n "$COVERAGE_PERCENT" ] && [ "$COVERAGE_PERCENT" -ge "$COVERAGE_TARGET" ]; then
+    check_status "Test coverage (target ${COVERAGE_TARGET}%)" 0
     echo -e "${GREEN}   Current coverage: ${COVERAGE_PERCENT}%${NC}"
 else
-    check_status "Test coverage (≥80%)" 1
-    echo -e "${RED}   Current coverage: ${COVERAGE_PERCENT}% (minimum: 80%)${NC}"
-    echo -e "${YELLOW}   Add tests for untested code${NC}"
+    check_status "Test coverage (target ${COVERAGE_TARGET}%)" 3
+    echo -e "${YELLOW}   Current coverage: ${COVERAGE_PERCENT}% (target: ${COVERAGE_TARGET}%, advisory)${NC}"
+    echo -e "${YELLOW}   Add tests for the code this PR touches; the target is not enforced yet${NC}"
 fi
 
 # Check 3.5: Handler coverage check
@@ -253,14 +291,17 @@ echo -e "${BLUE}╚════════════════════�
 echo ""
 
 if [ $FAILED_CHECKS -eq 0 ]; then
-    echo -e "${GREEN}✅ ALL CHECKS PASSED${NC} ($TOTAL_CHECKS/$TOTAL_CHECKS)"
+    PASSED_CHECKS=$((TOTAL_CHECKS - SKIPPED_CHECKS))
+    echo -e "${GREEN}✅ ALL CHECKS PASSED${NC} ($PASSED_CHECKS/$TOTAL_CHECKS)"
+    if [ $SKIPPED_CHECKS -gt 0 ]; then
+        echo -e "${YELLOW}   $SKIPPED_CHECKS check(s) skipped — see SKIP above; those were not evaluated${NC}"
+    fi
     echo ""
     echo -e "${GREEN}Safe to create PR!${NC}"
     echo ""
     echo -e "Next steps:"
     echo -e "  1. Run code-quality-guard agent for final review"
-    echo -e "  2. Create PR: ${BLUE}gh pr create --fill${NC}"
-    echo -e "  3. Request Gemini review: ${BLUE}gh pr comment <PR#> --body '/gemini review'${NC}"
+    echo -e "  2. Create PR: ${BLUE}tea pr create --title '<title>' --description '<body>'${NC}"
     echo ""
     exit 0
 else
