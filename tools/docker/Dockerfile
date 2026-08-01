@@ -55,9 +55,16 @@ COPY tools/docker/docker-entrypoint-unified.sh /usr/local/bin/
 
 # Install the package with UV (configurable dependency group)
 # First install core dependencies, then add extras to ensure all dependencies are installed
-# Use CPU-only PyTorch by default to save disk space in CI/test environments
-RUN if [ "$FORCE_CPU_PYTORCH" = "true" ] || [ "$INSTALL_EXTRA" = "[sqlite]" ]; then \
-        echo "Installing CPU-only PyTorch to save disk space..."; \
+#
+# PyTorch is only installed when explicitly requested via FORCE_CPU_PYTORCH, in
+# which case the CPU wheel is used (~750 MB instead of ~2 GB for CUDA). The
+# default build (INSTALL_EXTRA="[sqlite]") used to pull it in too, but nothing
+# in that image can use it: `[sqlite]` is onnxruntime + tokenizers, embeddings
+# go through the ONNX path, and the one code path that imports torch — the ONNX
+# export in quality/onnx_ranker.py — also needs `transformers`, which only the
+# `ml` extra installs. See issue #172.
+RUN if [ "$FORCE_CPU_PYTORCH" = "true" ]; then \
+        echo "Installing CPU-only PyTorch (FORCE_CPU_PYTORCH=true)..."; \
         python -m uv pip install torch --index-url https://download.pytorch.org/whl/cpu; \
     fi && \
     echo "Installing core dependencies..." && \
