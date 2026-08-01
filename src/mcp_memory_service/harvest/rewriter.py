@@ -115,6 +115,31 @@ class HarvestRewriter:
         self._locale = os.environ.get("HARVEST_LOCALE", "en")
         self._locale_instruction = self._build_locale_instruction()
 
+    @staticmethod
+    def _is_usable_provider(provider: LLMProvider) -> bool:
+        """A provider is usable when it has an endpoint we can actually call.
+
+        ``_load_providers`` synthesizes a Groq entry even with no credentials
+        (the legacy single-provider path), so presence in the chain is not
+        enough — the Groq entry needs a key. Self-hosted OpenAI-compatible
+        endpoints legitimately run without one.
+        """
+        if not (provider.base_url and provider.model):
+            return False
+        if provider.name == "groq":
+            return bool(provider.api_key)
+        return True
+
+    @property
+    def is_configured(self) -> bool:
+        """True when this rewriter has somewhere to send a prompt.
+
+        Either a usable provider from ``HARVEST_LLM_PROVIDERS``, or the legacy
+        ``GROQ_API_KEY``. Callers used to check the Groq key alone, which
+        disabled rewriting for every OpenAI-compatible endpoint (issue #178).
+        """
+        return any(self._is_usable_provider(p) for p in self._providers) or bool(self._api_key)
+
     def _load_providers(self) -> list:
         """Load provider chain from env vars."""
         providers_str = os.environ.get("HARVEST_LLM_PROVIDERS", "")
