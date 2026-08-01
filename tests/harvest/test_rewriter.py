@@ -133,3 +133,48 @@ class TestRewriterParsing:
         """Empty LLM response returns None."""
         result = rewriter._parse_response("", "bug")
         assert result is None
+
+
+class TestRewriterConfiguration:
+    """Issue #178: a configured provider chain must count as configured.
+
+    `_call_llm` prefers `HARVEST_LLM_PROVIDERS` and only falls back to Groq,
+    but the harvester decided whether a rewriter existed at all by looking at
+    `GROQ_API_KEY`. Deployments pointing at an OpenAI-compatible endpoint got
+    no rewriting and no error.
+    """
+
+    def test_provider_chain_counts_as_configured(self, monkeypatch):
+        monkeypatch.delenv('GROQ_API_KEY', raising=False)
+        monkeypatch.setenv('HARVEST_LLM_PROVIDERS', 'litellm')
+        monkeypatch.setenv('HARVEST_LLM_LITELLM_BASE_URL', 'http://litellm.svc:4000/v1')
+        monkeypatch.setenv('HARVEST_LLM_LITELLM_MODEL', 'ollama/qwen2.5:7b-instruct')
+
+        assert HarvestRewriter().is_configured is True
+
+    def test_groq_key_alone_still_counts_as_configured(self, monkeypatch):
+        monkeypatch.delenv('HARVEST_LLM_PROVIDERS', raising=False)
+        monkeypatch.setenv('GROQ_API_KEY', 'gsk-test')
+
+        assert HarvestRewriter().is_configured is True
+
+    def test_no_provider_and_no_key_is_unconfigured(self, monkeypatch):
+        monkeypatch.delenv('HARVEST_LLM_PROVIDERS', raising=False)
+        monkeypatch.delenv('GROQ_API_KEY', raising=False)
+
+        assert HarvestRewriter().is_configured is False
+
+    def test_harvester_keeps_rewriter_when_only_provider_chain_is_set(self, monkeypatch):
+        """The gate itself, not just the property."""
+        from mcp_memory_service.harvest.harvester import SessionHarvester
+
+        monkeypatch.delenv('GROQ_API_KEY', raising=False)
+        monkeypatch.setenv('HARVEST_LLM_PROVIDERS', 'litellm')
+        monkeypatch.setenv('HARVEST_LLM_LITELLM_BASE_URL', 'http://litellm.svc:4000/v1')
+        monkeypatch.setenv('HARVEST_LLM_LITELLM_MODEL', 'ollama/qwen2.5:7b-instruct')
+
+        harvester = SessionHarvester.__new__(SessionHarvester)
+        rewriter = harvester._get_rewriter()
+
+        assert rewriter is not None
+        assert rewriter.is_configured is True

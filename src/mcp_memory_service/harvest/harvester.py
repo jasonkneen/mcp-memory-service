@@ -47,14 +47,23 @@ class SessionHarvester:
         return self._classifier
 
     def _get_rewriter(self):
-        """Lazy-init LLM rewriter. Returns None if not configured."""
+        """Lazy-init LLM rewriter. Returns None if no provider is configured."""
         if not hasattr(self, '_rewriter'):
             try:
                 from .rewriter import HarvestRewriter
-                self._rewriter = HarvestRewriter()
-                # Check if API key is available
-                if not self._rewriter._api_key:
+                rewriter = HarvestRewriter()
+                # A provider chain from HARVEST_LLM_PROVIDERS counts as
+                # configured. Checking GROQ_API_KEY alone silently disabled
+                # rewriting for anyone pointing at an OpenAI-compatible
+                # endpoint (issue #178).
+                if not rewriter.is_configured:
+                    logger.info(
+                        "Harvest rewriter disabled: neither HARVEST_LLM_PROVIDERS "
+                        "nor GROQ_API_KEY is configured"
+                    )
                     self._rewriter = None
+                else:
+                    self._rewriter = rewriter
             except Exception:
                 self._rewriter = None
         return self._rewriter
