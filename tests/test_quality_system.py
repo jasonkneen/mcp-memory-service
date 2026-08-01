@@ -60,6 +60,75 @@ class TestQualityConfig:
         with pytest.raises(ValueError, match="boost_weight must be between"):
             config.validate()
 
+        # Invalid implicit weight
+        config = QualityConfig(implicit_weight=1.5)
+        with pytest.raises(ValueError, match="implicit_weight must be between"):
+            config.validate()
+
+
+class TestStoreTimeBlendSeparation:
+    """Issue #179: the search knobs used to control the stored score as well.
+
+    MCP_QUALITY_BOOST_ENABLED/WEIGHT are documented as quality-boosted *search*,
+    but QualityScorer also read them to decide whether — and how strongly — to
+    mix implicit signals into the score written to the database. The two now
+    have separate variables, with the old ones as the fallback so existing
+    deployments keep their behaviour.
+    """
+
+    def test_blend_follows_boost_when_unset(self, monkeypatch):
+        monkeypatch.delenv('MCP_QUALITY_IMPLICIT_BLEND_ENABLED', raising=False)
+        monkeypatch.delenv('MCP_QUALITY_IMPLICIT_WEIGHT', raising=False)
+        monkeypatch.setenv('MCP_QUALITY_BOOST_ENABLED', 'true')
+        monkeypatch.setenv('MCP_QUALITY_BOOST_WEIGHT', '0.05')
+
+        config = QualityConfig.from_env()
+        assert config.implicit_blend_enabled is True
+        assert config.implicit_weight == 0.05
+
+    def test_blend_off_when_boost_off_and_unset(self, monkeypatch):
+        monkeypatch.delenv('MCP_QUALITY_IMPLICIT_BLEND_ENABLED', raising=False)
+        monkeypatch.delenv('MCP_QUALITY_IMPLICIT_WEIGHT', raising=False)
+        monkeypatch.setenv('MCP_QUALITY_BOOST_ENABLED', 'false')
+
+        config = QualityConfig.from_env()
+        assert config.implicit_blend_enabled is False
+
+    def test_explicit_blend_settings_win(self, monkeypatch):
+        monkeypatch.setenv('MCP_QUALITY_BOOST_ENABLED', 'true')
+        monkeypatch.setenv('MCP_QUALITY_BOOST_WEIGHT', '0.3')
+        monkeypatch.setenv('MCP_QUALITY_IMPLICIT_BLEND_ENABLED', 'false')
+        monkeypatch.setenv('MCP_QUALITY_IMPLICIT_WEIGHT', '0.05')
+
+        config = QualityConfig.from_env()
+        # Search reranking stays on, the stored score is no longer blended
+        assert config.boost_enabled is True
+        assert config.boost_weight == 0.3
+        assert config.implicit_blend_enabled is False
+        assert config.implicit_weight == 0.05
+
+    @pytest.mark.asyncio
+    async def test_scorer_uses_the_blend_knobs_not_the_search_knobs(self):
+        """Search settings alone must no longer change what gets stored."""
+        memory = Memory(content="Test content", content_hash="test_hash", metadata={})
+
+        # Search boost on, blend explicitly off -> stored score is the AI score
+        config = QualityConfig(boost_enabled=True, boost_weight=0.3,
+                               implicit_blend_enabled=False)
+        scorer = QualityScorer(config)
+        with patch.object(scorer._ai_evaluator, 'evaluate_quality', return_value=0.8), \
+             patch.object(scorer._implicit_evaluator, 'evaluate_quality', return_value=0.2):
+            score = await scorer.calculate_quality_score(memory, "q")
+        assert score == pytest.approx(0.8)
+
+        # Blend on at 0.25 -> 0.75 * ai + 0.25 * implicit
+        config = QualityConfig(implicit_blend_enabled=True, implicit_weight=0.25)
+        scorer = QualityScorer(config)
+        with patch.object(scorer._ai_evaluator, 'evaluate_quality', return_value=0.8), \
+             patch.object(scorer._implicit_evaluator, 'evaluate_quality', return_value=0.2):
+            score = await scorer.calculate_quality_score(memory, "q")
+        assert score == pytest.approx(0.75 * 0.8 + 0.25 * 0.2)
+
         # Groq provider without API key
         config = QualityConfig(ai_provider='groq')
         with pytest.raises(ValueError, match="GROQ_API_KEY not set"):
@@ -299,8 +368,8 @@ class TestQualityScorer:
 
     @pytest.mark.asyncio
     async def test_calculate_quality_score_with_boost(self):
-        """Test composite scoring with boost enabled."""
-        config = QualityConfig(boost_enabled=True, boost_weight=0.3)
+        """Test composite scoring with the store-time blend enabled."""
+        config = QualityConfig(implicit_blend_enabled=True, implicit_weight=0.3)
         scorer = QualityScorer(config)
 
         memory = Memory(
