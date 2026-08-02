@@ -10,6 +10,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [11.6.0] - 2026-08-02
+
+MINOR release: the migration script was silently dropping your knowledge graph. If you ever ran `migrate_sqlite_vec_embeddings.py` to switch embedding models, your `memory_graph` edges and derived beliefs did not survive the swap — this release fixes that and gives you a recovery path if you already hit it. Also ships locale-aware NER/NLI as YAML plugins, bundles the maintenance and migration scripts inside the Docker images, and closes out a run of quality, ontology, and harvest fixes reported by @tecnobrat. Special thanks to @tecnobrat for the detailed reports that shaped most of this release, and to filhocf for the Kiro CLI onboarding rewrite.
+
+### Fixed
+
+- **fix(migration): keep graph edges and beliefs when re-embedding (#189, reported by @tecnobrat).** `migrate_sqlite_vec_embeddings.py` rebuilds the database from the `memories` table only: it re-stores every memory to regenerate embeddings, then swaps the file in. Anything that doesn't ride along on the `Memory` object — `memory_graph` edges, derived beliefs — was gone afterward, which surfaces later as "No connected memories found." Both tables key on content hashes that don't change on re-embedding, so the data was recoverable the whole time; the migration now copies `memory_graph` and `beliefs` across after the memories are restored, dropping any edge whose endpoint failed to restore instead of inserting it dangling. **If you already ran an affected version and lost your graph:** the migration writes a `.backup_*` copy of your pre-migration database before it changes anything — restore `memory_graph` and `beliefs` from that file rather than re-deriving from scratch.
+- fix(harvest): treat a configured provider chain as a configured rewriter (#178, reported by @tecnobrat in #170). `_get_rewriter` decided whether a rewriter existed at all by checking for `GROQ_API_KEY`, so a deployment pointed at LiteLLM, Ollama, or any other OpenAI-compatible endpoint got silently unrewritten harvests with no error. The workaround in the field was setting a placeholder `GROQ_API_KEY`; that's no longer necessary.
+- fix(quality): separate the store-time blend from search reranking (#179, reported by @tecnobrat in #170). `MCP_QUALITY_BOOST_WEIGHT` controlled both quality-boosted search and how strongly `QualityScorer` blends implicit signals into the score written to the database, with opposite meanings in the two places — and at the 0.3 default, every stored score put a ceiling on fresh memories no matter how good the content was. New `MCP_QUALITY_IMPLICIT_BLEND_ENABLED` / `MCP_QUALITY_IMPLICIT_WEIGHT` settings decouple the two; both fall back to the boost values when unset, so no existing deployment's stored scores move because of this change.
+- fix(ontology): canonicalize memory types instead of comparing them raw (#176). Custom type registration lowercased the base type name while validation compared the incoming string as-is, so a capitalized custom type could never resolve and was silently coerced to `observation`; a `str.isidentifier()` check also rejected hyphenated names outright. Both paths now go through `canonicalize_memory_type()`.
+- fix(hooks): send memory types the server ontology accepts (#177). Auto-capture classified every captured memory as `Decision`, `Error`, `Learning`, or `Context` and then threw the classification away — none of those match the ontology's lowercase canonical names, so everything landed as `observation` regardless of what the pattern matcher decided. The hooks now send the canonical values; `scripts/maintenance/improve_memory_ontology.py` re-classifies existing history for anyone who wants it corrected.
+- fix(docker): stop installing a PyTorch the standard image cannot use (#170, #172). The default build (`INSTALL_EXTRA="[sqlite]"`, what the release workflow builds) pulled in the CPU torch wheel even though nothing in that image can use it — embeddings go through ONNX, and the only torch import (the quality-model ONNX export) also needs `transformers` from the `ml` extra. torch now only installs under `FORCE_CPU_PYTORCH=true`. Shrinks the standard image from 356 MB to 166 MB.
+- fix(onboarding): `scoring="composite"` to `mode="ranked"` in the onboarding docs — `memory_search` has no `scoring` parameter.
+- fix(ci): make the pre-PR gate report what it actually checked. The coverage step aborted silently the moment one test failed, and the complexity/security step reported PASS even when it had skipped every check because the Gemini CLI was absent. Both now report accurately, coverage is advisory rather than blocking (matching CI), and the gate's own test selection now mirrors CI's.
+
+### Added
+
+- feat(i18n): locale-aware NER + NLI via YAML plugins (#54). Entity extraction and contradiction detection are now driven by per-locale YAML pattern files instead of hardcoded regex — adding a language is two YAML files and zero Python code. Ships with `en` and `pt_BR`; a single `MCP_LOCALE` env var governs every locale-aware subsystem. On a 1000-memory multilingual benchmark: entity yield up 122%, and PT-BR contradiction detection that previously only worked in English.
+- feat(docker): ship the maintenance and migration scripts in the image (#188). `scripts/maintenance` and `scripts/migration` — re-embedding after a model change, tag repair, test-data cleanup — were never in the published images; the workaround was `docker cp` into a running container first. Both directories now ship in both images and run as-is from the container's working directory; the Docker deployment guide gains a section showing the re-embed and cleanup calls.
+
+### Changed
+
+- chore(docker): exclude nested `__pycache__` from the build context. The `.dockerignore` patterns only matched at the context root, so 34 stale bytecode directories under `src/` and `scripts/` were being copied into a slim build.
+- chore(pr-gate): stop treating `print()` in CLI scripts as debug code. Check 6 flagged `print(` in every staged Python file, which failed the gate on any change to a `scripts/` file that talks to the operator over stdout. `print(` is now only flagged under `src/`, where it really is a leftover.
+- docs(onboarding): rewrite the Kiro CLI guide with validated real-world workflows (#153, filhocf) — startup/pre-task/topic-exploration/post-task patterns tested across three machines over four weeks.
+- docs(claude-md): drop duplicated rules and dead context-mode block.
+- chore: untrack local developer config (`.claude/agents/`); tidy CLAUDE.md wording.
+- chore(ci): pin the checkout action to a commit SHA; add an authorship statement.
+
 ## [11.5.5] - 2026-07-24
 
 PATCH release: standard Docker image now ships tokenizers so the ONNX embedding backend actually loads. Special thanks to @peanutlasko and @stanthewizzard for the reports.

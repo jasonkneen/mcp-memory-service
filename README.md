@@ -495,15 +495,18 @@ MCP Memory Service is **fully compatible** with the [SHODH Unified Memory API Sp
 
 ---
 
-## Latest Release: **v11.5.5** (July 24, 2026)
+## Latest Release: **v11.6.0** (August 2, 2026)
 
-**PATCH: standard Docker image ships tokenizers so the ONNX backend actually loads**
+**MINOR: migration data-loss fix, locale-aware NER/NLI plugins, Docker maintenance scripts**
 
 **What's New:**
-- The published `standard`/`:latest` Docker image had onnxruntime but not tokenizers, so the ONNX embedding backend couldn't initialize. On a fresh DB it silently degraded to SHA256 hash pseudo-vectors; on an existing DB the v11.5.2 integrity guard correctly refused that fallback and the container crash-looped at startup instead (#162, reported by @peanutlasko; #163 was a duplicate report from @stanthewizzard).
-- Added `tokenizers>=0.22.2` to the `[sqlite]` optional dependency, so this is fixed for `pip install ".[sqlite]"` too, and turned the Docker build's ONNX check into a hard gate that imports both onnxruntime and tokenizers so a missing dependency fails the build instead of shipping silently broken (#164).
+- **Data-loss fix:** `migrate_sqlite_vec_embeddings.py` silently dropped the knowledge graph (`memory_graph` edges) and derived beliefs when re-embedding, because they don't ride along on the `Memory` object during the rebuild. Both are now carried across since they key on content hashes, which don't change on re-embedding (#189, reported by @tecnobrat). If you already hit this, restore from the `.backup_*` file the migration writes before touching anything.
+- Locale-aware NER and NLI via per-locale YAML plugins — adding a language is two YAML files and zero Python code, ships with `en` and `pt_BR` (#54).
+- Both Docker images now ship `scripts/maintenance` and `scripts/migration`, so re-embedding or cleanup no longer needs a `docker cp` first (#188).
+- Quality store-time blend separated from search reranking, harvest provider-chain rewriter fix, and memory-type ontology canonicalization, closing out a run of issues reported by @tecnobrat (#178, #179, #176, #177, #170).
 
 **Previous Releases** (v11 series — full history for all earlier versions in [CHANGELOG.md](CHANGELOG.md)):
+- **v11.5.5** - PATCH: standard Docker image ships tokenizers so the ONNX backend actually loads (#162, #163, #164) (July 24, 2026)
 - **v11.5.4** - PATCH: web dashboard GitHub references replaced with Codeberg (#158, #159, @sunnyagain) (July 22, 2026)
 - **v11.5.3** - PATCH: Claude Code hooks config resolution under Marketplace install + graph orphan-prune `has_entity` fix + belief-derivation noise filter (#155, #156, #150, #151, #121, #152, @filhocf, @tecnobrat) (July 22, 2026)
 - **v11.5.2** - PATCH: sqlite_vec `delete_memory` proxy fix + hash-embedding fallback guard + embedding-dimension mismatch guard (#140, #135, #143, @jonatanbellido, @nxxxsooo) (July 15, 2026)
