@@ -550,6 +550,9 @@ MCP Memory Service is **fully compatible** with the [SHODH Unified Memory API Sp
 
 We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
+Who authors this project, who holds copyright, and what every change passes before
+it reaches `main`: [AUTHORSHIP.md](AUTHORSHIP.md).
+
 **Quick Development Setup:**
 ```bash
 git clone https://codeberg.org/doobidoo/mcp-memory-service.git
