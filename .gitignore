@@ -169,6 +169,11 @@ YOUR_PERSONALIZED_SETUP_GUIDE.md
 CLAUDE_MEMORY.md
 *_reference_memories_*.json
 
+# Claude Code file-based memory. Normally lives in ~/.claude/projects/<project>/memory/,
+# outside the repo — this is a guard in case a memory file ever lands in the tree.
+MEMORY.md
+.claude/memory/
+
 # Claude Code local settings (personal configurations)
 .claude/settings.local.json*
 scripts/.claude/settings.local.json*
