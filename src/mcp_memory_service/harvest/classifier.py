@@ -12,6 +12,7 @@ import re
 from dataclasses import dataclass
 from typing import List, Optional
 
+from ..compat import _sanitize_log_value
 from .models import HarvestCandidate
 from .rewriter import load_llm_providers, is_usable_provider
 
@@ -103,7 +104,7 @@ class HarvestClassifier:
 
         if self._providers:
             provider_names = ", ".join(p.name for p in self._providers)
-            logger.info(f"Harvest classifier: using provider chain [{provider_names}]")
+            logger.info("Harvest classifier: using provider chain [%s]", _sanitize_log_value(provider_names))
             return True
 
         if not self._api_key:
@@ -119,7 +120,7 @@ class HarvestClassifier:
             logger.warning("groq package not installed — LLM classification unavailable")
             return False
         except Exception as e:
-            logger.warning(f"Failed to init Groq bridge for harvest classifier: {e}")
+            logger.warning("Failed to init Groq bridge for harvest classifier: %s", _sanitize_log_value(str(e)))
             return False
 
     def _call_llm(self, prompt: str, system_message: str, max_tokens: int, temperature: float) -> Optional[str]:
@@ -134,9 +135,13 @@ class HarvestClassifier:
                 except Exception as e:
                     err_str = str(e).lower()
                     if "rate limit" in err_str or "429" in err_str:
-                        logger.warning(f"{provider.name} rate limited, trying next")
+                        logger.warning("%s rate limited, trying next", _sanitize_log_value(provider.name))
                     else:
-                        logger.warning(f"{provider.name} failed: {e}, trying next")
+                        logger.warning(
+                            "%s failed: %s, trying next",
+                            _sanitize_log_value(provider.name),
+                            _sanitize_log_value(str(e)),
+                        )
                     continue
             return None
 
@@ -149,13 +154,13 @@ class HarvestClassifier:
                     )
                     if result["status"] != "success":
                         if "429" in str(result.get("error", "")):
-                            logger.warning(f"Rate limit on {model}, trying next")
+                            logger.warning("Rate limit on %s, trying next", model)
                             continue
-                        logger.warning(f"Groq error on {model}: {result.get('error')}")
+                        logger.warning("Groq error on %s: %s", model, _sanitize_log_value(str(result.get("error"))))
                         continue
                     return result["response"]
                 except Exception as e:
-                    logger.warning(f"Classification failed with {model}: {e}")
+                    logger.warning("Classification failed with %s: %s", model, _sanitize_log_value(str(e)))
                     continue
 
         return None
@@ -165,7 +170,7 @@ class HarvestClassifier:
         prompt: str, system_message: str, max_tokens: int, temperature: float,
     ) -> str:
         """Call any OpenAI-compatible API (Groq, DeepSeek, Ollama, etc.), synchronously."""
-        import httpx
+        import httpx  # inline import: mirrors rewriter.py, keeps httpx off the harvest import path
         headers = {"Content-Type": "application/json"}
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
@@ -252,10 +257,10 @@ class HarvestClassifier:
                 try:
                     data = json.loads(text[first_brace:last_brace + 1])
                 except json.JSONDecodeError:
-                    logger.warning(f"Could not parse LLM response: {text[:200]}")
+                    logger.warning("Could not parse LLM response: %s", _sanitize_log_value(text[:200]))
                     return ClassificationResult(keep=True, reason="parse error — keeping", confidence=0.5)
             else:
-                logger.warning(f"Could not parse LLM response: {text[:200]}")
+                logger.warning("Could not parse LLM response: %s", _sanitize_log_value(text[:200]))
                 return ClassificationResult(keep=True, reason="parse error — keeping", confidence=0.5)
 
         return ClassificationResult(
@@ -307,7 +312,7 @@ class HarvestClassifier:
                     keep_indices = json.loads(match.group())
                     return [candidates[i] for i in keep_indices if i < len(candidates)]
         except Exception as e:
-            logger.warning(f"Deduplication failed: {e}")
+            logger.warning("Deduplication failed: %s", _sanitize_log_value(str(e)))
 
         return candidates
 
