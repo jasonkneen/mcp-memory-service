@@ -6,6 +6,8 @@ import re
 from dataclasses import dataclass
 from typing import Optional
 
+from ..compat import _sanitize_log_value
+
 logger = logging.getLogger(__name__)
 
 VALID_TYPES = {"decision", "bug", "convention", "learning", "context"}
@@ -155,7 +157,11 @@ class HarvestRewriter:
     """
 
     def __init__(self):
-        self._providers = load_llm_providers()
+        # Filtered through is_usable_provider so a credential-less legacy Groq
+        # entry (synthesized by load_llm_providers when HARVEST_LLM_PROVIDERS
+        # is unset) never reaches _call_llm's provider loop — mirrors
+        # classifier.py's _ensure_initialized (#194).
+        self._providers = [p for p in load_llm_providers() if is_usable_provider(p)]
         # Legacy single-provider compat
         self._provider = os.environ.get("HARVEST_LLM_PROVIDER", "groq")
         self._model = os.environ.get("HARVEST_LLM_MODEL", "llama-3.3-70b-versatile")
@@ -202,7 +208,7 @@ class HarvestRewriter:
         try:
             response = await self._call_llm(prompt)
         except Exception as e:
-            logger.warning(f"LLM rewrite failed: {e}")
+            logger.warning("LLM rewrite failed: %s", _sanitize_log_value(str(e)))
             return None
 
         return self._parse_response(response, suggested_type)
@@ -220,7 +226,7 @@ class HarvestRewriter:
             # No running loop — safe to use asyncio.run directly
             return asyncio.run(self.rewrite(text, suggested_type, already_extracted))
         except Exception as e:
-            logger.warning(f"LLM rewrite_sync failed: {e}")
+            logger.warning("LLM rewrite_sync failed: %s", _sanitize_log_value(str(e)))
             return None
 
     async def rewrite_batch(self, items: list) -> list:
@@ -241,7 +247,7 @@ class HarvestRewriter:
         try:
             response = await self._call_llm(prompt)
         except Exception as e:
-            logger.warning(f"Batch rewrite failed: {e}")
+            logger.warning("Batch rewrite failed: %s", _sanitize_log_value(str(e)))
             return [None] * len(items)
 
         return self._parse_batch_response(response, items)
@@ -258,7 +264,7 @@ class HarvestRewriter:
         except RuntimeError:
             return asyncio.run(self.rewrite_batch(items))
         except Exception as e:
-            logger.warning(f"Batch rewrite_sync failed: {e}")
+            logger.warning("Batch rewrite_sync failed: %s", _sanitize_log_value(str(e)))
             return [None] * len(items)
 
     def _parse_batch_response(self, response: str, items: list) -> list:
@@ -330,9 +336,13 @@ class HarvestRewriter:
                 except Exception as e:
                     err_str = str(e).lower()
                     if "rate limit" in err_str or "429" in err_str:
-                        logger.warning(f"{provider.name} rate limited, trying next")
+                        logger.warning("%s rate limited, trying next", _sanitize_log_value(provider.name))
                         continue
-                    logger.warning(f"{provider.name} failed: {e}, trying next")
+                    logger.warning(
+                        "%s failed: %s, trying next",
+                        _sanitize_log_value(provider.name),
+                        _sanitize_log_value(str(e)),
+                    )
                     continue
             raise RuntimeError("All LLM providers exhausted")
         # Legacy single-provider
