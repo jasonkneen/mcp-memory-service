@@ -240,6 +240,10 @@ module.exports = {
         async: true,
         timeout: 10000,
         priority: 'normal'
+    },
+    // Exported for testing
+    _internal: {
+        queryMemoryService
     }
 };
 

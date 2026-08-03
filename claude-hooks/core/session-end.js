@@ -297,7 +297,7 @@ function triggerQualityEvaluation(endpoint, apiKey, contentHash, allowSelfSigned
 /**
  * Store session consolidation to memory service
  */
-async function storeSessionMemory(endpoint, apiKey, content, projectContext, analysis) {
+async function storeSessionMemory(endpoint, apiKey, content, projectContext, analysis, allowSelfSignedCerts = false) {
     // Generate and normalize tags
     const tags = [
         'claude-code-session',
@@ -317,6 +317,7 @@ async function storeSessionMemory(endpoint, apiKey, content, projectContext, ana
         protocol: 'auto',
         preferredProtocol: 'http',
         http: { endpoint, apiKey },
+        allowSelfSignedCerts,
     });
 
     try {
@@ -438,7 +439,8 @@ async function onSessionEnd(context) {
             apiKey,
             consolidation,
             projectContext,
-            analysis
+            analysis,
+            config.memoryService?.allowSelfSignedCerts === true
         );
         
         const hash = result.content_hash || result.contentHash;
@@ -487,7 +489,9 @@ module.exports = {
     _internal: {
         parseTranscript: null,  // Will be set after function definition
         analyzeConversation,
-        isSessionMeaningful
+        isSessionMeaningful,
+        triggerQualityEvaluation,
+        storeSessionMemory
     }
 };
 

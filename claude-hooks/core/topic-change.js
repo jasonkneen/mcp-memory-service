@@ -425,5 +425,9 @@ module.exports = {
     onTopicChange,
     initializeTopicTracking,
     resetTopicTracking,
-    getTopicTrackingStats
+    getTopicTrackingStats,
+    // Exported for testing
+    _internal: {
+        queryMemoryService
+    }
 };
