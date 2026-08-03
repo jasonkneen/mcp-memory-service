@@ -495,17 +495,18 @@ MCP Memory Service is **fully compatible** with the [SHODH Unified Memory API Sp
 
 ---
 
-## Latest Release: **v11.6.0** (August 2, 2026)
+## Latest Release: **v11.6.1** (August 3, 2026)
 
-**MINOR: migration data-loss fix, locale-aware NER/NLI plugins, Docker maintenance scripts**
+**PATCH: harvest classifier provider chain, Claude Code plugin manifest at 1.0.2**
 
 **What's New:**
-- **Data-loss fix:** `migrate_sqlite_vec_embeddings.py` silently dropped the knowledge graph (`memory_graph` edges) and derived beliefs when re-embedding, because they don't ride along on the `Memory` object during the rebuild. Both are now carried across since they key on content hashes, which don't change on re-embedding (#189, reported by @tecnobrat). If you already hit this, restore from the `.backup_*` file the migration writes before touching anything.
-- Locale-aware NER and NLI via per-locale YAML plugins — adding a language is two YAML files and zero Python code, ships with `en` and `pt_BR` (#54).
-- Both Docker images now ship `scripts/maintenance` and `scripts/migration`, so re-embedding or cleanup no longer needs a `docker cp` first (#188).
-- Quality store-time blend separated from search reranking, harvest provider-chain rewriter fix, and memory-type ontology canonicalization, closing out a run of issues reported by @tecnobrat (#178, #179, #176, #177, #170).
+- **Harvest classifier honors `HARVEST_LLM_PROVIDERS`** instead of demanding `GROQ_API_KEY`. A deployment pointed at LiteLLM, Ollama, or any other OpenAI-compatible endpoint was skipping classification silently. This completes #178 — the rewriter half shipped in v11.6.0, the classifier did not (#180, timkjr).
+- **Claude Code plugin manifest bumped to 1.0.2.** This is what actually delivers the #177 hook fix to anyone who already installed the plugin: v11.6.0 shipped that fix with the manifest still at 1.0.1, and the Marketplace cache is keyed on the plugin version. If your auto-capture is still tagging everything `observation`, update to plugin 1.0.2.
+- A CI gate (`scripts/ci/check_plugin_version.sh`) now fails any release PR that changes `claude-hooks/` without moving the manifest version, so the miss above cannot repeat (#195, reported by @tecnobrat in #170).
+- Repo-local worktree guard no longer creates a branch and worktree on every session start (#193).
 
 **Previous Releases** (v11 series — full history for all earlier versions in [CHANGELOG.md](CHANGELOG.md)):
+- **v11.6.0** - MINOR: migration no longer drops the knowledge graph and derived beliefs when re-embedding (#189), locale-aware NER/NLI via YAML plugins (#54), Docker images ship the maintenance and migration scripts (#188) (August 2, 2026)
 - **v11.5.5** - PATCH: standard Docker image ships tokenizers so the ONNX backend actually loads (#162, #163, #164) (July 24, 2026)
 - **v11.5.4** - PATCH: web dashboard GitHub references replaced with Codeberg (#158, #159, @sunnyagain) (July 22, 2026)
 - **v11.5.3** - PATCH: Claude Code hooks config resolution under Marketplace install + graph orphan-prune `has_entity` fix + belief-derivation noise filter (#155, #156, #150, #151, #121, #152, @filhocf, @tecnobrat) (July 22, 2026)
