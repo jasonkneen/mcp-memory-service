@@ -297,7 +297,8 @@ class DynamicContextUpdater {
      */
     async queryMemoryService(endpoint, apiKey, query, options = {}) {
         const https = require('https');
-        
+        const { applySelfSignedCertsOption } = require('./tls-options');
+
         return new Promise((resolve, reject) => {
             const { limit = 3, excludeHashes = [], allowSelfSignedCerts = false } = options;
 
@@ -326,14 +327,7 @@ class DynamicContextUpdater {
                 timeout: 5000
             };
 
-            if (isHttps && allowSelfSignedCerts) {
-                requestOptions.rejectUnauthorized = false;
-                console.warn(
-                    '[Dynamic Context] TLS certificate validation DISABLED ' +
-                    '(allowSelfSignedCerts=true). This leaves the hook vulnerable to MITM — ' +
-                    'use only for local development with self-signed certs.'
-                );
-            }
+            applySelfSignedCertsOption(requestOptions, isHttps, allowSelfSignedCerts, '[Dynamic Context]');
 
             const req = https.request(requestOptions, (res) => {
                 let data = '';

@@ -7,6 +7,7 @@
 const fs = require('fs').promises;
 const path = require('path');
 const { resolveConfigPath } = require('../utilities/config-loader');
+const { applySelfSignedCertsOption } = require('../utilities/tls-options');
 const https = require('https');
 
 // Import utilities
@@ -90,14 +91,7 @@ async function queryMemoryService(endpoint, apiKey, query, options = {}) {
             timeout: 5000
         };
 
-        if (isHttps && allowSelfSignedCerts) {
-            requestOptions.rejectUnauthorized = false;
-            console.warn(
-                '[Memory Hook] TLS certificate validation DISABLED ' +
-                '(allowSelfSignedCerts=true). This leaves the hook vulnerable to MITM — ' +
-                'use only for local development with self-signed certs.'
-            );
-        }
+        applySelfSignedCertsOption(requestOptions, isHttps, allowSelfSignedCerts);
 
         const req = https.request(requestOptions, (res) => {
             let data = '';

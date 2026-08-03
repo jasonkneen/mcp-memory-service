@@ -6,6 +6,7 @@
 const https = require('https');
 const http = require('http');
 const { MCPClient } = require('./mcp-client');
+const { applySelfSignedCertsOption } = require('./tls-options');
 
 // TODO: Follow-up — extract shared HTTP helper. _attemptHealthCheck, _performApiPost,
 // storeMemoryHTTP, and queryMemoriesHTTP duplicate request construction. See Gemini
@@ -36,14 +37,7 @@ class MemoryClient {
      * @private
      */
     _applySelfSignedCertsOption(requestOptions, isHttps) {
-        if (isHttps && this.allowSelfSignedCerts) {
-            requestOptions.rejectUnauthorized = false;
-            console.warn(
-                '[Memory Hook] TLS certificate validation DISABLED ' +
-                '(allowSelfSignedCerts=true). This leaves the hook vulnerable to MITM — ' +
-                'use only for local development with self-signed certs.'
-            );
-        }
+        applySelfSignedCertsOption(requestOptions, isHttps, this.allowSelfSignedCerts);
     }
 
     /**

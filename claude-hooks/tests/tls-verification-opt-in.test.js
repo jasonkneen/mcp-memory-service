@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Tests for the allowSelfSignedCerts opt-in gate added across:
+ * Tests for the allowSelfSignedCerts opt-in gate, centralized in
+ * utilities/tls-options.js (applySelfSignedCertsOption) and consumed by:
  *   - utilities/memory-client.js (MemoryClient._applySelfSignedCertsOption)
  *   - core/topic-change.js (queryMemoryService)
  *   - core/memory-retrieval.js (queryMemoryService)
@@ -42,6 +43,52 @@ function interceptHttpsRequest() {
         restore() { https.request = original; }
     };
 }
+
+test('utilities/tls-options.js: applySelfSignedCertsOption (shared helper)', async (t) => {
+    const { applySelfSignedCertsOption } = require('../utilities/tls-options');
+
+    await t.test('default leaves TLS verification enabled', () => {
+        const options = {};
+        applySelfSignedCertsOption(options, true, false);
+        assert.strictEqual(options.rejectUnauthorized, undefined);
+    });
+
+    await t.test('true + https disables verification', () => {
+        const options = {};
+        applySelfSignedCertsOption(options, true, true);
+        assert.strictEqual(options.rejectUnauthorized, false);
+    });
+
+    await t.test('true + plain http is a no-op', () => {
+        const options = {};
+        applySelfSignedCertsOption(options, false, true);
+        assert.strictEqual(options.rejectUnauthorized, undefined);
+    });
+
+    await t.test('logPrefix defaults to [Memory Hook]', () => {
+        const originalWarn = console.warn;
+        const warnings = [];
+        console.warn = (msg) => warnings.push(msg);
+        try {
+            applySelfSignedCertsOption({}, true, true);
+        } finally {
+            console.warn = originalWarn;
+        }
+        assert.ok(warnings[0].startsWith('[Memory Hook]'), 'should use default prefix');
+    });
+
+    await t.test('logPrefix is respected when passed', () => {
+        const originalWarn = console.warn;
+        const warnings = [];
+        console.warn = (msg) => warnings.push(msg);
+        try {
+            applySelfSignedCertsOption({}, true, true, '[Dynamic Context]');
+        } finally {
+            console.warn = originalWarn;
+        }
+        assert.ok(warnings[0].startsWith('[Dynamic Context]'), 'should use passed-in prefix');
+    });
+});
 
 test('memory-client.js: _applySelfSignedCertsOption', async (t) => {
     const { MemoryClient } = require('../utilities/memory-client');
