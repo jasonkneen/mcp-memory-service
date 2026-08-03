@@ -21,6 +21,24 @@ jobs:
     - name: Check landing page version strings
       run: bash scripts/ci/check_versions.sh
 
+  plugin-version-check:
+    runs-on: docker
+    name: Plugin Manifest Bump (claude-hooks/)
+    timeout-minutes: 5
+    steps:
+    # fetch-depth: 0 is required — the check asks "did claude-hooks/ change since
+    # the last commit that moved the manifest version", which a shallow clone
+    # cannot answer (the script fails loudly rather than passing on a guess).
+    - uses: https://data.forgejo.org/actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      with:
+        fetch-depth: 0
+    # Only enforced on release changes (_version.py moved). Fails when hook code
+    # shipped since the last plugin bump without bumping plugin.json — the
+    # Marketplace cache is version-keyed, so those fixes never reach installed
+    # users. Missed manually in v11.6.0 (issue #170).
+    - name: Check Claude Code plugin manifest version
+      run: bash scripts/ci/check_plugin_version.sh
+
   test:
     runs-on: docker
     name: Tests + Coverage

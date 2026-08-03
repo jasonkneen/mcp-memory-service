@@ -45,8 +45,9 @@ Quick reference; each rule is expanded in the sections below. Violations cause r
 Before merging or releasing:
 1. **Verify CI is green on the target branch** (Forgejo Actions on Codeberg). Check via the `tea` CLI (Forgejo/Gitea) if configured, otherwise the Actions tab at `https://codeberg.org/doobidoo/mcp-memory-service`.
 2. **Update `site/index.html` version strings** whenever MAJOR.MINOR changes (i.e. every MINOR or MAJOR release — PATCH releases are exempt). The `version-drift-check` CI gate enforces this and will fail if skipped. Update ALL occurrences: `<title>`, `<meta og:title>`, hero badge, "What's New" section, release link `href`. Use `grep -n "v11\." site/index.html` to find them. This is MANDATORY — not optional for "incremental" releases. The site auto-deploys to Cloudflare Pages (mcpmemory.services) when the change lands on main (`.forgejo/workflows/deploy-site.yml`).
-3. Clean up merged branches after release (`git branch -d`, `git push origin --delete`).
-4. Follow the release workflow — never manually bump versions.
+3. **Bump `claude-hooks/.claude-plugin/plugin.json` if the hooks changed.** The Claude Code plugin carries its own version, and the Marketplace cache is keyed on it, so a hook fix released without a manifest bump never reaches installed users. The `plugin-version-check` CI gate enforces this on release changes (`scripts/ci/check_plugin_version.sh`): it fails when `claude-hooks/` changed since the last commit that moved the manifest version. v11.6.0 shipped a hook fix this way (#170).
+4. Clean up merged branches after release (`git branch -d`, `git push origin --delete`).
+5. Follow the release workflow — never manually bump versions.
 
 ## Overview
 

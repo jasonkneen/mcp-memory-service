@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **ci(plugin): gate releases on the Claude Code plugin manifest version (#170, reported by @tecnobrat).** The plugin in `claude-hooks/` carries its own version and the Marketplace caches it under a version-keyed directory, so a hook fix released without bumping `claude-hooks/.claude-plugin/plugin.json` never reaches anyone who already installed the plugin. That happened in v11.6.0: the release notes said there were no `claude-hooks/` changes since the last bump, while `5d40d8e4` (`fix(hooks): send memory types the server ontology accepts`) sat inside the range. `scripts/ci/check_plugin_version.sh` now runs as a CI job on release changes and fails when `claude-hooks/` changed since the last commit that moved the manifest version. It anchors on the version line rather than on the file, because a metadata-only edit to the manifest would otherwise move the window forward and hide the hook changes before it.
+
 ## [11.6.0] - 2026-08-02
 
 MINOR release: the migration script was silently dropping your knowledge graph. If you ever ran `migrate_sqlite_vec_embeddings.py` to switch embedding models, your `memory_graph` edges and derived beliefs did not survive the swap — this release fixes that and gives you a recovery path if you already hit it. Also ships locale-aware NER/NLI as YAML plugins, bundles the maintenance and migration scripts inside the Docker images, and closes out a run of quality, ontology, and harvest fixes reported by @tecnobrat. Special thanks to @tecnobrat for the detailed reports that shaped most of this release, and to filhocf for the Kiro CLI onboarding rewrite.
