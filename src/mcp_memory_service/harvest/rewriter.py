@@ -19,6 +19,54 @@ class LLMProvider:
     model: str
     api_key: str = ""
 
+
+def load_llm_providers() -> list:
+    """Load provider chain from env vars.
+
+    Shared by HarvestRewriter and HarvestClassifier so both use the same
+    provider-resolution rules (#178) instead of the classifier hardcoding
+    GROQ_API_KEY only.
+    """
+    providers_str = os.environ.get("HARVEST_LLM_PROVIDERS", "")
+    if not providers_str:
+        # Legacy: single provider from HARVEST_LLM_PROVIDER
+        provider = os.environ.get("HARVEST_LLM_PROVIDER", "groq")
+        if provider == "groq":
+            return [LLMProvider(
+                name="groq",
+                base_url="https://api.groq.com/openai/v1",
+                model=os.environ.get("HARVEST_LLM_MODEL", "llama-3.3-70b-versatile"),
+                api_key=os.environ.get("GROQ_API_KEY", ""),
+            )]
+        return []
+
+    providers = []
+    for name in providers_str.split(","):
+        name = name.strip()
+        prefix = f"HARVEST_LLM_{name.upper()}_"
+        base_url = os.environ.get(f"{prefix}BASE_URL", "")
+        model = os.environ.get(f"{prefix}MODEL", "")
+        api_key = os.environ.get(f"{prefix}API_KEY", "")
+        if base_url and model:
+            providers.append(LLMProvider(name=name, base_url=base_url, model=model, api_key=api_key))
+    return providers
+
+
+def is_usable_provider(provider: LLMProvider) -> bool:
+    """A provider is usable when it has an endpoint we can actually call.
+
+    ``load_llm_providers`` synthesizes a Groq entry even with no credentials
+    (the legacy single-provider path), so presence in the chain is not
+    enough — the Groq entry needs a key. Self-hosted OpenAI-compatible
+    endpoints legitimately run without one.
+    """
+    if not (provider.base_url and provider.model):
+        return False
+    if provider.name == "groq":
+        return bool(provider.api_key)
+    return True
+
+
 REWRITE_PROMPT = """Given this excerpt from a coding session conversation:
 ---
 {text}
@@ -107,28 +155,13 @@ class HarvestRewriter:
     """
 
     def __init__(self):
-        self._providers = self._load_providers()
+        self._providers = load_llm_providers()
         # Legacy single-provider compat
         self._provider = os.environ.get("HARVEST_LLM_PROVIDER", "groq")
         self._model = os.environ.get("HARVEST_LLM_MODEL", "llama-3.3-70b-versatile")
         self._api_key = os.environ.get("GROQ_API_KEY", "")
         self._locale = os.environ.get("HARVEST_LOCALE", "en")
         self._locale_instruction = self._build_locale_instruction()
-
-    @staticmethod
-    def _is_usable_provider(provider: LLMProvider) -> bool:
-        """A provider is usable when it has an endpoint we can actually call.
-
-        ``_load_providers`` synthesizes a Groq entry even with no credentials
-        (the legacy single-provider path), so presence in the chain is not
-        enough — the Groq entry needs a key. Self-hosted OpenAI-compatible
-        endpoints legitimately run without one.
-        """
-        if not (provider.base_url and provider.model):
-            return False
-        if provider.name == "groq":
-            return bool(provider.api_key)
-        return True
 
     @property
     def is_configured(self) -> bool:
@@ -138,33 +171,7 @@ class HarvestRewriter:
         ``GROQ_API_KEY``. Callers used to check the Groq key alone, which
         disabled rewriting for every OpenAI-compatible endpoint (issue #178).
         """
-        return any(self._is_usable_provider(p) for p in self._providers) or bool(self._api_key)
-
-    def _load_providers(self) -> list:
-        """Load provider chain from env vars."""
-        providers_str = os.environ.get("HARVEST_LLM_PROVIDERS", "")
-        if not providers_str:
-            # Legacy: single provider from HARVEST_LLM_PROVIDER
-            provider = os.environ.get("HARVEST_LLM_PROVIDER", "groq")
-            if provider == "groq":
-                return [LLMProvider(
-                    name="groq",
-                    base_url="https://api.groq.com/openai/v1",
-                    model=os.environ.get("HARVEST_LLM_MODEL", "llama-3.3-70b-versatile"),
-                    api_key=os.environ.get("GROQ_API_KEY", ""),
-                )]
-            return []
-
-        providers = []
-        for name in providers_str.split(","):
-            name = name.strip()
-            prefix = f"HARVEST_LLM_{name.upper()}_"
-            base_url = os.environ.get(f"{prefix}BASE_URL", "")
-            model = os.environ.get(f"{prefix}MODEL", "")
-            api_key = os.environ.get(f"{prefix}API_KEY", "")
-            if base_url and model:
-                providers.append(LLMProvider(name=name, base_url=base_url, model=model, api_key=api_key))
-        return providers
+        return any(is_usable_provider(p) for p in self._providers) or bool(self._api_key)
 
     def _build_locale_instruction(self) -> str:
         """Build locale instruction from HARVEST_LOCALE env var."""
