@@ -235,7 +235,7 @@ function isSessionMeaningful(analysis, { forceRemember = false } = {}) {
  * Trigger quality evaluation for a stored memory (async, non-blocking)
  * This calls the backend's quality scoring system to pre-score the memory
  */
-function triggerQualityEvaluation(endpoint, apiKey, contentHash) {
+function triggerQualityEvaluation(endpoint, apiKey, contentHash, allowSelfSignedCerts = false) {
     return new Promise((resolve, reject) => {
         const url = new URL(`/api/quality/memories/${contentHash}/evaluate`, endpoint);
         const isHttps = url.protocol === 'https:';
@@ -256,8 +256,13 @@ function triggerQualityEvaluation(endpoint, apiKey, contentHash) {
             timeout: 10000 // 10 second timeout for quality evaluation
         };
 
-        if (isHttps) {
+        if (isHttps && allowSelfSignedCerts) {
             options.rejectUnauthorized = false;
+            console.warn(
+                '[Memory Hook] TLS certificate validation DISABLED ' +
+                '(allowSelfSignedCerts=true). This leaves the hook vulnerable to MITM — ' +
+                'use only for local development with self-signed certs.'
+            );
         }
 
         const req = requestModule.request(options, (res) => {
@@ -443,7 +448,7 @@ async function onSessionEnd(context) {
                 console.log(`[Memory Hook] Memory hash: ${hash.substring(0, 8)}...`);
 
                 // Trigger async quality evaluation (non-blocking)
-                triggerQualityEvaluation(endpoint, apiKey, hash)
+                triggerQualityEvaluation(endpoint, apiKey, hash, config.memoryService?.allowSelfSignedCerts === true)
                     .then(evalResult => {
                         if (evalResult.success) {
                             console.log(`[Memory Hook] Quality evaluated: ${evalResult.quality_score?.toFixed(3)} (${evalResult.quality_provider})`);

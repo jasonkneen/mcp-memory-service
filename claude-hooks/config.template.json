@@ -4,7 +4,8 @@
     "apiKey": "your-api-key-here",
     "defaultTags": ["claude-code", "auto-generated"],
     "maxMemoriesPerSession": 8,
-    "enableSessionConsolidation": true
+    "enableSessionConsolidation": true,
+    "allowSelfSignedCerts": false
   },
   "projectDetection": {
     "gitRepository": true,

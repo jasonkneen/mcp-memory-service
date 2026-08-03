@@ -19,6 +19,7 @@ class MemoryClient {
         this.fallbackEnabled = config.fallbackEnabled !== false;
         this.httpConfig = config.http || {};
         this.mcpConfig = config.mcp || {};
+        this.allowSelfSignedCerts = config.allowSelfSignedCerts === true;
 
         // Connection state
         this.activeProtocol = null;
@@ -28,6 +29,21 @@ class MemoryClient {
 
         // Cache successful connections
         this.connectionCache = new Map();
+    }
+
+    /**
+     * Gate TLS verification bypass behind explicit opt-in, warning every time.
+     * @private
+     */
+    _applySelfSignedCertsOption(requestOptions, isHttps) {
+        if (isHttps && this.allowSelfSignedCerts) {
+            requestOptions.rejectUnauthorized = false;
+            console.warn(
+                '[Memory Hook] TLS certificate validation DISABLED ' +
+                '(allowSelfSignedCerts=true). This leaves the hook vulnerable to MITM — ' +
+                'use only for local development with self-signed certs.'
+            );
+        }
     }
 
     /**
@@ -176,9 +192,9 @@ class MemoryClient {
                         'Connection': 'close'
                     },
                     timeout: this.httpConfig.healthCheckTimeout || 3000,
-                    rejectUnauthorized: false,  // Allow self-signed certificates
                     agent: false  // Disable keepAlive — hook is one-shot, reused sockets race uvicorn close (ECONNRESET / socket hang up)
                 };
+                this._applySelfSignedCertsOption(requestOptions, url.protocol === 'https:');
 
                 const protocol = url.protocol === 'https:' ? https : http;
                 const req = protocol.request(requestOptions, (res) => {
@@ -292,10 +308,7 @@ class MemoryClient {
                 timeout: 5000,
                 agent: false,  // Disable keepAlive — one-shot CLI, avoids ECONNRESET from reused sockets
             };
-
-            if (isHttps) {
-                options.rejectUnauthorized = false;
-            }
+            this._applySelfSignedCertsOption(options, isHttps);
 
             const requestModule = isHttps ? https : http;
             const req = requestModule.request(options, (res) => {
@@ -376,9 +389,9 @@ class MemoryClient {
                 // /api/search/by-tag. Larger than storeMemoryHTTP (5s) and _attemptHealthCheck (3s)
                 // because search queries run embedding + vector scan, not a simple write/ping.
                 timeout: 10000,
-                rejectUnauthorized: false,  // Allow self-signed certificates
                 agent: false  // Disable keepAlive — hook is one-shot, reused sockets race uvicorn close (ECONNRESET / socket hang up)
             };
+            this._applySelfSignedCertsOption(options, url.protocol === 'https:');
 
             const protocol = url.protocol === 'https:' ? https : http;
             const req = protocol.request(options, (res) => {

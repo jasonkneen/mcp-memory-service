@@ -58,10 +58,12 @@ async function queryMemoryService(endpoint, apiKey, query, options = {}) {
     return new Promise((resolve, reject) => {
         const {
             limit = 5,
-            excludeHashes = []
+            excludeHashes = [],
+            allowSelfSignedCerts = false
         } = options;
 
         const url = new URL('/mcp', endpoint);
+        const isHttps = url.protocol === 'https:';
         const postData = JSON.stringify({
             jsonrpc: '2.0',
             id: Date.now(),
@@ -85,9 +87,17 @@ async function queryMemoryService(endpoint, apiKey, query, options = {}) {
                 'Authorization': `Bearer ${apiKey}`,
                 'Content-Length': Buffer.byteLength(postData)
             },
-            rejectUnauthorized: false,
             timeout: 5000
         };
+
+        if (isHttps && allowSelfSignedCerts) {
+            requestOptions.rejectUnauthorized = false;
+            console.warn(
+                '[Memory Hook] TLS certificate validation DISABLED ' +
+                '(allowSelfSignedCerts=true). This leaves the hook vulnerable to MITM — ' +
+                'use only for local development with self-signed certs.'
+            );
+        }
 
         const req = https.request(requestOptions, (res) => {
             let data = '';
@@ -304,7 +314,8 @@ async function onTopicChange(context) {
                 queryObj.query,
                 {
                     limit: 2,
-                    excludeHashes: Array.from(conversationState.loadedMemoryHashes)
+                    excludeHashes: Array.from(conversationState.loadedMemoryHashes),
+                    allowSelfSignedCerts: config.memoryService.allowSelfSignedCerts === true
                 }
             );
             

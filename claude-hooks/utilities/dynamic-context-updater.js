@@ -272,7 +272,8 @@ class DynamicContextUpdater {
                     queryObj.query,
                     {
                         limit: queryObj.limit,
-                        excludeHashes: Array.from(this.loadedMemoryHashes)
+                        excludeHashes: Array.from(this.loadedMemoryHashes),
+                        allowSelfSignedCerts: memoryServiceConfig.allowSelfSignedCerts === true
                     }
                 );
 
@@ -298,7 +299,7 @@ class DynamicContextUpdater {
         const https = require('https');
         
         return new Promise((resolve, reject) => {
-            const { limit = 3, excludeHashes = [] } = options;
+            const { limit = 3, excludeHashes = [], allowSelfSignedCerts = false } = options;
 
             const postData = JSON.stringify({
                 jsonrpc: '2.0',
@@ -311,6 +312,7 @@ class DynamicContextUpdater {
             });
 
             const url = new URL('/mcp', endpoint);
+            const isHttps = url.protocol === 'https:';
             const requestOptions = {
                 hostname: url.hostname,
                 port: url.port,
@@ -321,9 +323,17 @@ class DynamicContextUpdater {
                     'Authorization': `Bearer ${apiKey}`,
                     'Content-Length': Buffer.byteLength(postData)
                 },
-                rejectUnauthorized: false,
                 timeout: 5000
             };
+
+            if (isHttps && allowSelfSignedCerts) {
+                requestOptions.rejectUnauthorized = false;
+                console.warn(
+                    '[Dynamic Context] TLS certificate validation DISABLED ' +
+                    '(allowSelfSignedCerts=true). This leaves the hook vulnerable to MITM — ' +
+                    'use only for local development with self-signed certs.'
+                );
+            }
 
             const req = https.request(requestOptions, (res) => {
                 let data = '';
