@@ -260,6 +260,16 @@ else
     echo -e "${YELLOW}   See: src/mcp_memory_service/compat.py for the utility function${NC}"
 fi
 
+# Check 6.6: Bundled hooks config carries no credentials
+echo -e "\n${YELLOW}[6.6/9]${NC} Checking bundled hooks config for credentials..."
+if bash scripts/ci/check_hooks_config_secrets.sh > /dev/null 2>&1; then
+    check_status "Bundled hooks config free of credentials/local paths" 0
+else
+    check_status "Bundled hooks config free of credentials/local paths" 1
+    echo -e "${RED}   claude-hooks/config.json ships to users - replace personal values:${NC}"
+    bash scripts/ci/check_hooks_config_secrets.sh || true
+fi
+
 # Check 7: Docstring coverage
 echo -e "\n${YELLOW}[7/9]${NC} Checking docstring coverage..."
 MISSING_DOCSTRINGS=0

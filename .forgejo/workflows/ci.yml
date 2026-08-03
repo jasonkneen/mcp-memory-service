@@ -39,6 +39,19 @@ jobs:
     - name: Check Claude Code plugin manifest version
       run: bash scripts/ci/check_plugin_version.sh
 
+  hooks-config-secrets:
+    runs-on: docker
+    name: Bundled Hooks Config (no secrets)
+    timeout-minutes: 5
+    steps:
+    - uses: https://data.forgejo.org/actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+    # claude-hooks/config.json ships with the plugin and is copied into every
+    # user's ~/.claude/hooks/config.json by the installer, so a personal value
+    # committed there is both published and distributed. A real apiKey and a
+    # maintainer-local serverWorkingDir sat in it for months (issue #197).
+    - name: Check bundled hooks config for credentials
+      run: bash scripts/ci/check_hooks_config_secrets.sh
+
   test:
     runs-on: docker
     name: Tests + Coverage
