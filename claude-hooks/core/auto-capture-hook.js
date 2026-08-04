@@ -187,6 +187,7 @@ async function storeMemory(config, content, memoryType, tags) {
             endpoint: config.memoryService.http.endpoint,
             apiKey: config.memoryService.http.apiKey,
         },
+        allowSelfSignedCerts: config.memoryService.allowSelfSignedCerts === true,
     });
 
     try {
