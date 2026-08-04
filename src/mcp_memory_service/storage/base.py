@@ -22,6 +22,7 @@ import logging
 from abc import ABC, abstractmethod
 from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime, timezone, timedelta, date
+from ..compat import _sanitize_log_value
 from ..models.memory import Memory, MemoryQueryResult
 
 logger = logging.getLogger(__name__)
@@ -58,13 +59,21 @@ class MemoryStorage(ABC):
         pass
     
     @abstractmethod
-    async def store(self, memory: Memory, skip_semantic_dedup: bool = False) -> Tuple[bool, str]:
+    async def store(self, memory: Memory, skip_semantic_dedup: bool = False, store: Optional[str] = "default") -> Tuple[bool, str]:
         """Store a memory. Returns (success, message).
 
         Args:
             memory: The Memory object to store.
             skip_semantic_dedup: If True, bypass semantic similarity check.
                 Exact hash deduplication is always enforced.
+            store: Target store partition (multi-store, #57 Phase 1). Backends
+                that are not partitioned accept it and ignore it.
+
+        Note: the #57 change added `store` to every concrete backend and to all
+        four call sites (`services/memory_service.py`, `server/handlers/documents.py`,
+        `utils/document_processing.py`) but not to this declaration, so the
+        interface understated its own contract while Milvus drifted the other way
+        (#133).
         """
         pass
 
@@ -1369,7 +1378,7 @@ class MemoryStorage(ABC):
             return response
 
         except Exception as e:
-            logger.error(f"Search operation failed: {e}")
+            logger.error("Search operation failed: %s", _sanitize_log_value(str(e)))
             return {
                 "memories": [],
                 "total": 0,

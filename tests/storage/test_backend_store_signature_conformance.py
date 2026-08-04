@@ -105,3 +105,25 @@ def test_all_backends_accept_store_kwarg(method_name):
         f"{method_name}() is missing the multi-store `store` keyword on: "
         f"{offenders}. Callers pass store=... to this method (issue #133)."
     )
+
+
+@pytest.mark.parametrize("method_name", STORE_CONTRACT_METHODS)
+def test_base_interface_declares_store_kwarg(method_name):
+    """The abstract interface must declare `store` too, not just the backends.
+
+    Checking only concrete backends leaves the declaration free to understate the
+    contract. That is exactly what had happened: all four backends and all four
+    call sites (services/memory_service.py, server/handlers/documents.py,
+    utils/document_processing.py) passed and accepted `store` on `store()`, while
+    MemoryStorage.store() still stopped at skip_semantic_dedup — so a new backend
+    written against the declaration would have reproduced #133 on day one.
+    """
+    method = getattr(MemoryStorage, method_name, None)
+    assert method is not None, f"MemoryStorage is missing {method_name}()"
+    params = inspect.signature(method).parameters
+    assert "store" in params or any(
+        p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()
+    ), (
+        f"MemoryStorage.{method_name}() does not declare the multi-store `store` "
+        f"keyword, but callers pass it and every backend accepts it (issue #133)."
+    )
