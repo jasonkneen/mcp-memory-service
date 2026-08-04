@@ -1,5 +1,7 @@
 """LLM-based rewriter that converts conversational text to standalone insights."""
 
+import asyncio
+import concurrent.futures
 import logging
 import os
 import re
@@ -215,10 +217,8 @@ class HarvestRewriter:
 
     def rewrite_sync(self, text: str, suggested_type: str = "observation", already_extracted: list = None) -> Optional[RewriteResult]:
         """Synchronous wrapper for rewrite (works inside running event loop)."""
-        import asyncio
         try:
             loop = asyncio.get_running_loop()
-            import concurrent.futures
             with concurrent.futures.ThreadPoolExecutor() as pool:
                 future = pool.submit(asyncio.run, self.rewrite(text, suggested_type, already_extracted))
                 return future.result(timeout=30)
@@ -254,10 +254,8 @@ class HarvestRewriter:
 
     def rewrite_batch_sync(self, items: list) -> list:
         """Synchronous wrapper for rewrite_batch."""
-        import asyncio
         try:
             loop = asyncio.get_running_loop()
-            import concurrent.futures
             with concurrent.futures.ThreadPoolExecutor() as pool:
                 future = pool.submit(asyncio.run, self.rewrite_batch(items))
                 return future.result(timeout=60)
@@ -352,7 +350,13 @@ class HarvestRewriter:
 
     async def _call_openai_compatible(self, base_url: str, model: str, api_key: str, prompt: str) -> str:
         """Call any OpenAI-compatible API (Groq, DeepSeek, Ollama, etc.)."""
-        import httpx
+        # httpx costs ~36ms to import and nothing else on this path pulls it in.
+        # classifier.py imports this module at top level and harvest/__init__.py
+        # imports classifier eagerly, so importing httpx at module level would
+        # add that 36ms to every `import mcp_memory_service.harvest`, including
+        # runs that never call an LLM. asyncio and concurrent.futures are already
+        # in sys.modules by then, which is why those two sit at the top instead.
+        import httpx  # inline import
         headers = {"Content-Type": "application/json"}
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
