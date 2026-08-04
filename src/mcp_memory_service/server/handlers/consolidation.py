@@ -68,7 +68,9 @@ async def handle_consolidate_memories(
                 )
             ]
 
-        logger.info(f"Starting {time_horizon} consolidation")
+        # time_horizon is checked against the allow-list above, so it can only be
+        # one of six literals here — lazy %-formatting rather than a sanitize call.
+        logger.info("Starting %s consolidation", time_horizon)
 
         # Run consolidation (with timeout for incremental)
         if time_horizon == "incremental":
@@ -114,7 +116,7 @@ Memories Archived: {report.memories_archived}"""
 
     except Exception as e:
         error_msg = f"Error during consolidation: {str(e)}"
-        logger.error(f"{error_msg}\n{traceback.format_exc()}")
+        logger.error("%s\n%s", _sanitize_log_value(error_msg), traceback.format_exc())
         return [types.TextContent(type="text", text=error_msg)]
 
 
@@ -167,7 +169,7 @@ async def handle_consolidation_status(
 
     except Exception as e:
         error_msg = f"Error getting consolidation status: {str(e)}"
-        logger.error(f"{error_msg}\n{traceback.format_exc()}")
+        logger.error("%s\n%s", _sanitize_log_value(error_msg), traceback.format_exc())
         return [types.TextContent(type="text", text=error_msg)]
 
 
@@ -240,7 +242,7 @@ async def handle_consolidation_recommendations(
 
     except Exception as e:
         error_msg = f"Error getting consolidation recommendations: {str(e)}"
-        logger.error(f"{error_msg}\n{traceback.format_exc()}")
+        logger.error("%s\n%s", _sanitize_log_value(error_msg), traceback.format_exc())
         return [types.TextContent(type="text", text=error_msg)]
 
 
@@ -301,7 +303,7 @@ async def handle_scheduler_status(server, arguments: dict) -> List[types.TextCon
 
     except Exception as e:
         error_msg = f"Error getting scheduler status: {str(e)}"
-        logger.error(f"{error_msg}\n{traceback.format_exc()}")
+        logger.error("%s\n%s", _sanitize_log_value(error_msg), traceback.format_exc())
         return [types.TextContent(type="text", text=error_msg)]
 
 
@@ -357,7 +359,7 @@ async def handle_trigger_consolidation(
 
     except Exception as e:
         error_msg = f"Error triggering consolidation: {str(e)}"
-        logger.error(f"{error_msg}\n{traceback.format_exc()}")
+        logger.error("%s\n%s", _sanitize_log_value(error_msg), traceback.format_exc())
         return [types.TextContent(type="text", text=error_msg)]
 
 
@@ -394,7 +396,7 @@ async def handle_pause_consolidation(
 
     except Exception as e:
         error_msg = f"Error pausing consolidation: {str(e)}"
-        logger.error(f"{error_msg}\n{traceback.format_exc()}")
+        logger.error("%s\n%s", _sanitize_log_value(error_msg), traceback.format_exc())
         return [types.TextContent(type="text", text=error_msg)]
 
 
@@ -434,7 +436,7 @@ async def handle_resume_consolidation(
 
     except Exception as e:
         error_msg = f"Error resuming consolidation: {str(e)}"
-        logger.error(f"{error_msg}\n{traceback.format_exc()}")
+        logger.error("%s\n%s", _sanitize_log_value(error_msg), traceback.format_exc())
         return [types.TextContent(type="text", text=error_msg)]
 
 
@@ -603,8 +605,12 @@ async def handle_memory_consolidate(server, arguments: dict) -> List[types.TextC
                 memory_type=memory_type,
             )
 
-            # Store merged content FIRST (safety: store before delete)
-            stored, result_hash = await server.storage.store(
+            # Store merged content FIRST (safety: store before delete).
+            # store() returns (success, message) — the second element is prose,
+            # never a hash. It was named result_hash here and passed straight
+            # into the response, so callers got "Memory stored successfully"
+            # where they expected the merged memory's hash (#112).
+            stored, store_message = await server.storage.store(
                 memory, skip_semantic_dedup=True
             )
 
@@ -612,7 +618,7 @@ async def handle_memory_consolidate(server, arguments: dict) -> List[types.TextC
                 return [
                     types.TextContent(
                         type="text",
-                        text=f"Error: failed to store merged memory: {result_hash}",
+                        text=f"Error: failed to store merged memory: {store_message}",
                     )
                 ]
 
@@ -628,7 +634,7 @@ async def handle_memory_consolidate(server, arguments: dict) -> List[types.TextC
 
             result = {
                 "ok": len(failed) == 0,
-                "content_hash": result_hash,
+                "content_hash": new_hash,
                 "merged": content_hashes,
                 "deleted": deleted,
                 "failed": failed if failed else None,
@@ -644,5 +650,5 @@ async def handle_memory_consolidate(server, arguments: dict) -> List[types.TextC
 
     except Exception as e:
         error_msg = f"Error in memory_consolidate action '{_sanitize_log_value(action)}': {str(e)}"
-        logger.error("%s\n%s", error_msg, traceback.format_exc())
+        logger.error("%s\n%s", _sanitize_log_value(error_msg), traceback.format_exc())
         return [types.TextContent(type="text", text=error_msg)]

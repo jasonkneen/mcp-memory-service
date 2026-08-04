@@ -15,6 +15,7 @@ import pytest
 
 from mcp_memory_service.models.memory import Memory
 from mcp_memory_service.server.handlers.consolidation import handle_memory_consolidate
+from mcp_memory_service.utils.hashing import generate_content_hash
 
 
 # ---------------------------------------------------------------------------
@@ -28,7 +29,10 @@ def mock_server():
 
     The storage exposes the three methods the merge handler calls:
       - get_by_hash(hash) -> Optional[Memory]
-      - store(memory, skip_semantic_dedup) -> Tuple[bool, str]
+      - store(memory, skip_semantic_dedup) -> Tuple[bool, str], where the str is
+        a human-readable MESSAGE, not a hash (see BaseStorage.store). Mocking it
+        as a hash is what let #112 ship: the handler put that value straight into
+        the response's content_hash and the test agreed with it.
       - delete_memories(content_hash=hash) -> Dict
     """
     server = MagicMock()
@@ -59,7 +63,9 @@ def mock_server():
         return memories.get(content_hash)
 
     server.storage.get_by_hash = AsyncMock(side_effect=_get_by_hash)
-    server.storage.store = AsyncMock(return_value=(True, "new_hash_merged"))
+    # What the real backends return: (success, message). sqlite_vec, cloudflare
+    # and hybrid all put prose here.
+    server.storage.store = AsyncMock(return_value=(True, "Memory stored successfully"))
     server.storage.delete_memories = AsyncMock(
         return_value={
             "success": True,
@@ -109,7 +115,11 @@ class TestMergeAction:
         payload = _parse_result(result)
 
         assert payload["ok"] is True
-        assert payload["content_hash"] == "new_hash_merged"
+        # The response must carry the merged memory's real hash, not whatever
+        # prose store() returned as its message (#112).
+        assert payload["content_hash"] == generate_content_hash(
+            "Consolidated text from both memories"
+        )
         assert payload["merged"] == ["hash_alpha", "hash_beta"]
         assert "hash_alpha" in payload["deleted"]
         assert "hash_beta" in payload["deleted"]
@@ -279,7 +289,9 @@ class TestMergeAction:
         payload = _parse_result(result)
 
         assert payload["ok"] is False
-        assert payload["content_hash"] == "new_hash_merged"
+        assert payload["content_hash"] == generate_content_hash(
+            "Partially deletable content"
+        )
         assert "hash_alpha" in payload["deleted"]
         assert "hash_beta" in payload.get("failed", []) or "hash_beta" in (payload.get("failed") or [])
 
