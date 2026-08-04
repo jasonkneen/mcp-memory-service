@@ -66,11 +66,17 @@ except (OSError, json.JSONDecodeError) as exc:
     print(f"UNPARSEABLE: {exc}")
     sys.exit(0)
 
-# A committed credential: long, random-looking, and not one of the sentinels the
+# A committed credential: long, unbroken, and not one of the sentinels the
 # installer recognises. Key names are matched loosely so apiKey, api_key, token,
 # secret and password are all covered.
 SECRET_NAME = re.compile(r"(api_?key|token|secret|password)", re.IGNORECASE)
-SECRET_SHAPE = re.compile(r"^[A-Za-z0-9_\-+=/]{20,}$")
+# Any run of 20+ non-whitespace characters. Deliberately not a character class:
+# an earlier version allowed only [A-Za-z0-9_+=/-] and would have waved a JWT
+# through on its dots. Prose fails this because prose contains spaces.
+SECRET_SHAPE = re.compile(r"^\S{20,}$")
+# ...but a key named tokenEndpoint or secretUrl legitimately holds a URL, which
+# is long and unbroken too. Exempt anything with a scheme.
+URL_SHAPE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
 # Absolute POSIX or Windows paths leak the maintainer's checkout layout.
 LOCAL_PATH = re.compile(r"^(/(?!$)|[A-Za-z]:[\\/])")
 
@@ -86,7 +92,12 @@ def walk(node, trail):
             walk(value, f"{trail}[{index}]")
     elif isinstance(node, str):
         leaf = trail.rsplit(".", 1)[-1]
-        if SECRET_NAME.search(leaf) and node not in placeholders and SECRET_SHAPE.match(node):
+        if (
+            SECRET_NAME.search(leaf)
+            and node not in placeholders
+            and SECRET_SHAPE.match(node)
+            and not URL_SHAPE.match(node)
+        ):
             findings.append(f"{trail}: real-looking credential ({len(node)} chars)")
         elif LOCAL_PATH.match(node):
             findings.append(f"{trail}: absolute local path ({node})")

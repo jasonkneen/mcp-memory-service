@@ -87,6 +87,46 @@ test_nested_token_fails() {
   printf '%s' "$out" | grep -q "real-looking credential"
 }
 
+# A JWT's dots put it outside any sane character class - the shape check must be
+# "no whitespace", not an allow-list. Mira flagged this false negative on #200.
+test_jwt_fails() {
+  local cfg out
+  cfg="$(write_config leaked-jwt.json '{
+    "memoryService": {"http": {"apiKey": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk"}}
+  }')"
+  if out="$(check "$cfg" 2>&1)"; then return 1; fi
+  printf '%s' "$out" | grep -q "real-looking credential"
+}
+
+# Punctuation-heavy secrets must not slip through either.
+test_punctuation_secret_fails() {
+  local cfg out
+  cfg="$(write_config leaked-punct.json '{
+    "sessionHarvest": {"llm": {"apiSecret": "p@ssw0rd!#$%^&*()_+{}[]|:;<>,.?~-="}}
+  }')"
+  if out="$(check "$cfg" 2>&1)"; then return 1; fi
+  printf '%s' "$out" | grep -q "real-looking credential"
+}
+
+# A key whose NAME matches the secret pattern but whose value is a URL is a
+# legitimate config value - tokenEndpoint, not a token.
+test_url_under_secret_named_key_passes() {
+  local cfg
+  cfg="$(write_config token-endpoint.json '{
+    "oauth": {"tokenEndpoint": "https://auth.example.com/oauth2/v2/token"}
+  }')"
+  check "$cfg" >/dev/null
+}
+
+# Prose under a secret-named key contains spaces, so it must not trip the gate.
+test_prose_under_secret_named_key_passes() {
+  local cfg
+  cfg="$(write_config prose.json '{
+    "memoryService": {"http": {"apiKeyHint": "set this to the same value as MCP_API_KEY on your server"}}
+  }')"
+  check "$cfg" >/dev/null
+}
+
 # Relative paths and URLs are legitimate config values, not leaks.
 test_relative_paths_and_urls_pass() {
   local cfg
@@ -131,6 +171,10 @@ run_test "committed api key fails"                       test_real_api_key_fails
 run_test "absolute posix path fails"                     test_local_path_fails
 run_test "absolute windows path fails"                   test_windows_path_fails
 run_test "nested token fails"                            test_nested_token_fails
+run_test "jwt fails (dots are not in any allow-list)"    test_jwt_fails
+run_test "punctuation-heavy secret fails"                test_punctuation_secret_fails
+run_test "url under a secret-named key passes"           test_url_under_secret_named_key_passes
+run_test "prose under a secret-named key passes"         test_prose_under_secret_named_key_passes
 run_test "relative paths and urls pass"                  test_relative_paths_and_urls_pass
 run_test "short placeholder key passes"                  test_short_placeholder_key_passes
 run_test "missing config is reported"                    test_missing_config_fails
