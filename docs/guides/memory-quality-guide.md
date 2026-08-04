@@ -634,6 +634,11 @@ final_relevance = base_relevance × decay_multiplier
    # Should contain: model.onnx, tokenizer.json
    ```
 
+   If `MCP_QUALITY_ONNX_MODEL_DIR` is set, look there instead — it replaces the
+   `~/.cache/mcp_memory/onnx_models` parent and the loader appends the model
+   name. In a container that is normally the case; see
+   [`tools/docker/README.md`](../../tools/docker/README.md).
+
 3. Check logs for errors:
    ```bash
    tail -f logs/mcp_memory_service.log | grep quality
