@@ -57,6 +57,19 @@ jobs:
     - name: Check bundled hooks config matches template structure
       run: bash scripts/ci/check_hooks_config_drift.sh
 
+  hooks-tests:
+    runs-on: docker
+    name: Hooks Tests (claude-hooks/)
+    timeout-minutes: 10
+    steps:
+    - uses: https://data.forgejo.org/actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+    # No setup-node step: the docker runner image already ships node, which
+    # deploy-site.yml relies on the same way. Before this job existed CI had no
+    # node steps at all, so the nine claude-hooks/tests files never ran and a
+    # JS-only PR got a green board that meant nothing (issue #202).
+    - name: Run the claude-hooks test suite
+      run: bash scripts/ci/run_hooks_tests.sh
+
   test:
     runs-on: docker
     name: Tests + Coverage
