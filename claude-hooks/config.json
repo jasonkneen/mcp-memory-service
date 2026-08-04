@@ -41,7 +41,8 @@
     "recentTimeWindow": "last week",
     "fallbackTimeWindow": "last 2 weeks",
     "showStorageSource": true,
-    "sourceDisplayMode": "brief"
+    "sourceDisplayMode": "brief",
+    "allowSelfSignedCerts": false
   },
   "projectDetection": {
     "gitRepository": true,

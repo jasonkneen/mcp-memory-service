@@ -6,6 +6,7 @@
 const fs = require('fs').promises;
 const path = require('path');
 const { resolveConfigPath } = require('../utilities/config-loader');
+const { applySelfSignedCertsOption } = require('../utilities/tls-options');
 const https = require('https');
 const http = require('http');
 
@@ -235,7 +236,7 @@ function isSessionMeaningful(analysis, { forceRemember = false } = {}) {
  * Trigger quality evaluation for a stored memory (async, non-blocking)
  * This calls the backend's quality scoring system to pre-score the memory
  */
-function triggerQualityEvaluation(endpoint, apiKey, contentHash) {
+function triggerQualityEvaluation(endpoint, apiKey, contentHash, allowSelfSignedCerts = false) {
     return new Promise((resolve, reject) => {
         const url = new URL(`/api/quality/memories/${contentHash}/evaluate`, endpoint);
         const isHttps = url.protocol === 'https:';
@@ -256,9 +257,7 @@ function triggerQualityEvaluation(endpoint, apiKey, contentHash) {
             timeout: 10000 // 10 second timeout for quality evaluation
         };
 
-        if (isHttps) {
-            options.rejectUnauthorized = false;
-        }
+        applySelfSignedCertsOption(options, isHttps, allowSelfSignedCerts);
 
         const req = requestModule.request(options, (res) => {
             let data = '';
@@ -292,7 +291,7 @@ function triggerQualityEvaluation(endpoint, apiKey, contentHash) {
 /**
  * Store session consolidation to memory service
  */
-async function storeSessionMemory(endpoint, apiKey, content, projectContext, analysis) {
+async function storeSessionMemory(endpoint, apiKey, content, projectContext, analysis, allowSelfSignedCerts = false) {
     // Generate and normalize tags
     const tags = [
         'claude-code-session',
@@ -312,6 +311,7 @@ async function storeSessionMemory(endpoint, apiKey, content, projectContext, ana
         protocol: 'auto',
         preferredProtocol: 'http',
         http: { endpoint, apiKey },
+        allowSelfSignedCerts,
     });
 
     try {
@@ -433,7 +433,8 @@ async function onSessionEnd(context) {
             apiKey,
             consolidation,
             projectContext,
-            analysis
+            analysis,
+            config.memoryService?.allowSelfSignedCerts === true
         );
         
         const hash = result.content_hash || result.contentHash;
@@ -443,7 +444,7 @@ async function onSessionEnd(context) {
                 console.log(`[Memory Hook] Memory hash: ${hash.substring(0, 8)}...`);
 
                 // Trigger async quality evaluation (non-blocking)
-                triggerQualityEvaluation(endpoint, apiKey, hash)
+                triggerQualityEvaluation(endpoint, apiKey, hash, config.memoryService?.allowSelfSignedCerts === true)
                     .then(evalResult => {
                         if (evalResult.success) {
                             console.log(`[Memory Hook] Quality evaluated: ${evalResult.quality_score?.toFixed(3)} (${evalResult.quality_provider})`);
@@ -482,7 +483,9 @@ module.exports = {
     _internal: {
         parseTranscript: null,  // Will be set after function definition
         analyzeConversation,
-        isSessionMeaningful
+        isSessionMeaningful,
+        triggerQualityEvaluation,
+        storeSessionMemory
     }
 };
 
