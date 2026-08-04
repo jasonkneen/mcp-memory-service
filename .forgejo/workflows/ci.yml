@@ -51,6 +51,11 @@ jobs:
     # maintainer-local serverWorkingDir sat in it for months (issue #197).
     - name: Check bundled hooks config for credentials
       run: bash scripts/ci/check_hooks_config_secrets.sh
+    # config.json and config.template.json have no shared source, so nothing
+    # keeps their key structure in sync automatically — that's how the
+    # template ended up 8 sections behind (issue #197 follow-up).
+    - name: Check bundled hooks config matches template structure
+      run: bash scripts/ci/check_hooks_config_drift.sh
 
   test:
     runs-on: docker
