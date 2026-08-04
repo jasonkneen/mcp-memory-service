@@ -15,21 +15,15 @@ import re
 from dataclasses import dataclass
 from typing import List, Tuple
 
+from .nli_patterns import load_nli_patterns
+from ..config.locale import get_active_locales
+
 logger = logging.getLogger(__name__)
 
 HEURISTIC_MAX_CONFIDENCE = 0.6
 
-# Contradiction patterns for heuristic backend
-_NEGATION_PAIRS = [
-    (re.compile(r'\bdisabled?\b', re.I), re.compile(r'\benabled?\b', re.I)),
-    (re.compile(r'\bremoved?\b', re.I), re.compile(r'\badded?\b', re.I)),
-    (re.compile(r'\bnever\b', re.I), re.compile(r'\balways\b', re.I)),
-    (re.compile(r'\bfalse\b', re.I), re.compile(r'\btrue\b', re.I)),
-    (re.compile(r'\bstopped\b', re.I), re.compile(r'\brunning\b', re.I)),
-    (re.compile(r'\bnot\b', re.I), None),  # general negation
-]
-
-_VERSION_RE = re.compile(r'(\w[\w.-]*)\s+(?:version\s+(?:is\s+)?|is\s+v?|=\s*v?)(\d+[\d.]+)', re.I)
+# Load patterns from YAML locale files (replaces hardcoded _NEGATION_PAIRS / _VERSION_RE)
+_PATTERNS = load_nli_patterns(tuple(get_active_locales()))
 
 
 @dataclass
@@ -66,17 +60,18 @@ class NLIClassifier:
 
     def _heuristic_classify(self, premise: str, hypothesis: str) -> NLIResult:
         """Keyword/pattern-based fallback classification."""
-        # Check version conflicts
-        pv = _VERSION_RE.findall(premise)
-        hv = _VERSION_RE.findall(hypothesis)
-        if pv and hv:
-            for p_name, p_ver in pv:
-                for h_name, h_ver in hv:
-                    if p_name.lower() == h_name.lower() and p_ver != h_ver:
-                        return NLIResult(label="contradiction", confidence=0.55)
+        # Check version conflicts using loaded patterns
+        for version_re in _PATTERNS['version_patterns']:
+            pv = version_re.findall(premise)
+            hv = version_re.findall(hypothesis)
+            if pv and hv:
+                for p_name, p_ver in pv:
+                    for h_name, h_ver in hv:
+                        if p_name.lower() == h_name.lower() and p_ver != h_ver:
+                            return NLIResult(label="contradiction", confidence=0.55)
 
-        # Check antonym/negation pairs
-        for pat_a, pat_b in _NEGATION_PAIRS:
+        # Check antonym/negation pairs from loaded patterns
+        for pat_a, pat_b in _PATTERNS['negation_pairs']:
             if pat_b is None:
                 # General negation: one has "not", other doesn't
                 a_has = pat_a.search(premise)

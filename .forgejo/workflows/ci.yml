@@ -14,12 +14,61 @@ jobs:
     name: Version Drift (site/index.html)
     timeout-minutes: 5
     steps:
-    - uses: actions/checkout@v4
+    - uses: https://data.forgejo.org/actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
     # Fails when site/index.html references a MAJOR.MINOR older than
     # src/mcp_memory_service/_version.py — i.e. a release PR that forgot to
     # bump the mcpmemory.services landing page. PATCH-only drift is ignored.
     - name: Check landing page version strings
       run: bash scripts/ci/check_versions.sh
+
+  plugin-version-check:
+    runs-on: docker
+    name: Plugin Manifest Bump (claude-hooks/)
+    timeout-minutes: 5
+    steps:
+    # fetch-depth: 0 is required — the check asks "did claude-hooks/ change since
+    # the last commit that moved the manifest version", which a shallow clone
+    # cannot answer (the script fails loudly rather than passing on a guess).
+    - uses: https://data.forgejo.org/actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      with:
+        fetch-depth: 0
+    # Only enforced on release changes (_version.py moved). Fails when hook code
+    # shipped since the last plugin bump without bumping plugin.json — the
+    # Marketplace cache is version-keyed, so those fixes never reach installed
+    # users. Missed manually in v11.6.0 (issue #170).
+    - name: Check Claude Code plugin manifest version
+      run: bash scripts/ci/check_plugin_version.sh
+
+  hooks-config-secrets:
+    runs-on: docker
+    name: Bundled Hooks Config (no secrets)
+    timeout-minutes: 5
+    steps:
+    - uses: https://data.forgejo.org/actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+    # claude-hooks/config.json ships with the plugin and is copied into every
+    # user's ~/.claude/hooks/config.json by the installer, so a personal value
+    # committed there is both published and distributed. A real apiKey and a
+    # maintainer-local serverWorkingDir sat in it for months (issue #197).
+    - name: Check bundled hooks config for credentials
+      run: bash scripts/ci/check_hooks_config_secrets.sh
+    # config.json and config.template.json have no shared source, so nothing
+    # keeps their key structure in sync automatically — that's how the
+    # template ended up 8 sections behind (issue #197 follow-up).
+    - name: Check bundled hooks config matches template structure
+      run: bash scripts/ci/check_hooks_config_drift.sh
+
+  hooks-tests:
+    runs-on: docker
+    name: Hooks Tests (claude-hooks/)
+    timeout-minutes: 10
+    steps:
+    - uses: https://data.forgejo.org/actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+    # No setup-node step: the docker runner image already ships node, which
+    # deploy-site.yml relies on the same way. Before this job existed CI had no
+    # node steps at all, so the nine claude-hooks/tests files never ran and a
+    # JS-only PR got a green board that meant nothing (issue #202).
+    - name: Run the claude-hooks test suite
+      run: bash scripts/ci/run_hooks_tests.sh
 
   test:
     runs-on: docker
@@ -27,7 +76,7 @@ jobs:
     timeout-minutes: 20
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: https://data.forgejo.org/actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
     - name: Install dependencies
       run: |

@@ -782,7 +782,7 @@ def create_app() -> FastAPI:
                     <a href="/api/redoc" class="btn btn-secondary">
                         <span>📖</span> ReDoc Documentation
                     </a>
-                    <a href="https://github.com/doobidoo/mcp-memory-service" class="btn btn-secondary" target="_blank">
+                    <a href="https://codeberg.org/doobidoo/mcp-memory-service" class="btn btn-secondary" target="_blank">
                         <span>🚀</span> GitHub Repository
                     </a>
                 </div>

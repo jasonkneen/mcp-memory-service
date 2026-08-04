@@ -137,3 +137,24 @@ class TestDedupPreventsIdenticalClusters:
 
         # After normalization, both have same content hash → only 1 group
         assert len(groups) == 1
+
+
+class TestSessionLegacyNoiseFilter:
+    """Regression tests for session-legacy noise filter (#121 follow-up)."""
+
+    def test_noise_filter_session_legacy_uuid(self):
+        """commit_session_legacy entries (Session: UUID) should be noise."""
+        content = "Session: a1b2c3d4-e5f6-7890-abcd-ef1234567890 | Agent: kiro | Duration: 45min"
+        assert _is_noise(content) is True
+
+    def test_noise_filter_session_prefix_with_short_hash(self):
+        """Session: followed by hex hash should be noise."""
+        assert _is_noise("Session: deadbeef | Topics: coding") is True
+
+    def test_noise_filter_session_mid_text_not_noise(self):
+        """The word 'session' in mid-text should NOT be noise."""
+        assert _is_noise("Redis loses session data on restart") is False
+
+    def test_noise_filter_session_without_colon_not_noise(self):
+        """'Session' without colon-space should NOT be noise."""
+        assert _is_noise("Session management is important for auth") is False

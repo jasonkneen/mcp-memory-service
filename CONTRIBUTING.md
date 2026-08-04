@@ -361,6 +361,9 @@ Do **not** open a public issue. Use GitHub's private [Security Advisories](https
 
 We welcome contributions from AI coding assistants and autonomous agents. However, transparency is required.
 
+For the project's own position — authorship, copyright, and the safeguards every
+change passes before it reaches `main` — see [AUTHORSHIP.md](AUTHORSHIP.md).
+
 ### Disclosure requirement
 
 If a PR was generated, drafted, or submitted by an automated agent (an AI system acting without direct human review of each change), the PR description **must** include:

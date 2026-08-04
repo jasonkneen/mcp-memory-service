@@ -133,3 +133,111 @@ class TestRewriterParsing:
         """Empty LLM response returns None."""
         result = rewriter._parse_response("", "bug")
         assert result is None
+
+
+class TestRewriterConfiguration:
+    """Issue #178: a configured provider chain must count as configured.
+
+    `_call_llm` prefers `HARVEST_LLM_PROVIDERS` and only falls back to Groq,
+    but the harvester decided whether a rewriter existed at all by looking at
+    `GROQ_API_KEY`. Deployments pointing at an OpenAI-compatible endpoint got
+    no rewriting and no error.
+    """
+
+    def test_provider_chain_counts_as_configured(self, monkeypatch):
+        monkeypatch.delenv('GROQ_API_KEY', raising=False)
+        monkeypatch.setenv('HARVEST_LLM_PROVIDERS', 'litellm')
+        monkeypatch.setenv('HARVEST_LLM_LITELLM_BASE_URL', 'http://litellm.svc:4000/v1')
+        monkeypatch.setenv('HARVEST_LLM_LITELLM_MODEL', 'ollama/qwen2.5:7b-instruct')
+
+        assert HarvestRewriter().is_configured is True
+
+    def test_groq_key_alone_still_counts_as_configured(self, monkeypatch):
+        monkeypatch.delenv('HARVEST_LLM_PROVIDERS', raising=False)
+        monkeypatch.setenv('GROQ_API_KEY', 'gsk-test')
+
+        assert HarvestRewriter().is_configured is True
+
+    def test_no_provider_and_no_key_is_unconfigured(self, monkeypatch):
+        monkeypatch.delenv('HARVEST_LLM_PROVIDERS', raising=False)
+        monkeypatch.delenv('GROQ_API_KEY', raising=False)
+
+        assert HarvestRewriter().is_configured is False
+
+    def test_harvester_keeps_rewriter_when_only_provider_chain_is_set(self, monkeypatch):
+        """The gate itself, not just the property."""
+        from mcp_memory_service.harvest.harvester import SessionHarvester
+
+        monkeypatch.delenv('GROQ_API_KEY', raising=False)
+        monkeypatch.setenv('HARVEST_LLM_PROVIDERS', 'litellm')
+        monkeypatch.setenv('HARVEST_LLM_LITELLM_BASE_URL', 'http://litellm.svc:4000/v1')
+        monkeypatch.setenv('HARVEST_LLM_LITELLM_MODEL', 'ollama/qwen2.5:7b-instruct')
+
+        harvester = SessionHarvester.__new__(SessionHarvester)
+        rewriter = harvester._get_rewriter()
+
+        assert rewriter is not None
+        assert rewriter.is_configured is True
+
+
+class TestRewriterProviderChainDeepDive:
+    """Same treatment as test_classifier.py's TestClassifierProviderChain (#194):
+
+    the #178 fix had no test pinning the credential-less-Groq-entry edge case
+    or confirming the provider chain is what actually gets called, not just
+    that is_configured reports True.
+    """
+
+    def test_keyless_groq_entry_does_not_count_as_configured(self, monkeypatch):
+        """The legacy path synthesizes a Groq provider even with no key; it must not qualify."""
+        monkeypatch.delenv('HARVEST_LLM_PROVIDERS', raising=False)
+        monkeypatch.delenv('HARVEST_LLM_PROVIDER', raising=False)
+        monkeypatch.delenv('GROQ_API_KEY', raising=False)
+
+        rewriter = HarvestRewriter()
+
+        assert rewriter._providers == []
+        assert rewriter.is_configured is False
+
+    @pytest.mark.asyncio
+    async def test_rewrite_goes_through_the_provider_endpoint(self, monkeypatch):
+        """A configured chain rewrites without ever touching the legacy Groq path."""
+        monkeypatch.delenv('GROQ_API_KEY', raising=False)
+        monkeypatch.setenv('HARVEST_LLM_PROVIDERS', 'local')
+        monkeypatch.setenv('HARVEST_LLM_LOCAL_BASE_URL', 'http://localhost:11434/v1')
+        monkeypatch.setenv('HARVEST_LLM_LOCAL_MODEL', 'qwen2.5-coder')
+
+        rewriter = HarvestRewriter()
+        assert [p.name for p in rewriter._providers] == ['local']
+
+        with patch.object(
+            rewriter, '_call_openai_compatible', new_callable=AsyncMock
+        ) as mock_call, patch.object(rewriter, '_call_groq', new_callable=AsyncMock) as mock_groq:
+            mock_call.return_value = "bug: fixed by adding a null check."
+            result = await rewriter.rewrite("the fix was a null check", suggested_type="bug")
+
+        assert result is not None
+        assert mock_call.call_count == 1
+        assert mock_call.call_args[0][0] == 'http://localhost:11434/v1'
+        mock_groq.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_provider_failure_falls_through_to_the_next_one(self, monkeypatch):
+        monkeypatch.delenv('GROQ_API_KEY', raising=False)
+        monkeypatch.setenv('HARVEST_LLM_PROVIDERS', 'broken,local')
+        monkeypatch.setenv('HARVEST_LLM_BROKEN_BASE_URL', 'http://127.0.0.1:9/v1')
+        monkeypatch.setenv('HARVEST_LLM_BROKEN_MODEL', 'nope')
+        monkeypatch.setenv('HARVEST_LLM_LOCAL_BASE_URL', 'http://localhost:11434/v1')
+        monkeypatch.setenv('HARVEST_LLM_LOCAL_MODEL', 'qwen2.5-coder')
+
+        rewriter = HarvestRewriter()
+        assert [p.name for p in rewriter._providers] == ['broken', 'local']
+
+        with patch.object(
+            rewriter, '_call_openai_compatible', new_callable=AsyncMock,
+            side_effect=[Exception("connection refused"), "decision: use the fallback provider."],
+        ) as mock_call:
+            result = await rewriter.rewrite("we went with the fallback provider", suggested_type="decision")
+
+        assert result is not None
+        assert mock_call.call_count == 2

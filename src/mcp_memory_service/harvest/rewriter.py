@@ -1,10 +1,14 @@
 """LLM-based rewriter that converts conversational text to standalone insights."""
 
+import asyncio
+import concurrent.futures
 import logging
 import os
 import re
 from dataclasses import dataclass
 from typing import Optional
+
+from ..compat import _sanitize_log_value
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +22,54 @@ class LLMProvider:
     base_url: str
     model: str
     api_key: str = ""
+
+
+def load_llm_providers() -> list:
+    """Load provider chain from env vars.
+
+    Shared by HarvestRewriter and HarvestClassifier so both use the same
+    provider-resolution rules (#178) instead of the classifier hardcoding
+    GROQ_API_KEY only.
+    """
+    providers_str = os.environ.get("HARVEST_LLM_PROVIDERS", "")
+    if not providers_str:
+        # Legacy: single provider from HARVEST_LLM_PROVIDER
+        provider = os.environ.get("HARVEST_LLM_PROVIDER", "groq")
+        if provider == "groq":
+            return [LLMProvider(
+                name="groq",
+                base_url="https://api.groq.com/openai/v1",
+                model=os.environ.get("HARVEST_LLM_MODEL", "llama-3.3-70b-versatile"),
+                api_key=os.environ.get("GROQ_API_KEY", ""),
+            )]
+        return []
+
+    providers = []
+    for name in providers_str.split(","):
+        name = name.strip()
+        prefix = f"HARVEST_LLM_{name.upper()}_"
+        base_url = os.environ.get(f"{prefix}BASE_URL", "")
+        model = os.environ.get(f"{prefix}MODEL", "")
+        api_key = os.environ.get(f"{prefix}API_KEY", "")
+        if base_url and model:
+            providers.append(LLMProvider(name=name, base_url=base_url, model=model, api_key=api_key))
+    return providers
+
+
+def is_usable_provider(provider: LLMProvider) -> bool:
+    """A provider is usable when it has an endpoint we can actually call.
+
+    ``load_llm_providers`` synthesizes a Groq entry even with no credentials
+    (the legacy single-provider path), so presence in the chain is not
+    enough — the Groq entry needs a key. Self-hosted OpenAI-compatible
+    endpoints legitimately run without one.
+    """
+    if not (provider.base_url and provider.model):
+        return False
+    if provider.name == "groq":
+        return bool(provider.api_key)
+    return True
+
 
 REWRITE_PROMPT = """Given this excerpt from a coding session conversation:
 ---
@@ -107,7 +159,11 @@ class HarvestRewriter:
     """
 
     def __init__(self):
-        self._providers = self._load_providers()
+        # Filtered through is_usable_provider so a credential-less legacy Groq
+        # entry (synthesized by load_llm_providers when HARVEST_LLM_PROVIDERS
+        # is unset) never reaches _call_llm's provider loop — mirrors
+        # classifier.py's _ensure_initialized (#194).
+        self._providers = [p for p in load_llm_providers() if is_usable_provider(p)]
         # Legacy single-provider compat
         self._provider = os.environ.get("HARVEST_LLM_PROVIDER", "groq")
         self._model = os.environ.get("HARVEST_LLM_MODEL", "llama-3.3-70b-versatile")
@@ -115,31 +171,15 @@ class HarvestRewriter:
         self._locale = os.environ.get("HARVEST_LOCALE", "en")
         self._locale_instruction = self._build_locale_instruction()
 
-    def _load_providers(self) -> list:
-        """Load provider chain from env vars."""
-        providers_str = os.environ.get("HARVEST_LLM_PROVIDERS", "")
-        if not providers_str:
-            # Legacy: single provider from HARVEST_LLM_PROVIDER
-            provider = os.environ.get("HARVEST_LLM_PROVIDER", "groq")
-            if provider == "groq":
-                return [LLMProvider(
-                    name="groq",
-                    base_url="https://api.groq.com/openai/v1",
-                    model=os.environ.get("HARVEST_LLM_MODEL", "llama-3.3-70b-versatile"),
-                    api_key=os.environ.get("GROQ_API_KEY", ""),
-                )]
-            return []
+    @property
+    def is_configured(self) -> bool:
+        """True when this rewriter has somewhere to send a prompt.
 
-        providers = []
-        for name in providers_str.split(","):
-            name = name.strip()
-            prefix = f"HARVEST_LLM_{name.upper()}_"
-            base_url = os.environ.get(f"{prefix}BASE_URL", "")
-            model = os.environ.get(f"{prefix}MODEL", "")
-            api_key = os.environ.get(f"{prefix}API_KEY", "")
-            if base_url and model:
-                providers.append(LLMProvider(name=name, base_url=base_url, model=model, api_key=api_key))
-        return providers
+        Either a usable provider from ``HARVEST_LLM_PROVIDERS``, or the legacy
+        ``GROQ_API_KEY``. Callers used to check the Groq key alone, which
+        disabled rewriting for every OpenAI-compatible endpoint (issue #178).
+        """
+        return any(is_usable_provider(p) for p in self._providers) or bool(self._api_key)
 
     def _build_locale_instruction(self) -> str:
         """Build locale instruction from HARVEST_LOCALE env var."""
@@ -170,17 +210,15 @@ class HarvestRewriter:
         try:
             response = await self._call_llm(prompt)
         except Exception as e:
-            logger.warning(f"LLM rewrite failed: {e}")
+            logger.warning("LLM rewrite failed: %s", _sanitize_log_value(str(e)))
             return None
 
         return self._parse_response(response, suggested_type)
 
     def rewrite_sync(self, text: str, suggested_type: str = "observation", already_extracted: list = None) -> Optional[RewriteResult]:
         """Synchronous wrapper for rewrite (works inside running event loop)."""
-        import asyncio
         try:
             loop = asyncio.get_running_loop()
-            import concurrent.futures
             with concurrent.futures.ThreadPoolExecutor() as pool:
                 future = pool.submit(asyncio.run, self.rewrite(text, suggested_type, already_extracted))
                 return future.result(timeout=30)
@@ -188,7 +226,7 @@ class HarvestRewriter:
             # No running loop — safe to use asyncio.run directly
             return asyncio.run(self.rewrite(text, suggested_type, already_extracted))
         except Exception as e:
-            logger.warning(f"LLM rewrite_sync failed: {e}")
+            logger.warning("LLM rewrite_sync failed: %s", _sanitize_log_value(str(e)))
             return None
 
     async def rewrite_batch(self, items: list) -> list:
@@ -209,24 +247,22 @@ class HarvestRewriter:
         try:
             response = await self._call_llm(prompt)
         except Exception as e:
-            logger.warning(f"Batch rewrite failed: {e}")
+            logger.warning("Batch rewrite failed: %s", _sanitize_log_value(str(e)))
             return [None] * len(items)
 
         return self._parse_batch_response(response, items)
 
     def rewrite_batch_sync(self, items: list) -> list:
         """Synchronous wrapper for rewrite_batch."""
-        import asyncio
         try:
             loop = asyncio.get_running_loop()
-            import concurrent.futures
             with concurrent.futures.ThreadPoolExecutor() as pool:
                 future = pool.submit(asyncio.run, self.rewrite_batch(items))
                 return future.result(timeout=60)
         except RuntimeError:
             return asyncio.run(self.rewrite_batch(items))
         except Exception as e:
-            logger.warning(f"Batch rewrite_sync failed: {e}")
+            logger.warning("Batch rewrite_sync failed: %s", _sanitize_log_value(str(e)))
             return [None] * len(items)
 
     def _parse_batch_response(self, response: str, items: list) -> list:
@@ -298,9 +334,13 @@ class HarvestRewriter:
                 except Exception as e:
                     err_str = str(e).lower()
                     if "rate limit" in err_str or "429" in err_str:
-                        logger.warning(f"{provider.name} rate limited, trying next")
+                        logger.warning("%s rate limited, trying next", _sanitize_log_value(provider.name))
                         continue
-                    logger.warning(f"{provider.name} failed: {e}, trying next")
+                    logger.warning(
+                        "%s failed: %s, trying next",
+                        _sanitize_log_value(provider.name),
+                        _sanitize_log_value(str(e)),
+                    )
                     continue
             raise RuntimeError("All LLM providers exhausted")
         # Legacy single-provider
@@ -310,7 +350,13 @@ class HarvestRewriter:
 
     async def _call_openai_compatible(self, base_url: str, model: str, api_key: str, prompt: str) -> str:
         """Call any OpenAI-compatible API (Groq, DeepSeek, Ollama, etc.)."""
-        import httpx
+        # httpx costs ~36ms to import and nothing else on this path pulls it in.
+        # classifier.py imports this module at top level and harvest/__init__.py
+        # imports classifier eagerly, so importing httpx at module level would
+        # add that 36ms to every `import mcp_memory_service.harvest`, including
+        # runs that never call an LLM. asyncio and concurrent.futures are already
+        # in sys.modules by then, which is why those two sit at the top instead.
+        import httpx  # inline import
         headers = {"Content-Type": "application/json"}
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"

@@ -16,6 +16,7 @@
 
 const fs = require('fs').promises;
 const path = require('path');
+const { resolveConfigPath } = require('../utilities/config-loader');
 const { MemoryClient } = require('../utilities/memory-client');
 
 // Import pattern detection
@@ -34,7 +35,7 @@ const {
  */
 async function loadConfig() {
     try {
-        const configPath = path.join(__dirname, '../config.json');
+        const configPath = resolveConfigPath(__dirname);
         const configData = await fs.readFile(configPath, 'utf8');
         const config = JSON.parse(configData);
 
@@ -186,6 +187,7 @@ async function storeMemory(config, content, memoryType, tags) {
             endpoint: config.memoryService.http.endpoint,
             apiKey: config.memoryService.http.apiKey,
         },
+        allowSelfSignedCerts: config.memoryService.allowSelfSignedCerts === true,
     });
 
     try {
@@ -281,7 +283,8 @@ async function main() {
         if (overrides.forceRemember) {
             detection = {
                 isValuable: true,
-                memoryType: 'Context',
+                // Canonical ontology type; 'Context' was coerced away on store (#177)
+                memoryType: 'note',
                 matchedPattern: 'user-override',
                 confidence: 1.0
             };

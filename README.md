@@ -495,16 +495,22 @@ MCP Memory Service is **fully compatible** with the [SHODH Unified Memory API Sp
 
 ---
 
-## Latest Release: **v11.5.2** (July 15, 2026)
+## Latest Release: **v11.6.1** (August 3, 2026)
 
-**PATCH: sqlite_vec delete_memory proxy, hash-embedding fallback guard, and embedding-dimension mismatch guard**
+**PATCH: harvest classifier provider chain, Claude Code plugin manifest at 1.0.2**
 
 **What's New:**
-- Added a `delete_memory` proxy to the sqlite_vec `DeleteMixin`, fixing `AttributeError` during consolidation forgetting/archival on sqlite_vec (#140, @jonatanbellido).
-- The hash-embedding fallback is now refused on non-empty databases, preventing silent poisoning of semantic search with SHA256 pseudo-vectors when no ML backend is available (#135, @nxxxsooo).
-- Opening an existing database with a mismatched embedding dimension now raises a clear error at init instead of silently degrading and failing later at insert time; the ONNX path also warns when a non-MiniLM model is requested instead of silently ignoring it (#143).
+- **Harvest classifier honors `HARVEST_LLM_PROVIDERS`** instead of demanding `GROQ_API_KEY`. A deployment pointed at LiteLLM, Ollama, or any other OpenAI-compatible endpoint was skipping classification silently. This completes #178 — the rewriter half shipped in v11.6.0, the classifier did not (#180, timkjr).
+- **Claude Code plugin manifest bumped to 1.0.2.** This is what actually delivers the #177 hook fix to anyone who already installed the plugin: v11.6.0 shipped that fix with the manifest still at 1.0.1, and the Marketplace cache is keyed on the plugin version. If your auto-capture is still tagging everything `observation`, update to plugin 1.0.2.
+- A CI gate (`scripts/ci/check_plugin_version.sh`) now fails any release PR that changes `claude-hooks/` without moving the manifest version, so the miss above cannot repeat (#195, reported by @tecnobrat in #170).
+- Repo-local worktree guard no longer creates a branch and worktree on every session start (#193).
 
 **Previous Releases** (v11 series — full history for all earlier versions in [CHANGELOG.md](CHANGELOG.md)):
+- **v11.6.0** - MINOR: migration no longer drops the knowledge graph and derived beliefs when re-embedding (#189), locale-aware NER/NLI via YAML plugins (#54), Docker images ship the maintenance and migration scripts (#188) (August 2, 2026)
+- **v11.5.5** - PATCH: standard Docker image ships tokenizers so the ONNX backend actually loads (#162, #163, #164) (July 24, 2026)
+- **v11.5.4** - PATCH: web dashboard GitHub references replaced with Codeberg (#158, #159, @sunnyagain) (July 22, 2026)
+- **v11.5.3** - PATCH: Claude Code hooks config resolution under Marketplace install + graph orphan-prune `has_entity` fix + belief-derivation noise filter (#155, #156, #150, #151, #121, #152, @filhocf, @tecnobrat) (July 22, 2026)
+- **v11.5.2** - PATCH: sqlite_vec `delete_memory` proxy fix + hash-embedding fallback guard + embedding-dimension mismatch guard (#140, #135, #143, @jonatanbellido, @nxxxsooo) (July 15, 2026)
 - **v11.5.1** - PATCH: multi-store migration dimension safety + embedding-backend verification in `memory status` (#134, #136, @nxxxsooo) (July 15, 2026)
 - **v11.5.0** - MINOR: conditional temporal decay + functional belief derivation + consolidation clustering fix + bootstrap belief injection (#123, #124, #126, #127, @filhocf) (July 10, 2026)
 - **v11.4.0** - MINOR: memory merge action + pluggable domain NER extractors + mcpmemory.services landing page (#100, #54, @filhocf) (July 4, 2026)
@@ -544,6 +550,9 @@ MCP Memory Service is **fully compatible** with the [SHODH Unified Memory API Sp
 ## 🤝 Contributing
 
 We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+Who authors this project, who holds copyright, and what every change passes before
+it reaches `main`: [AUTHORSHIP.md](AUTHORSHIP.md).
 
 **Quick Development Setup:**
 ```bash

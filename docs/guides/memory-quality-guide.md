@@ -421,9 +421,18 @@ export MCP_QUALITY_AI_PROVIDER=local           # local|groq|gemini|auto|none
 export MCP_QUALITY_LOCAL_MODEL=ms-marco-MiniLM-L-6-v2  # Model name
 export MCP_QUALITY_LOCAL_DEVICE=auto           # auto|cpu|cuda|mps|directml
 
-# Quality-Boosted Search (Opt-In)
+# Quality-Boosted Search (Opt-In) — affects search ranking only
 export MCP_QUALITY_BOOST_ENABLED=false         # Default: false (opt-in)
 export MCP_QUALITY_BOOST_WEIGHT=0.3            # 0.0-1.0 (30% quality, 70% semantic)
+
+# Store-time blend of implicit signals into the saved score.
+# Both default to the MCP_QUALITY_BOOST_* values above when unset, which is how
+# this worked before it was split out. Note the direction is the opposite of the
+# search weight: a higher value means LESS weight on the classifier, and a fresh
+# memory has weak implicit signals by construction, so a high value caps the
+# score of newly stored memories regardless of content.
+export MCP_QUALITY_IMPLICIT_BLEND_ENABLED=false  # Default: follows BOOST_ENABLED
+export MCP_QUALITY_IMPLICIT_WEIGHT=0.3           # 0.0-1.0 implicit share of the stored score
 
 # Quality-Based Retention (Consolidation)
 export MCP_QUALITY_RETENTION_HIGH=365          # Days for quality ≥0.7
