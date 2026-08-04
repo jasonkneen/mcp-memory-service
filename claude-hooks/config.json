@@ -12,7 +12,7 @@
     "fallbackEnabled": true,
     "http": {
       "endpoint": "http://127.0.0.1:8000",
-      "apiKey": "VhOGAoUOE5_BMzu-phDORdyXHNMcDRBxvndK_Uop",
+      "apiKey": "auto-detect",
       "healthCheckTimeout": 3000,
       "useDetailedHealthCheck": true
     },
@@ -25,7 +25,7 @@
         "-s",
         "hybrid"
       ],
-      "serverWorkingDir": "/home/hkr/repositories/mcp-memory-service",
+      "serverWorkingDir": null,
       "connectionTimeout": 2000,
       "toolCallTimeout": 3000
     },
