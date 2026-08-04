@@ -270,6 +270,16 @@ else
     bash scripts/ci/check_hooks_config_secrets.sh || true
 fi
 
+# Check 6.7: Bundled hooks config and its template have not drifted apart
+echo -e "\n${YELLOW}[6.7/9]${NC} Checking bundled hooks config against its template..."
+if bash scripts/ci/check_hooks_config_drift.sh > /dev/null 2>&1; then
+    check_status "Hooks config and template share one key structure" 0
+else
+    check_status "Hooks config and template share one key structure" 1
+    echo -e "${RED}   Add the same keys to whichever file is missing them:${NC}"
+    bash scripts/ci/check_hooks_config_drift.sh || true
+fi
+
 # Check 7: Docstring coverage
 echo -e "\n${YELLOW}[7/9]${NC} Checking docstring coverage..."
 MISSING_DOCSTRINGS=0
