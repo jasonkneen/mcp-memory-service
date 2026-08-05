@@ -1314,7 +1314,11 @@ class MilvusMemoryStorage(MemoryStorage):
 
     # -- Store ---------------------------------------------------------------
 
-    async def store(self, memory: Memory, skip_semantic_dedup: bool = False) -> Tuple[bool, str]:
+    async def store(self, memory: Memory, skip_semantic_dedup: bool = False, store: str = "default") -> Tuple[bool, str]:
+        # `store` accepted for BaseStorage parity (multi-store, issue #133).
+        # The Milvus backend is single-collection and does not partition by
+        # store yet, so the value is intentionally not used (matches
+        # get_all_memories/count_all_memories/search_memories here).
         # Explicit invariant log: if this ever reports True, something
         # outside ``close()`` has nulled out the client and that is a bug.
         logger.debug("store() entry — self.client is None: %r", self.client is None)
@@ -2488,6 +2492,7 @@ class MilvusMemoryStorage(MemoryStorage):
         include_debug: bool = False,
         include_superseded: bool = False,
         ranking_weights: Optional[Dict[str, float]] = None,
+        store: str = "default",  # interface parity (issue #133); single-collection, not partitioned
     ) -> Dict[str, Any]:
         """Unified memory search with Milvus-native filtering.
 
@@ -2942,6 +2947,7 @@ class MilvusMemoryStorage(MemoryStorage):
         tags: Optional[List[str]] = None,
         tag_match: str = "any",
         stale_days: Optional[int] = None,
+        store: str = "default",  # interface parity (issue #133); single-collection, not partitioned
     ) -> int:
         if not self._ensure_initialized():
             return 0
