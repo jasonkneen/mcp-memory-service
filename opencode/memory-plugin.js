@@ -1055,3 +1055,8 @@ const createPlugin = async ({ directory, client }) => {
 
 export const OpenCodeMemoryPlugin = createPlugin
 export default { id: "opencode-memory", server: createPlugin }
+
+// Test-only surface, mirroring claude-hooks' `_internal` convention. The TLS gate
+// is a security control, so it gets tested directly rather than only through a
+// request path that needs a live server.
+export const _internal = { applySelfSignedCertsOption }
