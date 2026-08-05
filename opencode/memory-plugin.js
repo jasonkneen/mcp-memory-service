@@ -7,26 +7,40 @@ import path from "node:path"
 const STATUS_FILE = process.env.OPENCODE_MEMORY_STATUS_FILE
   || path.join(homedir(), ".local", "state", "opencode", ".memory-status.json")
 
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = process.env.NODE_TLS_REJECT_UNAUTHORIZED || "0"
-
-const tlsAgent = new https.Agent({ rejectUnauthorized: false })
+// TLS certificate verification stays on by default. Setting
+// allowSelfSignedCerts disables it for that request only, with a warning —
+// never process-wide (a prior NODE_TLS_REJECT_UNAUTHORIZED override here
+// disabled verification for every TLS connection this process made, not
+// just plugin requests).
+function applySelfSignedCertsOption(requestOptions, isHttps, allowSelfSignedCerts) {
+  if (isHttps && allowSelfSignedCerts === true) {
+    requestOptions.rejectUnauthorized = false
+    console.warn(
+      "[Memory Plugin] TLS certificate validation DISABLED (allowSelfSignedCerts=true). "
+      + "This leaves the connection vulnerable to MITM — use only for local development "
+      + "with self-signed certs."
+    )
+  }
+}
 
 function httpsFetch(url, options = {}) {
   return new Promise((resolve, reject) => {
-    const { method = "GET", headers = {}, body, signal } = options
+    const { method = "GET", headers = {}, body, signal, allowSelfSignedCerts } = options
     const parsed = new URL(url)
 
     const isHttps = parsed.protocol === "https:"
+    const requestOptions = {
+      hostname: parsed.hostname,
+      port: parsed.port || (isHttps ? 443 : 80),
+      path: parsed.pathname + parsed.search,
+      method,
+      headers,
+      signal,
+    }
+    applySelfSignedCertsOption(requestOptions, isHttps, allowSelfSignedCerts === true)
+
     const req = (isHttps ? https : http).request(
-      {
-        hostname: parsed.hostname,
-        port: parsed.port || (isHttps ? 443 : 80),
-        path: parsed.pathname + parsed.search,
-        method,
-        headers,
-        agent: isHttps ? tlsAgent : undefined,
-        signal,
-      },
+      requestOptions,
       (res) => {
         let data = ""
         res.on("data", (chunk) => { data += chunk })
@@ -48,6 +62,7 @@ const DEFAULT_CONFIG = {
     maxMemoriesPerSession: 8,
     searchTags: [],
     includeProjectTag: false,
+    allowSelfSignedCerts: false,
     projectQueries: [
       "{project} architecture decisions",
       "{project} recent work",
@@ -113,6 +128,11 @@ function environmentOverrides() {
   const loadTimeoutMs = parseInteger(process.env.OPENCODE_MEMORY_LOAD_TIMEOUT_MS)
   if (loadTimeoutMs !== undefined) {
     overrides.memoryService.loadTimeoutMs = loadTimeoutMs
+  }
+
+  const allowSelfSignedCerts = process.env.OPENCODE_MEMORY_ALLOW_SELF_SIGNED_CERTS
+  if (allowSelfSignedCerts !== undefined) {
+    overrides.memoryService.allowSelfSignedCerts = allowSelfSignedCerts === "true" || allowSelfSignedCerts === "1"
   }
 
   return overrides
@@ -214,6 +234,7 @@ async function requestJson(config, pathname, init = {}) {
       ...init,
       headers: buildHeaders(config, init.headers || {}),
       signal: controller.signal,
+      allowSelfSignedCerts: config.memoryService.allowSelfSignedCerts === true,
     })
 
     const text = await response.text()

@@ -63,6 +63,7 @@ Then it applies environment overrides:
 - `OPENCODE_MEMORY_API_KEY`
 - `OPENCODE_MEMORY_TIMEOUT_MS`
 - `OPENCODE_MEMORY_LOAD_TIMEOUT_MS`
+- `OPENCODE_MEMORY_ALLOW_SELF_SIGNED_CERTS` — set to `true` or `1` to disable TLS certificate verification (self-signed certs only, off by default)
 
 If you load the plugin with explicit plugin options, those win last.
 
