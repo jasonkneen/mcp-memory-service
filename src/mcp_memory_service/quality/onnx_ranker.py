@@ -13,14 +13,42 @@ from typing import List, Optional, Tuple
 import numpy as np
 
 # Setup offline mode before importing transformers
+from ..compat import _sanitize_log_value
 from ..offline_mode import setup_offline_mode
 setup_offline_mode()
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_ONNX_MODEL_DIR = Path.home() / ".cache" / "mcp_memory" / "onnx_models"
+
+
+def onnx_model_dir() -> Path:
+    """Directory holding one subdirectory of exported ONNX artifacts per model.
+
+    Defaults to ``~/.cache/mcp_memory/onnx_models``. Override with
+    ``MCP_QUALITY_ONNX_MODEL_DIR``.
+
+    The override exists because the default was only ever reachable in a
+    container by accident: the images run as root and set neither ``USER`` nor
+    ``HOME``, so ``Path.home()`` resolved to ``/root`` and anyone mounting
+    pre-exported models had to depend on that (issue #171, from #170). A
+    non-root or read-only-rootfs deployment had to redirect ``HOME`` at a
+    writable volume just to place the models. With this set, the mount target is
+    explicit and independent of who the process runs as.
+
+    Kept as the parent rather than a per-model path so one setting covers every
+    model — the loader appends ``/<model_name>``, which is also the layout the
+    documented mount recipe uses.
+    """
+    override = os.environ.get("MCP_QUALITY_ONNX_MODEL_DIR", "").strip()
+    if override:
+        return Path(override).expanduser()
+    return DEFAULT_ONNX_MODEL_DIR
+
+
 # Try to import ONNX Runtime
 try:
-    import onnxruntime as ort
+    import onnxruntime as ort  # inline import: optional dependency, guarded by try/except
     ONNX_AVAILABLE = True
 except ImportError:
     ONNX_AVAILABLE = False
@@ -29,7 +57,7 @@ except ImportError:
 # Try to import transformers for model export
 try:
     from transformers import AutoModelForSequenceClassification, AutoTokenizer, AutoModel, AutoConfig
-    import torch
+    import torch  # inline import: optional dependency — v11 made torch optional, ONNX-first
     from torch import nn
     from huggingface_hub import PyTorchModelHubMixin
     TRANSFORMERS_AVAILABLE = True
@@ -52,7 +80,7 @@ if TRANSFORMERS_AVAILABLE:
                 snapshots = list(cache_dir.glob('*'))
                 if snapshots:
                     base_model_path = str(snapshots[0])
-                    logger.info(f"Loading base model from cached snapshot: {base_model_path}")
+                    logger.info("Loading base model from cached snapshot: %s", base_model_path)
                     self.model = AutoModel.from_pretrained(base_model_path)
                 else:
                     self.model = AutoModel.from_pretrained(base_model_name)
@@ -99,7 +127,7 @@ class ONNXRankerModel:
 
         self.model_name = model_name
         self.model_config = validate_model_selection(model_name)
-        self.MODEL_PATH = Path.home() / ".cache" / "mcp_memory" / "onnx_models" / model_name
+        self.MODEL_PATH = onnx_model_dir() / model_name
 
         self.device = device
         self._preferred_providers = preferred_providers or self._detect_providers(device)
@@ -152,14 +180,14 @@ class ONNXRankerModel:
         onnx_path = self.MODEL_PATH / self.ONNX_MODEL_FILE
 
         if onnx_path.exists():
-            logger.info(f"ONNX model already available at {onnx_path}")
+            logger.info("ONNX model already available at %s", onnx_path)
             return
 
         # Create directory
         self.MODEL_PATH.mkdir(parents=True, exist_ok=True)
 
         hf_model_name = self.model_config['hf_name']
-        logger.info(f"Exporting {hf_model_name} to ONNX format...")
+        logger.info("Exporting %s to ONNX format...", hf_model_name)
 
         # Helper function to find cached snapshot path
         def get_snapshot_path(model_id):
@@ -173,14 +201,14 @@ class ONNXRankerModel:
 
         # Load transformers model (try local_files_only first for offline mode)
         try:
-            logger.info(f"Attempting to load tokenizer for {hf_model_name} (local_files_only=True)...")
+            logger.info("Attempting to load tokenizer for %s (local_files_only=True)...", hf_model_name)
 
             # Try to find cached snapshot path first
             snapshot_path = get_snapshot_path(hf_model_name)
             load_path = snapshot_path if snapshot_path else hf_model_name
 
             if snapshot_path:
-                logger.info(f"Found cached snapshot at: {snapshot_path}")
+                logger.info("Found cached snapshot at: %s", snapshot_path)
                 tokenizer = AutoTokenizer.from_pretrained(load_path)
             else:
                 tokenizer = AutoTokenizer.from_pretrained(hf_model_name, local_files_only=True)
@@ -192,7 +220,7 @@ class ONNXRankerModel:
                 # Load config and create QualityModel instance
                 logger.info("Loading config...")
                 config_dict = AutoConfig.from_pretrained(load_path).to_dict()
-                logger.info(f"✓ Config loaded: {list(config_dict.keys())[:5]}...")
+                logger.info("Config loaded: %s...", list(config_dict.keys())[:5])
                 model = QualityModel(config=config_dict)
                 logger.info("✓ Model instance created")
                 # Load weights
@@ -203,7 +231,7 @@ class ONNXRankerModel:
                 else:
                     from huggingface_hub import hf_hub_download
                     model_file = hf_hub_download(repo_id=hf_model_name, filename="model.safetensors", local_files_only=True)
-                logger.info(f"✓ Model path: {model_file}")
+                logger.info("Model path: %s", model_file)
                 state_dict = safetensors.torch.load_file(str(model_file))
                 model.load_state_dict(state_dict, strict=False)
                 logger.info("✓ Weights loaded successfully")
@@ -214,7 +242,7 @@ class ONNXRankerModel:
                     model = AutoModelForSequenceClassification.from_pretrained(hf_model_name, local_files_only=True)
         except Exception as e:
             # Fall back to online mode if not cached
-            logger.info(f"Local loading failed: {e}")
+            logger.info("Local loading failed: %s", _sanitize_log_value(str(e)))
             logger.info("Falling back to online mode...")
             tokenizer = AutoTokenizer.from_pretrained(hf_model_name)
 
@@ -274,8 +302,8 @@ class ONNXRankerModel:
         # Save tokenizer config for loading
         tokenizer.save_pretrained(str(self.MODEL_PATH))
 
-        logger.info(f"ONNX model exported to {onnx_path}")
-        logger.info(f"Model type: {self.model_config['type']}, Inputs: {input_names}")
+        logger.info("ONNX model exported to %s", onnx_path)
+        logger.info("Model type: %s, Inputs: %s", self.model_config['type'], input_names)
 
     def _init_model(self):
         """Initialize ONNX model and tokenizer."""
@@ -285,7 +313,7 @@ class ONNXRankerModel:
             raise FileNotFoundError(f"ONNX model not found at {onnx_path}")
 
         # Initialize ONNX session
-        logger.info(f"Loading ONNX ranker model with providers: {self._preferred_providers}")
+        logger.info("Loading ONNX ranker model with providers: %s", self._preferred_providers)
         self._model = ort.InferenceSession(
             str(onnx_path),
             providers=self._preferred_providers
@@ -313,7 +341,7 @@ class ONNXRankerModel:
         else:
             raise FileNotFoundError(f"tokenizer.json not found at {tokenizer_json_path} and transformers not available")
 
-        logger.info(f"ONNX ranker model loaded. Active provider: {self._model.get_providers()[0]}")
+        logger.info("ONNX ranker model loaded. Active provider: %s", self._model.get_providers()[0])
 
     def score_quality(self, query: str, memory_content: str) -> float:
         """
@@ -382,7 +410,7 @@ class ONNXRankerModel:
                 }
 
             else:
-                logger.error(f"Unsupported model type: {self.model_config['type']}")
+                logger.error("Unsupported model type: %s", self.model_config['type'])
                 return 0.5
 
             # Run inference
@@ -414,7 +442,7 @@ class ONNXRankerModel:
             return np.clip(score, 0.0, 1.0)
 
         except Exception as e:
-            logger.error(f"Error scoring quality with {self.model_name}: {e}")
+            logger.error("Error scoring quality with %s: %s", self.model_name, _sanitize_log_value(str(e)))
             return 0.5  # Return neutral score on error
 
     # Minimum batch size to use batched ONNX inference on GPU.
@@ -600,11 +628,11 @@ def get_onnx_ranker_model(model_name: str = None, device: str = "auto") -> Optio
     onnx_path = model_path / "model.onnx"
 
     if not onnx_path.exists() and not TRANSFORMERS_AVAILABLE:
-        logger.warning(f"ONNX model not found at {onnx_path} and transformers not available for export")
+        logger.warning("ONNX model not found at %s and transformers not available for export", onnx_path)
         return None
 
     try:
         return ONNXRankerModel(model_name=model_name, device=device)
     except Exception as e:
-        logger.error(f"Failed to create ONNX ranker for {model_name}: {e}")
+        logger.error("Failed to create ONNX ranker for %s: %s", model_name, _sanitize_log_value(str(e)))
         return None

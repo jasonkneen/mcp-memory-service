@@ -462,13 +462,13 @@ MCP_QUALITY_AI_MODEL=qwen2.5:7b-instruct
 
 Recommended models: `qwen2.5:7b-instruct` (Ollama), `mlx-community/Qwen2.5-7B-Instruct-4bit` (MLX), or any instruct model via LiteLLM proxy. On endpoint failure, scoring falls back to implicit signals automatically.
 
-**Docker `:quality-cpu` tag** — built-in local ONNX quality scoring (`ms-marco-MiniLM-L-6-v2` and `nvidia-quality-classifier-deberta`) without managing the one-time ONNX export yourself, and without shipping `torch`/`transformers` in your container:
+**Local quality scoring in a container.** The standard and `:slim` images ship `onnxruntime` but not the exported ONNX models, and not the `torch`/`transformers` needed to export them — so `MCP_QUALITY_AI_PROVIDER=local` needs the models supplied from outside. There is no published `:quality-cpu` tag; it was retired rather than rebuilt per release, because the ONNX models are version-independent and rebuilding them on every patch was waste. Three supported paths:
 
-```bash
-docker pull doobidoo/mcp-memory-service:quality-cpu
-```
+1. **Export once, mount the directory** (recommended). Run `scripts/quality/export_deberta_onnx.py` on any machine with `torch`/`transformers`, then mount the result and point `MCP_QUALITY_ONNX_MODEL_DIR` at it.
+2. **Build the image yourself** — `tools/docker/Dockerfile.quality-cpu` stays in the tree and does the export at build time.
+3. **Use an endpoint you already run** — `MCP_QUALITY_AI_PROVIDER=openai-compatible` against Ollama, vLLM, or a LiteLLM proxy, as configured above. No models to manage.
 
-The `:quality-cpu` image pre-exports both models at build time and ships only `onnxruntime` at runtime — no PyTorch dependency at deploy time. See [`tools/docker/README.md`](tools/docker/README.md) for details.
+Recipes for all three, including a verified non-root read-only-rootfs Kubernetes setup: [`tools/docker/README.md`](tools/docker/README.md).
 
 ---
 
