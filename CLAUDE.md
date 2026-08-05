@@ -51,7 +51,7 @@ Before merging or releasing:
 
 ## Overview
 
-**Current Version:** v11.6.1 - PATCH release: harvest classifier honors `HARVEST_LLM_PROVIDERS` instead of requiring `GROQ_API_KEY` (#180, timkjr), Claude Code plugin manifest bumped to 1.0.2 so the #177 hook fix reaches installed plugin users, and a CI gate that fails a release PR changing `claude-hooks/` without moving that manifest version (#195); see [CHANGELOG.md](CHANGELOG.md) for details. (Issue/PR numbers refer to Codeberg.)
+**Current Version:** v11.7.0 - MINOR release, in substance a security release: three unconditional TLS certificate-verification bypasses (claude-hooks #198, the opencode plugin #210, `examples/http-mcp-bridge.js`) are now gated behind an explicit `allowSelfSignedCerts` opt-in, and a real credential committed in the bundled hooks config is gone (#197/#200) with a CI gate to keep it that way. Also: configurable ONNX model directory (#171/#209), the Milvus backend's `store()` signature brought in line with the rest (#148/#133), the consolidation merge action returning the real content hash (#208/#112), and the Claude Code plugin manifest at 1.0.3; see [CHANGELOG.md](CHANGELOG.md) for details. (Issue/PR numbers refer to Codeberg.)
 
 > **History (v10.0.0):** The v10 API consolidation unified 34 tools into 12. The deprecated tool-name alias layer (`compat.DEPRECATED_TOOLS`) was later **removed in v11** (Issue #53) — old tool names no longer resolve. The registry has since grown to ~28 tools (see `src/mcp_memory_service/tools/registry.py`).
 
