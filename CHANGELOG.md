@@ -10,7 +10,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Security
+
+- **fix(examples): gate the HTTP bridge's TLS bypass behind an explicit opt-in.** `examples/http-mcp-bridge.js` built an unconditional insecure `https.Agent` for every HTTPS request, and went further than the cases #198 and #210 fixed: alongside `rejectUnauthorized: false` it set `requestCert: false` (a server-side option that did nothing here) and `checkServerIdentity: () => undefined`, disabling hostname checking as well — redundant while `rejectUnauthorized` is false, but it would have survived someone re-enabling verification. Both extras are gone and the bypass now requires `MCP_MEMORY_ALLOW_SELF_SIGNED_CERTS=true|1`, warning on every request that uses it. The agent is still constructed either way, so connection behaviour (`keepAlive: false`) is unchanged; only verification is. This is example code rather than a shipped path, but examples get copied, and this one was missed by the repo-wide TLS audit in #210.
+
 ### Added
+
+- **ci: the JS test job now covers `opencode/` as well as `claude-hooks/`.** `scripts/ci/run_hooks_tests.sh` (#202) globbed `claude-hooks/tests/*.test.js` only, so #210's TLS gate under `opencode/` shipped untested — asking for a test there would have produced a file that never executed. The runner takes a list of directories, checks each one separately so emptying a suite cannot hide behind another still having tests, and prints paths rather than basenames now that two directories both hold a `tls-verification-opt-in.test.js`. `opencode/memory-plugin.js` gains an `_internal` test export mirroring the `claude-hooks` convention, and thirteen tests pin the gate — including that only a real `true` opts in (not `"true"`, `"1"`, or any other truthy value) and that it never touches the process-wide `NODE_TLS_REJECT_UNAUTHORIZED` switch #210 removed.
 
 - **feat(quality): `MCP_QUALITY_ONNX_MODEL_DIR` makes the ONNX model directory explicit (#171, from #170 reported by @tecnobrat).** `ONNXRankerModel` hardcoded its cache to `Path.home() / ".cache" / "mcp_memory" / "onnx_models"`. In a container that resolved to `/root/.cache/...` only because the images run as root and set neither `USER` nor `HOME`, so mounting pre-exported models depended on an implementation accident — a non-root or read-only-rootfs deployment had to redirect `HOME` at a writable volume just to place them. The new variable replaces that parent directory (the loader still appends `/<model_name>`, so one setting covers every model) and defaults to the previous path, so nothing moves for existing installs.
 
