@@ -495,17 +495,22 @@ MCP Memory Service is **fully compatible** with the [SHODH Unified Memory API Sp
 
 ---
 
-## Latest Release: **v11.6.1** (August 3, 2026)
+## Latest Release: **v11.7.0** (August 5, 2026)
 
-**PATCH: harvest classifier provider chain, Claude Code plugin manifest at 1.0.2**
+**MINOR: three TLS certificate-verification bypasses gated behind explicit opt-in, a committed credential removed**
 
 **What's New:**
-- **Harvest classifier honors `HARVEST_LLM_PROVIDERS`** instead of demanding `GROQ_API_KEY`. A deployment pointed at LiteLLM, Ollama, or any other OpenAI-compatible endpoint was skipping classification silently. This completes #178 — the rewriter half shipped in v11.6.0, the classifier did not (#180, timkjr).
-- **Claude Code plugin manifest bumped to 1.0.2.** This is what actually delivers the #177 hook fix to anyone who already installed the plugin: v11.6.0 shipped that fix with the manifest still at 1.0.1, and the Marketplace cache is keyed on the plugin version. If your auto-capture is still tagging everything `observation`, update to plugin 1.0.2.
-- A CI gate (`scripts/ci/check_plugin_version.sh`) now fails any release PR that changes `claude-hooks/` without moving the manifest version, so the miss above cannot repeat (#195, reported by @tecnobrat in #170).
-- Repo-local worktree guard no longer creates a branch and worktree on every session start (#193).
+- **claude-hooks, the opencode plugin, and `examples/http-mcp-bridge.js` no longer skip TLS certificate verification by default.** All three built an unconditional insecure HTTPS path; verification is now real unless you explicitly opt in with `allowSelfSignedCerts` (hooks config), `OPENCODE_MEMORY_ALLOW_SELF_SIGNED_CERTS` (opencode), or `MCP_MEMORY_ALLOW_SELF_SIGNED_CERTS` (bridge). Default endpoints are `http://127.0.0.1:8000`, so most installs are unaffected — but if you point any of them at `https://` with a self-signed certificate, you now need to set the flag (#198, #210, timkjr; bridge fix).
+- **A real credential committed in the bundled hooks config is gone.** `claude-hooks/config.json` shipped with a live `apiKey` and a maintainer-local path since 24af496c; both are now placeholders, and a new CI gate fails the build if either comes back (#197/#200, reported by timkjr).
+- **`MCP_QUALITY_ONNX_MODEL_DIR`** makes the ONNX model cache directory explicit instead of depending on `Path.home()` resolving to `/root` by accident — fixes non-root and read-only-rootfs container deployments (#171/#209, reported by @tecnobrat).
+- **Milvus backend's `store()`, `count_all_memories()`, and `search_memories()`** accept the `store` keyword like every other backend, fixing a crash on `memory status`/`list_memories` (#148, closes #133, reported by @ghulands).
+- **Consolidation merge action now returns the merged memory's real content hash**, not `store()`'s status message string (#208, closes #112).
+- **Claude Code plugin manifest bumped to 1.0.3** to ship the TLS opt-in and related hook changes to installed plugin users.
+
+Special thanks to timkjr for five PRs this cycle, to @tecnobrat for the reports and production measurements behind the quality/docker fixes, and to @ghulands for the precise Milvus report.
 
 **Previous Releases** (v11 series — full history for all earlier versions in [CHANGELOG.md](CHANGELOG.md)):
+- **v11.6.1** - PATCH: harvest classifier provider chain fix (#180), Claude Code plugin manifest at 1.0.2 (#195) (August 3, 2026)
 - **v11.6.0** - MINOR: migration no longer drops the knowledge graph and derived beliefs when re-embedding (#189), locale-aware NER/NLI via YAML plugins (#54), Docker images ship the maintenance and migration scripts (#188) (August 2, 2026)
 - **v11.5.5** - PATCH: standard Docker image ships tokenizers so the ONNX backend actually loads (#162, #163, #164) (July 24, 2026)
 - **v11.5.4** - PATCH: web dashboard GitHub references replaced with Codeberg (#158, #159, @sunnyagain) (July 22, 2026)
