@@ -107,6 +107,11 @@ sqlite-ml = [
 milvus = [
     "pymilvus>=2.5.0,<4.0.0",  # 3.x has breaking API changes; migrate separately
     "milvus-lite>=2.4.10",
+    # The default embedding path has been ONNX-first since v11, and [ml] below
+    # only brings torch/sentence-transformers. Without onnxruntime a Milvus-only
+    # install has no ONNX runtime to fall back on — same gap the sqlite extra
+    # documents above (issue #162, reported for milvus in #213).
+    "onnxruntime>=1.14.1",
     # milvus-lite 2.5.x still imports `pkg_resources` from setuptools; that API
     # was removed in setuptools 81. Pin setuptools below 81 on newer Pythons
     # where the default wheels are affected. Safe no-op on Pythons that resolve

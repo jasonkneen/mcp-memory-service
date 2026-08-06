@@ -807,11 +807,41 @@ class MemoryStorage(ABC):
     async def get_all_tags(self) -> List[str]:
         """Get all unique tags in the storage. Override for specific implementations."""
         return []
-    
+
+    async def get_all_tags_with_counts(self) -> List[Dict[str, Any]]:
+        """Get all tags with their usage counts, ordered by count descending.
+
+        Returns a list of ``{"tag": str, "count": int}``. Declared here because
+        web/api/memories.py::get_tags calls it without a hasattr guard: while it
+        was only an informal convention, the Milvus backend shipped without it
+        and the Browse tab answered HTTP 501 (issue #213). Override it.
+        """
+        return []
+
+    async def get_largest_memories(self, n: int = 10) -> List[Memory]:
+        """Get the n largest memories by content length. Override for specific implementations."""
+        return []
+
+    async def recall(
+        self,
+        query: Optional[str] = None,
+        n_results: int = 5,
+        start_timestamp: Optional[float] = None,
+        end_timestamp: Optional[float] = None,
+    ) -> List[MemoryQueryResult]:
+        """Retrieve memories by time window, optionally ranked by a semantic query.
+
+        The default handles the semantic half only and ignores the time window,
+        so backends that support time filtering must override it.
+        """
+        if not query:
+            return []
+        return await self.retrieve(query, n_results)
+
     async def get_recent_memories(self, n: int = 10) -> List[Memory]:
         """Get n most recent memories. Override for specific implementations."""
         return []
-    
+
     async def recall_memory(self, query: str, n_results: int = 5) -> List[Memory]:
         """Recall memories based on natural language time expression. Override for specific implementations."""
         # Default implementation just uses regular search

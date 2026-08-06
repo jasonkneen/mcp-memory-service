@@ -343,17 +343,18 @@ async def get_quality_distribution(
         Distribution statistics
     """
     try:
-        # Retrieve all memories
+        # Retrieve all memories. The fallback that used to sit here called
+        # storage.semantic_search(), which no backend implements — an
+        # AttributeError caught by an except AttributeError, one layer down.
+        # get_all_memories() is declared on MemoryStorage and implemented by
+        # every backend, so there is nothing to fall back to.
         try:
             all_memories_result = await storage.get_all_memories()
         except AttributeError:
-            try:
-                all_memories_result = await storage.semantic_search("", n_results=10000)
-            except Exception:
-                raise HTTPException(
-                    status_code=500,
-                    detail="Unable to retrieve all memories from storage backend"
-                )
+            raise HTTPException(
+                status_code=500,
+                detail="Unable to retrieve all memories from storage backend"
+            )
 
         if not all_memories_result:
             return DistributionResponse(
@@ -442,7 +443,7 @@ async def get_quality_distribution(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error analyzing quality distribution: {e}")
+        logger.error(f"Error analyzing quality distribution: {_sanitize_log_value(e)}")
         raise HTTPException(status_code=500, detail=f"Error analyzing quality distribution: {str(e)}")
 
 
@@ -514,5 +515,5 @@ async def get_quality_trends(days: int = 30, storage=Depends(get_storage), user:
         }
 
     except Exception as e:
-        logger.error(f"Error getting quality trends: {e}")
+        logger.error(f"Error getting quality trends: {_sanitize_log_value(e)}")
         raise HTTPException(status_code=500, detail=f"Error getting quality trends: {str(e)}")

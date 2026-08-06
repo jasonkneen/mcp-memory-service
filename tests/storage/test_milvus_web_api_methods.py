@@ -1,0 +1,300 @@
+# Copyright 2024 Heinrich Krupp
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Milvus overrides for the storage methods the web API calls unguarded (#213).
+
+web/api/memories.py::get_tags called ``storage.get_all_tags_with_counts()``
+without a hasattr guard and turned the resulting AttributeError into HTTP 501,
+which is what the Browse tab showed on a Milvus deployment. ``recall`` and
+``get_largest_memories`` were missing from the same backend and are called just
+as unguarded from web/api/search.py and web/api/analytics.py.
+
+Deliberately no ``pytest.importorskip("pymilvus")``: the other Milvus test
+modules skip themselves out of existence on a runner without the optional
+Milvus extras, which is every CI runner we have (ci.yml installs
+``.[dev,sqlite]``). storage/milvus.py imports fine without pymilvus, so these
+tests mock the client instead and actually run.
+"""
+
+from __future__ import annotations
+
+import json
+import time
+from typing import Any, Dict, List, Optional
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+from mcp_memory_service.models.memory import Memory
+from mcp_memory_service.storage.milvus import MilvusMemoryStorage
+
+
+def _make_storage() -> MilvusMemoryStorage:
+    """Return a MilvusMemoryStorage with __init__ skipped and the client mocked."""
+    storage = MilvusMemoryStorage.__new__(MilvusMemoryStorage)
+    storage.collection_name = "unit_test_collection"
+    storage.embedding_dimension = 4
+    storage.embedding_model_name = "test-model"
+    storage.embedding_model = MagicMock()
+    storage._initialized = True
+    storage.client = MagicMock()
+    storage._has_content_lower = True
+    storage._has_bm25 = False
+    storage._lock = None
+    storage._call_client = AsyncMock()
+    storage._generate_embedding = MagicMock(return_value=[0.1, 0.2, 0.3, 0.4])
+    return storage
+
+
+def _tag_rows(*tag_strings: str) -> List[Dict[str, Any]]:
+    return [{"tags": t} for t in tag_strings]
+
+
+def _entity(
+    content_hash: str,
+    content: str,
+    created_at: Optional[float] = None,
+    tags: str = "",
+) -> Dict[str, Any]:
+    now = time.time()
+    return {
+        "id": content_hash,
+        "content": content,
+        "tags": tags,
+        "memory_type": "note",
+        "metadata": json.dumps({}),
+        "created_at": created_at if created_at is not None else now,
+        "updated_at": created_at if created_at is not None else now,
+        "created_at_iso": None,
+        "updated_at_iso": None,
+    }
+
+
+# -- get_all_tags_with_counts (the #213 symptom) -------------------------------
+
+
+class TestGetAllTagsWithCounts:
+
+    @pytest.mark.asyncio
+    async def test_counts_occurrences_across_memories(self):
+        storage = _make_storage()
+        storage._call_client = AsyncMock(
+            return_value=_tag_rows(",alpha,beta,", ",alpha,", ",beta,gamma,")
+        )
+
+        result = await storage.get_all_tags_with_counts()
+
+        assert result == [
+            {"tag": "alpha", "count": 2},
+            {"tag": "beta", "count": 2},
+            {"tag": "gamma", "count": 1},
+        ]
+
+    @pytest.mark.asyncio
+    async def test_sorted_by_count_desc_then_tag(self):
+        """The /api/tags contract documents descending count order."""
+        storage = _make_storage()
+        storage._call_client = AsyncMock(
+            return_value=_tag_rows(",zulu,", ",alpha,", ",alpha,", ",alpha,", ",mike,", ",mike,")
+        )
+
+        result = await storage.get_all_tags_with_counts()
+
+        assert [item["tag"] for item in result] == ["alpha", "mike", "zulu"]
+        assert [item["count"] for item in result] == [3, 2, 1]
+
+    @pytest.mark.asyncio
+    async def test_tag_set_matches_get_all_tags(self):
+        """Both readers must see the same tags — they share one row scan."""
+        rows = _tag_rows(",alpha,beta,", ",beta,", "", None)
+        storage = _make_storage()
+        storage._call_client = AsyncMock(return_value=rows)
+
+        with_counts = await storage.get_all_tags_with_counts()
+        plain = await storage.get_all_tags()
+
+        assert sorted(item["tag"] for item in with_counts) == plain
+
+    @pytest.mark.asyncio
+    async def test_empty_collection_returns_empty_list(self):
+        storage = _make_storage()
+        storage._call_client = AsyncMock(return_value=[])
+
+        assert await storage.get_all_tags_with_counts() == []
+
+    @pytest.mark.asyncio
+    async def test_query_failure_returns_empty_list(self):
+        """A backend error must not surface as a 500 on the Browse tab."""
+        storage = _make_storage()
+        storage._call_client = AsyncMock(side_effect=RuntimeError("milvus down"))
+
+        assert await storage.get_all_tags_with_counts() == []
+
+    @pytest.mark.asyncio
+    async def test_uninitialized_returns_empty_list(self):
+        storage = _make_storage()
+        storage._initialized = False
+
+        assert await storage.get_all_tags_with_counts() == []
+
+
+# -- get_largest_memories (analytics.py, unguarded) ---------------------------
+
+
+class TestGetLargestMemories:
+
+    @pytest.mark.asyncio
+    async def test_returns_longest_content_first(self):
+        storage = _make_storage()
+        storage._iterate_all_rows = AsyncMock(return_value=[
+            _entity("h1", "short"),
+            _entity("h2", "x" * 100),
+            _entity("h3", "medium content"),
+        ])
+
+        result = await storage.get_largest_memories(n=2)
+
+        assert [m.content_hash for m in result] == ["h2", "h3"]
+
+    @pytest.mark.asyncio
+    async def test_respects_n(self):
+        storage = _make_storage()
+        storage._iterate_all_rows = AsyncMock(return_value=[
+            _entity(f"h{i}", "x" * i) for i in range(1, 20)
+        ])
+
+        assert len(await storage.get_largest_memories(n=5)) == 5
+
+    @pytest.mark.asyncio
+    async def test_uninitialized_returns_empty_list(self):
+        storage = _make_storage()
+        storage._initialized = False
+
+        assert await storage.get_largest_memories() == []
+
+
+# -- recall (search.py, unguarded) --------------------------------------------
+
+
+class TestRecall:
+
+    @pytest.mark.asyncio
+    async def test_time_only_recall_filters_and_orders_by_recency(self):
+        storage = _make_storage()
+        captured: Dict[str, Any] = {}
+
+        async def _iterate(filter_expr, **kwargs):
+            captured["filter"] = filter_expr
+            return [
+                _entity("old", "old memory", created_at=100.0),
+                _entity("new", "new memory", created_at=300.0),
+            ]
+
+        storage._iterate_all_rows = AsyncMock(side_effect=_iterate)
+
+        results = await storage.recall(start_timestamp=50.0, end_timestamp=400.0)
+
+        assert [r.memory.content_hash for r in results] == ["new", "old"]
+        assert "created_at >= 50.0" in captured["filter"]
+        assert "created_at <= 400.0" in captured["filter"]
+
+    @pytest.mark.asyncio
+    async def test_time_only_recall_respects_n_results(self):
+        storage = _make_storage()
+        storage._iterate_all_rows = AsyncMock(return_value=[
+            _entity(f"h{i}", f"memory {i}", created_at=float(i)) for i in range(10)
+        ])
+
+        results = await storage.recall(n_results=3)
+
+        assert len(results) == 3
+
+    @pytest.mark.asyncio
+    async def test_semantic_recall_applies_the_time_window_to_the_search(self):
+        storage = _make_storage()
+        captured: Dict[str, Any] = {}
+
+        async def _run_search(embedding, filter_expr, fetch_n):
+            captured["filter"] = filter_expr
+            return [{
+                "id": "h1",
+                "distance": 0.9,
+                "entity": _entity("h1", "hit", created_at=200.0),
+                **_entity("h1", "hit", created_at=200.0),
+            }]
+
+        storage._run_search = AsyncMock(side_effect=_run_search)
+
+        results = await storage.recall(
+            query="anything", n_results=5, start_timestamp=100.0, end_timestamp=300.0
+        )
+
+        assert [r.memory.content_hash for r in results] == ["h1"]
+        assert "created_at >= 100.0" in captured["filter"]
+        assert "created_at <= 300.0" in captured["filter"]
+
+    @pytest.mark.asyncio
+    async def test_semantic_recall_without_a_window_passes_an_empty_filter(self):
+        storage = _make_storage()
+        captured: Dict[str, Any] = {}
+
+        async def _run_search(embedding, filter_expr, fetch_n):
+            captured["filter"] = filter_expr
+            return []
+
+        storage._run_search = AsyncMock(side_effect=_run_search)
+
+        await storage.recall(query="anything")
+
+        assert captured["filter"] == ""
+
+    @pytest.mark.asyncio
+    async def test_embedding_failure_returns_empty_list(self):
+        storage = _make_storage()
+        storage._embed_query = MagicMock(return_value=None)
+
+        assert await storage.recall(query="anything") == []
+
+    @pytest.mark.asyncio
+    async def test_uninitialized_returns_empty_list(self):
+        storage = _make_storage()
+        storage._initialized = False
+
+        assert await storage.recall(query="anything") == []
+
+
+# -- the returned shape is what the API layer serializes ----------------------
+
+
+@pytest.mark.asyncio
+async def test_tags_with_counts_shape_matches_the_api_response_model():
+    """web/api/memories.py builds TagResponse(tag=..., count=...) from each item."""
+    storage = _make_storage()
+    storage._call_client = AsyncMock(return_value=_tag_rows(",alpha,"))
+
+    item = (await storage.get_all_tags_with_counts())[0]
+
+    assert set(item) == {"tag", "count"}
+    assert isinstance(item["tag"], str)
+    assert isinstance(item["count"], int)
+
+
+@pytest.mark.asyncio
+async def test_largest_memories_returns_memory_objects():
+    storage = _make_storage()
+    storage._iterate_all_rows = AsyncMock(return_value=[_entity("h1", "content")])
+
+    result = await storage.get_largest_memories(n=1)
+
+    assert isinstance(result[0], Memory)
