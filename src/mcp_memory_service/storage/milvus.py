@@ -41,6 +41,7 @@ import math
 import os
 import time
 import traceback
+from collections import Counter
 from datetime import datetime, timezone, timedelta, date
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -2773,8 +2774,7 @@ class MilvusMemoryStorage(MemoryStorage):
         if not self._ensure_initialized():
             return 0
 
-        import time as _time
-        cutoff = _time.time() - (older_than_days * 86400)
+        cutoff = time.time() - (older_than_days * 86400)
 
         # Milvus can't filter on JSON sub-fields easily, so we need to
         # scan for memories with deleted_at in metadata
@@ -2871,7 +2871,12 @@ class MilvusMemoryStorage(MemoryStorage):
                     return 0
         return 0
 
-    async def get_all_tags(self) -> List[str]:
+    async def _scan_tags(self) -> List[List[str]]:
+        """Return the tag list of every stored memory, one entry per memory.
+
+        Shared by get_all_tags and get_all_tags_with_counts so the two readers
+        cannot disagree about which tags exist (issue #213).
+        """
         if not self._ensure_initialized():
             return []
 
@@ -2884,14 +2889,93 @@ class MilvusMemoryStorage(MemoryStorage):
                 limit=_MILVUS_MAX_LIMIT,
             )
         except Exception as exc:  # noqa: BLE001
-            logger.warning("get_all_tags failed: %s", exc)
+            logger.warning("tag scan failed: %s", exc)
             return []
 
+        return [_string_to_tags(row.get("tags")) for row in rows]
+
+    async def get_all_tags(self) -> List[str]:
         seen: set[str] = set()
-        for row in rows:
-            for tag in _string_to_tags(row.get("tags")):
-                seen.add(tag)
+        for tags in await self._scan_tags():
+            seen.update(tags)
         return sorted(seen)
+
+    async def get_all_tags_with_counts(self) -> List[Dict[str, Any]]:
+        """Tags with usage counts, ordered by count descending then tag ascending.
+
+        web/api/memories.py::get_tags calls this without a hasattr guard, so its
+        absence surfaced as HTTP 501 on the dashboard Browse tab (issue #213).
+        """
+        counts: Counter = Counter()
+        for tags in await self._scan_tags():
+            counts.update(tags)
+        return [
+            {"tag": tag, "count": count}
+            for tag, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+        ]
+
+    async def get_largest_memories(self, n: int = 10) -> List[Memory]:
+        """The n largest memories by content length (web/api/analytics.py).
+
+        Milvus has no server-side ORDER BY, so unlike the SQL backends this
+        sorts client-side over the scanned rows.
+        """
+        if not self._ensure_initialized():
+            return []
+        memories = await self._query_memories(filter_expr="", limit=_MILVUS_MAX_LIMIT)
+        memories.sort(key=lambda m: len(m.content or ""), reverse=True)
+        return memories[:n]
+
+    def _time_window_filter(
+        self,
+        start_timestamp: Optional[float] = None,
+        end_timestamp: Optional[float] = None,
+    ) -> str:
+        """Build the ``created_at`` bounds fragment for a recall time window."""
+        parts = []
+        if start_timestamp is not None:
+            parts.append(f"created_at >= {float(start_timestamp)}")
+        if end_timestamp is not None:
+            parts.append(f"created_at <= {float(end_timestamp)}")
+        return self._combine_filter(*parts)
+
+    async def recall(
+        self,
+        query: Optional[str] = None,
+        n_results: int = 5,
+        start_timestamp: Optional[float] = None,
+        end_timestamp: Optional[float] = None,
+    ) -> List[MemoryQueryResult]:
+        """Time-windowed retrieval, semantically ranked when a query is given.
+
+        Called unguarded from web/api/search.py, so a missing override fails the
+        endpoint the same way #213 failed /api/tags.
+        """
+        if not self._ensure_initialized():
+            return []
+
+        time_filter = self._time_window_filter(start_timestamp, end_timestamp)
+
+        if query:
+            query_embedding = self._embed_query(query)
+            if query_embedding is None:
+                return []
+            hits = await self._run_search(query_embedding, time_filter, n_results)
+            return self._rank_and_trim(hits, query, n_results, min_confidence=0.0)
+
+        memories = await self._query_memories(
+            filter_expr=time_filter,
+            limit=n_results,
+            sort_desc_key="created_at",
+        )
+        return [
+            MemoryQueryResult(
+                memory=memory,
+                relevance_score=0.0,
+                debug_info={"backend": "milvus", "query_type": "time_based"},
+            )
+            for memory in memories
+        ]
 
     async def get_recent_memories(self, n: int = 10) -> List[Memory]:
         return await self.get_all_memories(limit=n, offset=0)
