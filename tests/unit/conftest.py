@@ -6,6 +6,46 @@ import tempfile
 from pathlib import Path
 from typing import List, Any, Optional
 
+import pytest
+
+
+def _refuse_real_kill(pid):
+    raise AssertionError(
+        f"mcp_memory_service.cli.lifecycle._kill_process was called for "
+        f"real with pid={pid} -- this test needs to mock it explicitly "
+        "(this default exists so a missing mock fails loudly here instead "
+        "of sending a real signal to whatever process happens to own a "
+        "port; two different tests once sent a real SIGTERM/SIGKILL to "
+        "the memory service's own default port before this guard existed)."
+    )
+
+
+@pytest.fixture(autouse=True)
+def _lifecycle_process_safety_net(monkeypatch):
+    """Structural guard, not per-test discipline: any test anywhere under
+    tests/unit/ that reaches lifecycle._kill_process without mocking it
+    gets a loud AssertionError instead of a real signal -- this is the
+    actual protection. To test _kill_process itself, re-patch it in that
+    test; the raise-by-default here is just the fallback for everyone
+    else. monkeypatch auto-restores it at teardown, so nothing leaks into
+    later tests in the session. A no-op for tests that never touch the
+    CLI lifecycle module.
+
+    MCP_HTTP_PORT/HOST are also pinned away from this service's real
+    default port (8000), covering the case where a test relies on
+    launch's *default* port rather than passing --port explicitly (a
+    test that passes --port 8000 directly bypasses this env entirely --
+    _kill_process raising is what protects that case). This pin is only
+    meaningful because mcp_memory_service.config.transport reads
+    MCP_HTTP_PORT at import time, before any fixture runs, and that
+    module happens to already be imported by the time tests collect; if
+    that import were ever deferred into a test body, the env would need
+    to be set before the import, not just before the test."""
+    from mcp_memory_service.cli import lifecycle
+    monkeypatch.setattr(lifecycle, "_kill_process", _refuse_real_kill)
+    monkeypatch.setenv("MCP_HTTP_HOST", "127.0.0.1")
+    monkeypatch.setenv("MCP_HTTP_PORT", "59999")
+
 
 async def extract_chunks_from_temp_file(
     loader: Any,

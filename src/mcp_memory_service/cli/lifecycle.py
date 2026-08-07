@@ -188,7 +188,14 @@ def _find_process_on_port(port: int) -> int | None:
     else:
         try:
             result = subprocess.run(
-                ["lsof", "-i", f":{port}", "-t"],
+                # -sTCP:LISTEN: without it, lsof matches every socket
+                # touching this port -- including established client
+                # connections -- and splitlines()[0] (process-table
+                # order, not connection role) can return a client's PID
+                # instead of the actual listener's. -n -P skip DNS/service
+                # name resolution, which otherwise risk blocking toward
+                # the 5s timeout on a host with slow/broken DNS.
+                ["lsof", "-n", "-P", "-sTCP:LISTEN", "-i", f":{port}", "-t"],
                 capture_output=True, text=True, timeout=5,
             )
             if result.stdout.strip():
@@ -244,19 +251,123 @@ def _base_url(host: str, port: int) -> str:
     return f"{scheme}://{host}:{port}"
 
 
-def _http_get_json(url: str, timeout: int = 3) -> dict | None:
-    """GET a JSON endpoint, return parsed dict or None on failure."""
-    try:
-        import ssl
-        import urllib.request
+def _cli_allow_self_signed_certs() -> bool:
+    """Return True only if MCP_MEMORY_ALLOW_SELF_SIGNED_CERTS is explicitly
+    enabled in the environment. Defaults to False (verify). Deliberately
+    reads only os.environ, not a .env file: a flag that disables this
+    CLI's only line of MITM defense should require an explicit, visible
+    environment variable, not a value read from a stray .env file in
+    whatever directory happens to be the current working directory.
+    Matches the name examples/http-mcp-bridge.js already uses for the
+    identical opt-in. Not shared with opencode (its own
+    OPENCODE_MEMORY_ALLOW_SELF_SIGNED_CERTS) or claude-hooks (a
+    config-file `allowSelfSignedCerts` boolean, not an env var) -- a
+    homelab deployment pointing all of these at one self-signed endpoint
+    still needs to set each of the three separately."""
+    return os.environ.get("MCP_MEMORY_ALLOW_SELF_SIGNED_CERTS", "").strip().lower() in (
+        "1", "true", "yes",
+    )
+
+
+_self_signed_warning_shown = False
+_ssl_failure_warning_shown = False
+
+
+def _warn_self_signed_bypass_once() -> None:
+    """Print the MITM warning at most once per process -- callers like
+    `launch` poll _probe_health dozens of times per invocation, and a
+    security warning that scrolls by 60 times trains users to ignore it."""
+    global _self_signed_warning_shown
+    if not _self_signed_warning_shown:
+        _self_signed_warning_shown = True
+        click.echo(
+            "WARNING: TLS certificate validation DISABLED "
+            "(MCP_MEMORY_ALLOW_SELF_SIGNED_CERTS). This leaves the connection "
+            "vulnerable to MITM -- use only for local development with "
+            "self-signed certs. To trust a real internal CA instead, set "
+            "SSL_CERT_FILE to its bundle path.",
+            err=True,
+        )
+
+
+def _warn_ssl_failure_once(url: str, err: Exception) -> None:
+    """Print a TLS-failure diagnostic at most once per process -- same
+    reasoning as _warn_self_signed_bypass_once. Only recommends the
+    self-signed opt-in for an actual certificate-verification failure
+    (ssl.SSLCertVerificationError); a plain ssl.SSLError from something
+    else (protocol mismatch, e.g. MCP_HTTPS_ENABLED=true against a server
+    that's actually speaking plain HTTP) gets a different message, since
+    that opt-in cannot fix it and would be reached with it already on
+    (CERT_NONE makes SSLCertVerificationError impossible once opted in)."""
+    import ssl  # inline import: matches this module's stdlib-only, no-heavy-import-at-load-time design
+    global _ssl_failure_warning_shown
+    if _ssl_failure_warning_shown:
+        return
+    _ssl_failure_warning_shown = True
+    if isinstance(err, ssl.SSLCertVerificationError):
+        click.echo(
+            f"WARNING: TLS certificate verification failed for {url} ({err}). "
+            "If this is a local self-signed certificate, set "
+            "MCP_MEMORY_ALLOW_SELF_SIGNED_CERTS=true -- development only, "
+            "it disables MITM protection.",
+            err=True,
+        )
+    else:
+        click.echo(
+            f"WARNING: TLS error talking to {url} ({err}). If the server "
+            "isn't actually running HTTPS, unset MCP_HTTPS_ENABLED; "
+            "otherwise this may be a network issue or an incompatible TLS "
+            "configuration.",
+            err=True,
+        )
+
+
+def _probe_health(url: str, timeout: int = 3) -> tuple[dict | None, bool]:
+    """GET a JSON endpoint. Returns (parsed_body_or_None, tls_blocked),
+    where tls_blocked is True only for a certificate-verification failure
+    specifically (not any other TLS or connection error) -- the one case
+    where a None result likely means "something is listening and probably
+    healthy, just unverifiable" rather than "not running." Callers that
+    decide whether to kill and restart a process based on a failed health
+    check need that distinction: killing a working server because its
+    self-signed cert wasn't in the trust store would be a regression, not
+    a fix.
+
+    Certificate verification stays on unless MCP_MEMORY_ALLOW_SELF_SIGNED_CERTS
+    opts out. Warns when the bypass actually fires -- this
+    disables certificate validation and is this CLI's only line of MITM
+    defense against its own configured HTTPS endpoint, so it should never
+    be silent. A verification failure that reaches here without the opt-in
+    also gets a one-line pointer to that flag, instead of the generic
+    "server not responding" a caller would otherwise see.
+
+    Note: urllib wraps every failure raised inside urlopen's connection
+    handling -- including ssl.SSLError -- in a urllib.error.URLError, so
+    the real exception is on `.reason`, not the caught object itself.
+    Catching bare ssl.SSLError here would never match a real handshake
+    failure.
+    """
+    import ssl  # inline import: matches this module's stdlib-only, no-heavy-import-at-load-time design
+    import urllib.error  # inline import: see above
+    import urllib.request  # inline import: see above
+    ctx = None
+    if url.startswith("https:") and _cli_allow_self_signed_certs():
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
+        _warn_self_signed_bypass_once()
+    try:
         req = urllib.request.Request(url, headers={"Accept": "application/json"})
         with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
-            return json.loads(resp.read().decode())
+            return json.loads(resp.read().decode()), False
+    except (ssl.SSLError, urllib.error.URLError) as e:
+        reason = e.reason if isinstance(e, urllib.error.URLError) else e
+        if isinstance(reason, ssl.SSLError):
+            _warn_ssl_failure_once(url, reason)
+            return None, isinstance(reason, ssl.SSLCertVerificationError)
+        return None, False
     except Exception:
-        return None
+        return None, False
 
 
 # ─── Log reading with streaming tail (no full-file load) ──────────────────────
@@ -325,10 +436,33 @@ def launch(ctx, http_host, http_port, detach, storage_backend, debug):
     # Check if already running
     existing_pid = _read_pid()
     if existing_pid:
-        health = _http_get_json(f"{base_url}/api/health")
+        health, tls_blocked = _probe_health(f"{base_url}/api/health")
         if health and health.get("status") == "healthy":
             click.echo(f"Server already running (PID {existing_pid})")
             click.echo(f"  Dashboard: {base_url}")
+            return
+        if tls_blocked:
+            # _read_pid() already filters out dead PIDs, so existing_pid
+            # being truthy means this process is alive. A cert-verification
+            # failure then means something is listening and likely healthy
+            # -- killing and relaunching it here would be a regression for
+            # a self-signed-cert user who upgraded, not a helpful recovery
+            # from a genuinely stopped server.
+            click.echo(
+                f"Process {existing_pid} appears to be running, but its "
+                "certificate could not be verified, so health could not be "
+                "confirmed."
+            )
+            click.echo(
+                "If this is a known self-signed certificate, set "
+                "MCP_MEMORY_ALLOW_SELF_SIGNED_CERTS=true and re-run, "
+                f"verify manually at {base_url}/api/health, or run "
+                "'memory stop' first if you want to force a restart."
+            )
+            click.echo(
+                "Not restarting an already-running process based on an "
+                "unverifiable health check."
+            )
             return
 
     # Kill stale process on the port if any
@@ -406,9 +540,10 @@ def launch(ctx, http_host, http_port, detach, storage_backend, debug):
 
     # Poll health endpoint until server is ready
     click.echo("Waiting for server to start...")
+    saw_tls_block = False
     for i in range(60):
         time.sleep(0.5)
-        health = _http_get_json(f"{base_url}/api/health")
+        health, tls_blocked = _probe_health(f"{base_url}/api/health")
         if health and health.get("status") == "healthy":
             click.echo(f"Server started (PID {proc.pid})")
             click.echo(f"  Dashboard: {base_url}")
@@ -418,8 +553,47 @@ def launch(ctx, http_host, http_port, detach, storage_backend, debug):
             if health.get("storage_backend"):
                 click.echo(f"  Backend:    {health['storage_backend']}")
             return
+        saw_tls_block = saw_tls_block or tls_blocked
+        if proc.poll() is not None:
+            # Child has exited -- further polling is pointless. Break
+            # immediately rather than waiting out the remaining ~29s to
+            # reach the same "check logs" conclusion.
+            break
+        if tls_blocked and _find_process_on_port(port) == proc.pid:
+            # A cert-verification failure will never resolve itself by
+            # polling again -- stop wasting the remaining time. Confirmed
+            # via port ownership, not just "child hasn't exited": uvicorn
+            # does its heavy import (config.load()) before binding the
+            # socket, so during that window the child is alive but not
+            # yet listening, and a probe hitting a *different* process
+            # already on the port would also read as tls_blocked. Only
+            # trust the message once our own child is the one that
+            # actually answered. _find_process_on_port requires lsof/
+            # netstat; on a host without either it always returns None,
+            # so this never fires and polling continues to the timeout
+            # below -- saw_tls_block still gets that case a useful hint.
+            click.echo(f"Server process started (PID {proc.pid}), but its certificate "
+                       "could not be verified.")
+            click.echo("If this is a known self-signed certificate, set "
+                       "MCP_MEMORY_ALLOW_SELF_SIGNED_CERTS=true and check again with "
+                       "'memory health'.")
+            return
 
-    click.echo(f"Server process started (PID {proc.pid}) but health check timed out.")
+    if proc.poll() is not None:
+        # A dead child could have exited for any reason (e.g. EADDRINUSE
+        # because a pre-existing, unrelated service already owns the
+        # port) -- a cert failure seen while polling may belong to that
+        # other service, not to anything of ours, so the self-signed hint
+        # below is intentionally reserved for the genuine-timeout case.
+        click.echo(f"Server process (PID {proc.pid}) exited with code {proc.returncode} "
+                   "before becoming healthy.")
+    else:
+        click.echo(f"Server process started (PID {proc.pid}) but health check timed out.")
+        if saw_tls_block:
+            click.echo("A certificate-verification failure was seen while polling. If "
+                       "this is a known self-signed certificate, set "
+                       "MCP_MEMORY_ALLOW_SELF_SIGNED_CERTS=true and check again with "
+                       "'memory health'.")
     click.echo(f"Check logs: {_log_file()}")
     click.echo("Verify with: memory health")
 
@@ -456,7 +630,7 @@ def stop(http_host, http_port):
         click.echo("Server stopped.")
     else:
         base_url = _base_url(host, port)
-        health = _http_get_json(f"{base_url}/api/health")
+        health, tls_blocked = _probe_health(f"{base_url}/api/health")
         if health:
             click.echo("Server responds but no managed PID found. Force-stopping by port...")
             port_pid_now = _find_process_on_port(port)
@@ -465,6 +639,17 @@ def stop(http_host, http_port):
                 click.echo("Server stopped.")
             else:
                 click.echo("Could not find process on port. Stop manually.")
+        elif tls_blocked:
+            click.echo(
+                "Something is listening on this port, but its certificate "
+                "could not be verified, so it can't be confirmed as the "
+                "memory server."
+            )
+            click.echo(
+                "If this is a known self-signed certificate, set "
+                "MCP_MEMORY_ALLOW_SELF_SIGNED_CERTS=true and re-run, or "
+                "stop it manually if it's not the memory server."
+            )
         else:
             click.echo("Server is not running.")
 
@@ -490,12 +675,22 @@ def restart(ctx, http_host, http_port, storage_backend, debug):
     
     # If storage_backend not specified, try to read it from the running server
     if storage_backend is None:
-        health = _http_get_json(f"{base_url}/api/health")
+        health, tls_blocked = _probe_health(f"{base_url}/api/health")
         if health and health.get("storage_backend"):
             storage_backend = health["storage_backend"]
             # Normalize: server may return "sqlite_vec" or "sqlite-vec"
             if storage_backend not in ("sqlite_vec", "sqlite-vec", "cloudflare", "hybrid"):
                 storage_backend = None  # Unknown backend, let launch use its default
+        elif tls_blocked:
+            click.echo(
+                "Could not confirm the current storage backend because the "
+                "server's certificate could not be verified. Restarting "
+                "without an explicit backend -- the server will fall back "
+                "to its own configuration (.env or environment), which may "
+                "not be what you expect. Pass --storage-backend explicitly "
+                "to be sure.",
+                err=True,
+            )
     
     click.echo("Restarting server...")
     ctx.invoke(stop, http_host=http_host, http_port=http_port)
@@ -514,7 +709,7 @@ def status(http_host, http_port):
     base_url = _base_url(host, port)
 
     pid = _read_pid()
-    health = _http_get_json(f"{base_url}/api/health")
+    health, tls_blocked = _probe_health(f"{base_url}/api/health")
 
     click.echo()
     click.echo("  MCP Memory Service")
@@ -531,6 +726,17 @@ def status(http_host, http_port):
             click.echo(f"  Version:   {health['version']}")
         if health.get("storage_backend"):
             click.echo(f"  Backend:   {health['storage_backend']}")
+    elif tls_blocked:
+        click.echo("  Status:    UNKNOWN (certificate unverifiable)")
+        click.echo(f"  Port:      {port}")
+        click.echo(f"  Dashboard: {base_url}")
+        if pid:
+            click.echo(f"  PID:       {pid}")
+        click.echo()
+        click.echo("  Something is listening on this port, but its certificate")
+        click.echo("  could not be verified. If this is a known self-signed")
+        click.echo("  certificate, set MCP_MEMORY_ALLOW_SELF_SIGNED_CERTS=true")
+        click.echo("  and check again.")
     else:
         click.echo("  Status:    INACTIVE")
         click.echo(f"  Port:      {port}")
@@ -554,13 +760,26 @@ def health_cmd(http_host, http_port):
     port = http_port or int(os.environ.get("MCP_HTTP_PORT", "8000"))
     base_url = _base_url(host, port)
 
-    health = _http_get_json(f"{base_url}/api/health")
+    health, tls_blocked = _probe_health(f"{base_url}/api/health")
     if health:
         click.echo(json.dumps(health, indent=2))
+    elif tls_blocked:
+        # The /health/detailed probe would fail the identical way for the
+        # identical reason -- skip it rather than wait out a second doomed
+        # request before showing the same diagnostic.
+        click.echo("Something is listening, but its certificate could not be verified.")
+        click.echo("If this is a known self-signed certificate, set "
+                   "MCP_MEMORY_ALLOW_SELF_SIGNED_CERTS=true and check again.")
+        sys.exit(1)
     else:
-        detailed = _http_get_json(f"{base_url}/api/health/detailed")
+        detailed, detailed_tls_blocked = _probe_health(f"{base_url}/api/health/detailed")
         if detailed:
             click.echo(json.dumps(detailed, indent=2))
+        elif detailed_tls_blocked:
+            click.echo("Something is listening, but its certificate could not be verified.")
+            click.echo("If this is a known self-signed certificate, set "
+                       "MCP_MEMORY_ALLOW_SELF_SIGNED_CERTS=true and check again.")
+            sys.exit(1)
         else:
             click.echo("Server is not reachable.")
             click.echo("Start with: memory launch")

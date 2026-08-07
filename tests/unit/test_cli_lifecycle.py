@@ -24,6 +24,10 @@ import os
 from unittest.mock import patch, MagicMock
 from click.testing import CliRunner
 
+# The _kill_process real-signal guard and MCP_HTTP_PORT/HOST pinning live
+# in conftest.py's autouse _lifecycle_process_safety_net fixture -- it
+# applies here automatically, no per-file setup needed.
+
 
 def test_lifecycle_commands_registered():
     """Test that all lifecycle commands are registered with the CLI group."""
@@ -141,40 +145,56 @@ def test_launch_command_no_c_style_injection():
         mock_proc.stderr = MagicMock()
         mock_popen.return_value = mock_proc
         
-        # Mock _http_get_json to return healthy status immediately
-        with patch.object(lifecycle, '_http_get_json', return_value={"status": "healthy"}):
+        # Mock _probe_health to return healthy status immediately
+        with patch.object(lifecycle, '_probe_health', return_value=({"status": "healthy"}, False)):
             with patch.object(lifecycle, '_write_pid'):
-                with patch('mcp_memory_service.cli.lifecycle.sys.executable', new='/usr/bin/python3'):
-                    with patch.object(lifecycle, '_ensure_dirs'):
-                        # Simulate launch call with a potentially malicious host
-                        malicious_host = "127.0.0.1'; echo pwned #"
-                        
-                        try:
-                            # We need to call through the click command entry point
-                            from click.testing import CliRunner
-                            from mcp_memory_service.cli.lifecycle import launch
-                            
-                            runner = CliRunner()
-                            result = runner.invoke(launch, ['--host', malicious_host, '--port', '8000', '--detach'])
-                            
-                            # Check that Popen was called
-                            assert mock_popen.called, "subprocess.Popen was not called"
-                            
-                            # Get the args passed to Popen
-                            call_args = mock_popen.call_args
-                            cmd = call_args[0][0] if call_args[0] else call_args[1].get('args', [])
-                            
-                            # Verify no '-c' flag in command args (the fix)
-                            assert '-c' not in cmd, f"Found '-c' in command args: {cmd} - command injection vulnerability still present"
-                            
-                            # Verify host is NOT interpolated into a code string
-                            if len(cmd) > 0:
-                                cmd_str = ' '.join(str(x) for x in cmd)
-                                # The malicious host should not appear inside a Python code string
-                                assert f"host='{malicious_host}'" not in cmd_str, f"Unsafe string interpolation detected in: {cmd_str}"
-                        except Exception:
-                            # Ignore test execution issues (we're testing the implementation pattern)
-                            pass
+                with (
+                    # Never let this test depend on real machine state or
+                    # touch the real filesystem: a live PID file would
+                    # make launch take the "already running" early return
+                    # before Popen is ever called; --port 8000 reaching
+                    # the real _find_process_on_port/_kill_process path on
+                    # a machine actually running `memory launch` would
+                    # send a real SIGTERM/SIGKILL to the running server;
+                    # and without mocking _log_file/open, launch does a
+                    # real `open()` against this user's actual data
+                    # directory (which only "worked" locally because that
+                    # directory already existed from prior real use --
+                    # a fresh checkout/CI runner has no such directory and
+                    # fails with FileNotFoundError).
+                    patch.object(lifecycle, '_read_pid', return_value=None),
+                    patch.object(lifecycle, '_find_process_on_port', return_value=None),
+                    patch('mcp_memory_service.cli.lifecycle.sys.executable', new='/usr/bin/python3'),
+                    patch.object(lifecycle, '_ensure_dirs'),
+                    patch.object(lifecycle, '_log_file', return_value=MagicMock()),
+                    patch('builtins.open'),
+                ):
+                    # Simulate launch call with a potentially malicious host
+                    malicious_host = "127.0.0.1'; echo pwned #"
+
+                    # We need to call through the click command entry point
+                    from click.testing import CliRunner
+                    from mcp_memory_service.cli.lifecycle import launch
+
+                    runner = CliRunner()
+                    result = runner.invoke(launch, ['--host', malicious_host, '--port', '8000', '--detach'])
+                    assert result.exit_code == 0, f"{result.output}\n{result.exception}"
+
+                    # Check that Popen was called
+                    assert mock_popen.called, "subprocess.Popen was not called"
+
+                    # Get the args passed to Popen
+                    call_args = mock_popen.call_args
+                    cmd = call_args[0][0] if call_args[0] else call_args[1].get('args', [])
+
+                    # Verify no '-c' flag in command args (the fix)
+                    assert '-c' not in cmd, f"Found '-c' in command args: {cmd} - command injection vulnerability still present"
+
+                    # Verify host is NOT interpolated into a code string
+                    if len(cmd) > 0:
+                        cmd_str = ' '.join(str(x) for x in cmd)
+                        # The malicious host should not appear inside a Python code string
+                        assert f"host='{malicious_host}'" not in cmd_str, f"Unsafe string interpolation detected in: {cmd_str}"
 
 
 def test_launch_command_sends_excluded_handles():
@@ -199,21 +219,32 @@ def test_launch_command_sends_excluded_handles():
             mock_proc.pid = 12345
             mock_popen.return_value = mock_proc
             
-            with patch.object(lifecycle, '_http_get_json', return_value={"status": "healthy"}):
+            with patch.object(lifecycle, '_probe_health', return_value=({"status": "healthy"}, False)):
                 with patch.object(lifecycle, '_write_pid'):
-                    with patch('mcp_memory_service.cli.lifecycle.sys.executable', new='/usr/bin/python3'):
-                        with patch.object(lifecycle, '_ensure_dirs'):
-                            # Mock _log_file to return a valid Path
-                            with patch.object(lifecycle, '_log_file', return_value=MagicMock()):
-                                from click.testing import CliRunner
-                                from mcp_memory_service.cli.lifecycle import launch
-                                
-                                runner = CliRunner()
-                                result = runner.invoke(launch, ['--host', '127.0.0.1', '--port', '8000', '--detach'])
-                                
-                                # Verify close() was called on both handles after Popen
-                                assert mock_out_handle.close.called, "stdout handle was not closed in parent"
-                                assert mock_err_handle.close.called, "stderr handle was not closed in parent"
+                    with (
+                        # Same real-machine-state hazard as the sibling
+                        # test above -- a live PID file would skip Popen
+                        # entirely, and --port 8000 reaching the real
+                        # _find_process_on_port/_kill_process call would
+                        # send a real SIGTERM/SIGKILL to whatever is
+                        # actually running on this service's default port.
+                        patch.object(lifecycle, '_read_pid', return_value=None),
+                        patch.object(lifecycle, '_find_process_on_port', return_value=None),
+                        patch('mcp_memory_service.cli.lifecycle.sys.executable', new='/usr/bin/python3'),
+                        patch.object(lifecycle, '_ensure_dirs'),
+                        # Mock _log_file to return a valid Path
+                        patch.object(lifecycle, '_log_file', return_value=MagicMock()),
+                    ):
+                        from click.testing import CliRunner
+                        from mcp_memory_service.cli.lifecycle import launch
+
+                        runner = CliRunner()
+                        result = runner.invoke(launch, ['--host', '127.0.0.1', '--port', '8000', '--detach'])
+                        assert result.exit_code == 0, f"{result.output}\n{result.exception}"
+
+                        # Verify close() was called on both handles after Popen
+                        assert mock_out_handle.close.called, "stdout handle was not closed in parent"
+                        assert mock_err_handle.close.called, "stderr handle was not closed in parent"
 
 
 def test_logs_command_uses_streaming_tail():
