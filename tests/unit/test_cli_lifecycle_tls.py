@@ -56,10 +56,9 @@ class TestCliAllowSelfSignedCerts:
 
     Deliberately env-var-only, no .env fallback: a flag that disables
     this CLI's only line of MITM defense shouldn't be settable by a
-    stray .env file in whatever directory happens to be cwd. This is
-    intentionally not sharing any code or .env-parsing logic with the
-    pre-existing _is_https_enabled -- that function, its .env fallback,
-    and its behavior are all untouched by this change and out of scope."""
+    stray .env file in whatever directory happens to be cwd. Same
+    discipline _is_https_enabled() now follows too -- see
+    TestIsHttpsEnabled below."""
 
     def test_defaults_to_false(self):
         assert lifecycle._cli_allow_self_signed_certs() is False
@@ -89,6 +88,67 @@ class TestCliAllowSelfSignedCerts:
         stray .env file in cwd cannot silently enable it."""
         (isolated_cwd / ".env").write_text("MCP_MEMORY_ALLOW_SELF_SIGNED_CERTS=true\n")
         assert lifecycle._cli_allow_self_signed_certs() is False
+
+
+class TestIsHttpsEnabled:
+    """Tests for the _is_https_enabled helper.
+
+    Previously fell back to reading MCP_HTTPS_ENABLED from a .env file
+    in cwd if unset in the environment. Now env-var-only, same
+    discipline as _cli_allow_self_signed_certs() above: this decides
+    which scheme the health check probes with, so a stray .env file
+    in whatever directory happens to be cwd shouldn't be able to
+    silently redirect it."""
+
+    def test_defaults_to_false(self):
+        assert lifecycle._is_https_enabled() is False
+
+    def test_explicit_true_enables(self, monkeypatch):
+        monkeypatch.setenv("MCP_HTTPS_ENABLED", "true")
+        assert lifecycle._is_https_enabled() is True
+
+    def test_explicit_false_stays_disabled(self, monkeypatch):
+        monkeypatch.setenv("MCP_HTTPS_ENABLED", "false")
+        assert lifecycle._is_https_enabled() is False
+
+    @pytest.mark.parametrize("value", ["1", "yes", "TRUE", "True"])
+    def test_truthy_variants_enable(self, monkeypatch, value):
+        monkeypatch.setenv("MCP_HTTPS_ENABLED", value)
+        assert lifecycle._is_https_enabled() is True
+
+    def test_empty_env_var_is_disabled(self, monkeypatch):
+        """`docker run -e NAME` with no value, or a blank systemd
+        Environment=, sets the var to "" -- must resolve to the secure
+        default, not raise or behave as truthy."""
+        monkeypatch.setenv("MCP_HTTPS_ENABLED", "")
+        assert lifecycle._is_https_enabled() is False
+
+    def test_dotenv_file_is_ignored(self, isolated_cwd):
+        """A stray .env file in cwd can no longer silently switch the
+        health-check probe onto (or off) HTTPS."""
+        (isolated_cwd / ".env").write_text("MCP_HTTPS_ENABLED=true\n")
+        assert lifecycle._is_https_enabled() is False
+
+
+class TestBaseUrl:
+    """End-to-end coverage for _base_url()'s scheme substitution --
+    the 5 lifecycle commands (launch/stop/restart/info/health) only
+    ever go through this function, never _is_https_enabled() directly,
+    so a helper-level-only test suite could pass while the actual
+    scheme returned to callers was wrong."""
+
+    def test_defaults_to_http(self):
+        assert lifecycle._base_url("127.0.0.1", 8000) == "http://127.0.0.1:8000"
+
+    def test_https_enabled_switches_scheme(self, monkeypatch):
+        monkeypatch.setenv("MCP_HTTPS_ENABLED", "true")
+        assert lifecycle._base_url("127.0.0.1", 8000) == "https://127.0.0.1:8000"
+
+    def test_dotenv_file_does_not_switch_scheme(self, isolated_cwd):
+        """Same guarantee as TestIsHttpsEnabled.test_dotenv_file_is_ignored,
+        but confirmed at the level callers actually consume."""
+        (isolated_cwd / ".env").write_text("MCP_HTTPS_ENABLED=true\n")
+        assert lifecycle._base_url("127.0.0.1", 8000) == "http://127.0.0.1:8000"
 
 
 class TestHttpGetJsonTlsContext:

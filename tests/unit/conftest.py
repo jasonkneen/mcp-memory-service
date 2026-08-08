@@ -35,12 +35,13 @@ def _lifecycle_process_safety_net(monkeypatch):
     default port (8000), covering the case where a test relies on
     launch's *default* port rather than passing --port explicitly (a
     test that passes --port 8000 directly bypasses this env entirely --
-    _kill_process raising is what protects that case). This pin is only
-    meaningful because mcp_memory_service.config.transport reads
-    MCP_HTTP_PORT at import time, before any fixture runs, and that
-    module happens to already be imported by the time tests collect; if
-    that import were ever deferred into a test body, the env would need
-    to be set before the import, not just before the test."""
+    _kill_process raising is what protects that case). This pin works
+    despite mcp_memory_service.config.transport binding HTTP_PORT from
+    MCP_HTTP_PORT at import time (before this fixture ever runs, and
+    monkeypatch.setenv can't reach an already-bound module attribute) --
+    lifecycle.py's own commands never read that cached value, they call
+    os.environ.get("MCP_HTTP_PORT", "8000") directly at call time, which
+    is exactly when this fixture's monkeypatch.setenv is in effect."""
     from mcp_memory_service.cli import lifecycle
     monkeypatch.setattr(lifecycle, "_kill_process", _refuse_real_kill)
     monkeypatch.setenv("MCP_HTTP_HOST", "127.0.0.1")

@@ -229,21 +229,16 @@ def _kill_process(pid: int) -> bool:
 # ─── Health check ─────────────────────────────────────────────────────────────
 
 def _is_https_enabled() -> bool:
-    """Return True if MCP_HTTPS_ENABLED is set in env or the project .env file."""
-    if os.environ.get("MCP_HTTPS_ENABLED", "").lower() in ("1", "true", "yes"):
-        return True
-    # Fall back to reading the .env file in cwd (dev workflow)
-    env_path = Path(".env")
-    if env_path.exists():
-        try:
-            for line in env_path.read_text().splitlines():
-                line = line.strip()
-                if line.startswith("MCP_HTTPS_ENABLED"):
-                    _, _, val = line.partition("=")
-                    return val.strip().lower() in ("1", "true", "yes")
-        except Exception:
-            pass
-    return False
+    """Return True only if MCP_HTTPS_ENABLED is explicitly set in the
+    environment. Deliberately reads only os.environ, not a .env file:
+    this decides which scheme the health check probes with, and a
+    stray .env file in whatever directory happens to be cwd shouldn't
+    be able to silently redirect that probe onto HTTPS (or off it).
+    Same discipline as _cli_allow_self_signed_certs() below, for the
+    same reason -- previously this function had its own .env fallback,
+    deliberately left untouched and out of scope when that sibling
+    function was introduced; this closes that gap."""
+    return os.environ.get("MCP_HTTPS_ENABLED", "").strip().lower() in ("1", "true", "yes")
 
 
 def _base_url(host: str, port: int) -> str:
