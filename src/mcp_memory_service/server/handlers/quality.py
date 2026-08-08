@@ -536,7 +536,18 @@ async def handle_maintain(server, arguments: dict) -> List[types.TextContent]:
                 except Exception:
                     metadata = {}
 
-            entities = extractor.extract_entities(content, metadata)
+            # `tags` is a top-level Memory attribute; `metadata` is the separate
+            # custom-key dict and is empty on a normally-stored memory. Passing
+            # metadata alone left the extractor's metadata-tag branch dead, so
+            # every tag entity was silently dropped (Issue #218). Merge rather
+            # than substitute: a caller-supplied metadata["tags"] stays valid.
+            tags = getattr(mem, 'tags', None) or []
+            if isinstance(tags, str):
+                tags = [t.strip() for t in tags.split(',') if t.strip()]
+            merged_tags = list(dict.fromkeys([*metadata.get('tags', []), *tags]))
+            extraction_input = {**metadata, 'tags': merged_tags} if merged_tags else metadata
+
+            entities = extractor.extract_entities(content, extraction_input)
             total_entities += len(entities)
 
             if graph:
