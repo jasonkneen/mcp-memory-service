@@ -134,22 +134,33 @@ async def handle_memory_graph(server, arguments: dict) -> List[types.TextContent
             from mcp_memory_service.reasoning.entities import EntityExtractor
 
             storage = server.storage
-            if not (hasattr(storage, 'graph') and storage.graph):
+            # Resolve graph storage the way every other action in this module
+            # does. The previous `storage.graph` check could never pass: no
+            # storage class assigns that attribute (Issue #219).
+            graph = await get_graph_storage()
+            if not graph:
                 return [types.TextContent(type="text", text="Error: graph storage required for entity extraction")]
-            mem = await storage.retrieve(hash_val)
+            # get_by_hash is the O(1) hash lookup; retrieve() is semantic search
+            # over a query string and returns a list of MemoryQueryResult.
+            mem = await storage.get_by_hash(hash_val)
             if not mem:
                 return [types.TextContent(type="text", text=f"Memory {hash_val} not found")]
 
             extractor = EntityExtractor(
                 domain_extractors=EntityExtractor.get_domain_extractors()
             )
-            content = mem.get("content", "")
-            metadata = mem.get("metadata", {})
+            content = mem.content or ""
+            metadata = dict(mem.metadata or {})
+            # tags is a top-level Memory attribute, metadata is the custom-key
+            # dict — merge so the extractor's metadata-tag branch fires (#218).
+            merged_tags = list(dict.fromkeys([*metadata.get('tags', []), *(mem.tags or [])]))
+            if merged_tags:
+                metadata['tags'] = merged_tags
             entities = extractor.extract_entities(content, metadata)
 
             stored = 0
             for ent in entities:
-                ok = await storage.graph.store_entity_link(hash_val, ent.name, ent.entity_type)
+                ok = await graph.store_entity_link(hash_val, ent.name, ent.entity_type)
                 if ok:
                     stored += 1
 

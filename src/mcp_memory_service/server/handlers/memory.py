@@ -1102,16 +1102,35 @@ async def handle_memory_search(server, arguments: dict) -> List[types.TextConten
 
         # Entity filter: restrict to memories linked to a specific entity
         entity_filter = arguments.get("entity")
-        if entity_filter and hasattr(storage, 'graph') and storage.graph:
+        if entity_filter:
+            # Resolved via get_graph_storage(), not a `storage.graph` attribute —
+            # nothing ever assigned that, so this filter silently never applied
+            # (Issue #219).
+            from .graph import get_graph_storage
+            graph = await get_graph_storage()
+            if not graph:
+                return [types.TextContent(
+                    type="text",
+                    text=f"Error: entity filter requires a backend with graph support; "
+                         f"'{_sanitize_log_value(entity_filter)}' cannot be applied."
+                )]
             try:
-                entity_hashes = set(await storage.graph.find_memories_by_entity(entity_filter))
-                if entity_hashes:
-                    memories = [m for m in memories if m.get("content_hash") in entity_hashes]
-                    total = len(memories)
-                    result["memories"] = memories
-                    result["total"] = total
-            except Exception:
-                pass  # If entity lookup fails, return unfiltered results
+                entity_hashes = set(await graph.find_memories_by_entity(entity_filter))
+            except Exception as e:
+                logger.error("Entity filter lookup failed for %s: %s",
+                             _sanitize_log_value(entity_filter), e, exc_info=True)
+                return [types.TextContent(
+                    type="text",
+                    text=f"Error: entity filter lookup failed for "
+                         f"'{_sanitize_log_value(entity_filter)}': {e}"
+                )]
+            # An entity with no linked memories filters everything out. Returning
+            # unfiltered results for an explicit filter would be a silent lie;
+            # an empty result set is the honest answer.
+            memories = [m for m in memories if m.get("content_hash") in entity_hashes]
+            total = len(memories)
+            result["memories"] = memories
+            result["total"] = total
 
         # Apply truncation if needed
         if max_response_chars > 0 and memories:
