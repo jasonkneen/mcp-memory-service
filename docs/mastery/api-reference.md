@@ -4,7 +4,10 @@ This document catalogs available APIs exposed via the MCP servers and summarizes
 
 ## MCP (FastMCP HTTP) Tools
 
-The v10.0.0 unified MCP tool surface (12 tools — see `src/mcp_memory_service/server_impl.py` for the authoritative list):
+The core of the unified MCP tool surface introduced in v10.0.0. This table is the
+orientation set, not the full list — the authoritative list is
+`TOOL_REGISTRY` in `src/mcp_memory_service/tools/registry.py`, which has grown well past
+these twelve (`grep -c 'ToolDef(' src/mcp_memory_service/tools/registry.py`):
 
 | Tool | Purpose |
 |------|---------|
@@ -19,9 +22,18 @@ The v10.0.0 unified MCP tool surface (12 tools — see `src/mcp_memory_service/s
 | `memory_consolidate` | Run/manage consolidation (replaces `trigger_consolidation`, `scheduler_status`) |
 | `memory_quality` | Rate / get / analyze quality (replaces `rate_memory`, `get_memory_quality`, `analyze_quality_distribution`) |
 | `memory_ingest` | Ingest documents (PDF/DOCX/TXT/JSON) |
-| `memory_graph` | Knowledge-graph queries |
+| `memory_graph` | Knowledge-graph queries (`connected`, `path`, `subgraph`, `extract_entities`, `infer`, `suggest`, `abduct`, `list_entities`, `entity_profile`) |
+| `memory_explore` | Knowledge map of entities for a query, with ranked chunks per entity |
+| `memory_detail` | Full ranked chunk list for one entity, plus its neighbours |
 
-Deprecated v9-and-earlier names continue to work via `compat.py` until v11.0 — see `docs/MIGRATION.md` for the full mapping.
+`memory_explore` and `memory_detail` are the two-phase retrieval pair: explore for an
+overview, detail to drill in. They require a populated entity graph and are unavailable on
+the Cloudflare backend. Setup, prerequisites and limitations:
+[Token-Efficient Retrieval](../guides/token-efficient-retrieval.md).
+
+Deprecated v9-and-earlier tool names **no longer resolve**. The alias layer
+(`compat.DEPRECATED_TOOLS`) was removed in v11.0.0, so old names now fail rather than
+warn — see `docs/MIGRATION.md` for the mapping.
 
 Transport: `mcp.run("streamable-http")`, default host `0.0.0.0`, default port `8000` or `MCP_SERVER_PORT`/`MCP_SERVER_HOST`.
 
@@ -74,7 +86,24 @@ args: { "tags": ["auth", "refactor"], "match_all": true }
 Delete by hash:
 
 ```
-tool: delete_memory
+tool: memory_delete
 args: { "content_hash": "<hash>" }
+```
+
+Bound an oversized search response:
+
+```
+tool: memory_search
+args: { "query": "OAuth refactor", "limit": 5, "max_response_chars": 30000 }
+```
+
+Overview, then drill in:
+
+```
+tool: memory_explore
+args: { "query": "authentication design", "max_entities": 5 }
+
+tool: memory_detail
+args: { "entity_id": "authentication-design", "limit": 20 }
 ```
 

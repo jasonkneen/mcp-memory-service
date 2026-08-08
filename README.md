@@ -540,6 +540,7 @@ Special thanks to timkjr for five PRs this cycle, to @tecnobrat for the reports 
 - **[Configuration Guide](docs/mastery/configuration-guide.md)** – Backend options and customization
 - **[Architecture Overview](docs/architecture.md)** – How it works under the hood
 - **[Team Setup Guide](docs/setup-guide.md#path-4-full-stack)** – OAuth and cloud collaboration
+- **[Token-Efficient Retrieval](docs/guides/token-efficient-retrieval.md)** – Bounding search responses (`limit`, `max_response_chars`) and the `memory_explore` → `memory_detail` knowledge map
 - **[Knowledge Graph Dashboard](docs/features/knowledge-graph-dashboard.md)** – Interactive graph visualization guide
 - **[Memory Type Ontology](docs/memory-ontology.md)** – Built-in taxonomy and `MCP_CUSTOM_MEMORY_TYPES` env var
 - **[Migration Guide](docs/MIGRATION.md)** – Upgrading between major versions (v9+ migrations run automatically on restart)

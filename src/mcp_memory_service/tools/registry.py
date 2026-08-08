@@ -292,7 +292,7 @@ Examples:
                 },
                 "entity": {
                     "type": "string",
-                    "description": "Filter by linked entity name. Returns only memories that have been linked to this entity via entity extraction. Use after running maintain to populate entity links.",
+                    "description": "Filter by linked entity name. Returns only memories linked to this entity via entity extraction. Requires a populated entity graph: run memory_quality {\"action\": \"maintain\", \"dry_run\": false} first (the dry_run default of true stores nothing). Unavailable on the Cloudflare backend.",
                 },
                 "fallback": {
                     "type": "boolean",
@@ -1256,7 +1256,16 @@ Examples:
     ),
     ToolDef(
         name="memory_explore",
-        description="""Explore a knowledge map of entities related to a query (LLM-free).
+        description="""Explore a knowledge map of entities, with query-scoped chunks per entity (LLM-free).
+
+REQUIRES A POPULATED ENTITY GRAPH — returns {"entities": [], "count": 0} otherwise, for
+every query. Check with memory_graph {"action": "list_entities"}; populate with
+memory_quality {"action": "maintain", "dry_run": false} (dry_run defaults to true and
+stores nothing). Unavailable on the Cloudflare backend.
+Guide: docs/guides/token-efficient-retrieval.md
+
+KNOWN LIMITATION: entity selection is not query-scoped — the first max_entities entities in
+the graph are used, and your query only decides which chunks hang off them (#220).
 
 USE THIS WHEN:
 - User wants a high-level overview ("what do I know about X", "map out", "explore")
