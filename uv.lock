@@ -1349,6 +1349,7 @@ full = [
 ]
 milvus = [
     { name = "milvus-lite" },
+    { name = "onnxruntime" },
     { name = "pymilvus" },
     { name = "sentence-transformers" },
     { name = "setuptools", marker = "python_full_version >= '3.13'" },
@@ -1401,6 +1402,7 @@ requires-dist = [
     { name = "mcp-memory-service", extras = ["sqlite", "ml", "dev"], marker = "extra == 'full'" },
     { name = "milvus-lite", marker = "extra == 'milvus'", specifier = ">=2.4.10" },
     { name = "numpy", specifier = ">=1.24.0" },
+    { name = "onnxruntime", marker = "extra == 'milvus'", specifier = ">=1.14.1" },
     { name = "onnxruntime", marker = "extra == 'nli'", specifier = ">=1.17.0" },
     { name = "onnxruntime", marker = "extra == 'sqlite'", specifier = ">=1.14.1" },
     { name = "psutil", specifier = ">=5.9.0" },
