@@ -77,8 +77,8 @@ none, so these tools are unavailable there.
 
 `maintain` scans at most `MCP_MAINTAIN_SCAN_LIMIT` memories per run, **default 2000**, and
 it takes the first N in the order the storage returns them. Running it repeatedly re-scans
-the same 2000 — it does not walk forward through the store. On a 17,000-memory store a
-default run covers roughly the first eighth and no amount of repetition reaches the rest.
+the same 2000 — it does not walk forward through the store. On any store larger than the
+limit, everything past the first N is never reached, however many times you run it.
 
 Set `MCP_MAINTAIN_SCAN_LIMIT=0` for unlimited, and expect the run to take proportionally
 longer:
