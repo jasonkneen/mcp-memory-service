@@ -495,21 +495,22 @@ MCP Memory Service is **fully compatible** with the [SHODH Unified Memory API Sp
 
 ---
 
-## Latest Release: **v11.7.0** (August 5, 2026)
+## Latest Release: **v11.8.0** (August 9, 2026)
 
-**MINOR: three TLS certificate-verification bypasses gated behind explicit opt-in, a committed credential removed**
+**MINOR: the knowledge-graph layer actually works now**
 
 **What's New:**
-- **claude-hooks, the opencode plugin, and `examples/http-mcp-bridge.js` no longer skip TLS certificate verification by default.** All three built an unconditional insecure HTTPS path; verification is now real unless you explicitly opt in with `allowSelfSignedCerts` (hooks config), `OPENCODE_MEMORY_ALLOW_SELF_SIGNED_CERTS` (opencode), or `MCP_MEMORY_ALLOW_SELF_SIGNED_CERTS` (bridge). Default endpoints are `http://127.0.0.1:8000`, so most installs are unaffected — but if you point any of them at `https://` with a self-signed certificate, you now need to set the flag (#198, #210, timkjr; bridge fix).
-- **A real credential committed in the bundled hooks config is gone.** `claude-hooks/config.json` shipped with a live `apiKey` and a maintainer-local path since 24af496c; both are now placeholders, and a new CI gate fails the build if either comes back (#197/#200, reported by timkjr).
-- **`MCP_QUALITY_ONNX_MODEL_DIR`** makes the ONNX model cache directory explicit instead of depending on `Path.home()` resolving to `/root` by accident — fixes non-root and read-only-rootfs container deployments (#171/#209, reported by @tecnobrat).
-- **Milvus backend's `store()`, `count_all_memories()`, and `search_memories()`** accept the `store` keyword like every other backend, fixing a crash on `memory status`/`list_memories` (#148, closes #133, reported by @ghulands).
-- **Consolidation merge action now returns the merged memory's real content hash**, not `store()`'s status message string (#208, closes #112).
-- **Claude Code plugin manifest bumped to 1.0.3** to ship the TLS opt-in and related hook changes to installed plugin users.
+- **Entity graph was never populated.** `memory_explore` returned nothing on any store: `maintain`'s batch extraction discarded every tag before it reached the entity extractor, and `memory_graph action=extract_entities` plus `memory_search`'s `entity` filter were both gated on a storage attribute nothing ever sets. A 16,986-memory store had zero entities; now `maintain` on three tagged memories finds 10, up from 4 (#218, #219).
+- **`memory_search`'s `entity` filter no longer returns unfiltered results when it can't apply the filter** — it reports the problem and returns empty when the entity has no linked memories (#219).
+- **`memory launch/stop/restart/info/health` verify TLS certificates by default**, completing the self-signed-cert opt-in from v11.7.0 (#216, thanks timkjr).
+- **`.env`'s `MCP_HTTPS_ENABLED` no longer affects the `memory` CLI.** The CLI reads it from the environment only now, matching the discipline the TLS opt-in already followed (#224, thanks timkjr).
+- **Milvus backend implements the storage methods the web API was calling unguarded**, fixing 501s on `/api/tags` and friends (#214, reported by @ghulands).
+- **New docs for tools that shipped undocumented since v11.1.0:** [`docs/guides/token-efficient-retrieval.md`](docs/guides/token-efficient-retrieval.md) and wiki page 20-Token-Efficient-Retrieval cover bounding a search response and the two-phase entity map (#215, #217, #220, #222).
 
-Special thanks to timkjr for five PRs this cycle, to @tecnobrat for the reports and production measurements behind the quality/docker fixes, and to @ghulands for the precise Milvus report.
+Special thanks to timkjr for his fourth and fifth merged contribution this cycle, and to @ghulands for the Milvus report.
 
 **Previous Releases** (v11 series — full history for all earlier versions in [CHANGELOG.md](CHANGELOG.md)):
+- **v11.7.0** - MINOR: three TLS certificate-verification bypasses gated behind explicit opt-in, a committed credential removed (#198, #210, #197/#200) (August 5, 2026)
 - **v11.6.1** - PATCH: harvest classifier provider chain fix (#180), Claude Code plugin manifest at 1.0.2 (#195) (August 3, 2026)
 - **v11.6.0** - MINOR: migration no longer drops the knowledge graph and derived beliefs when re-embedding (#189), locale-aware NER/NLI via YAML plugins (#54), Docker images ship the maintenance and migration scripts (#188) (August 2, 2026)
 - **v11.5.5** - PATCH: standard Docker image ships tokenizers so the ONNX backend actually loads (#162, #163, #164) (July 24, 2026)
