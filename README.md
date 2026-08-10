@@ -500,7 +500,7 @@ MCP Memory Service is **fully compatible** with the [SHODH Unified Memory API Sp
 **MINOR: the knowledge-graph layer actually works now**
 
 **What's New:**
-- **Entity graph was never populated.** `memory_explore` returned nothing on any store: `maintain`'s batch extraction discarded every tag before it reached the entity extractor, and `memory_graph action=extract_entities` plus `memory_search`'s `entity` filter were both gated on a storage attribute nothing ever sets. A 16,986-memory store had zero entities; now `maintain` on three tagged memories finds 10, up from 4 (#218, #219).
+- **Entity graph was never populated.** `memory_explore` returned nothing on any store: `maintain`'s batch extraction discarded every tag before it reached the entity extractor, and `memory_graph action=extract_entities` plus `memory_search`'s `entity` filter were both gated on a storage attribute nothing ever sets. `maintain` on three tagged memories now finds 10 entities, up from 4 (#218, #219).
 - **`memory_search`'s `entity` filter no longer returns unfiltered results when it can't apply the filter** — it reports the problem and returns empty when the entity has no linked memories (#219).
 - **`memory launch/stop/restart/info/health` verify TLS certificates by default**, completing the self-signed-cert opt-in from v11.7.0 (#216, thanks timkjr).
 - **`.env`'s `MCP_HTTPS_ENABLED` no longer affects the `memory` CLI.** The CLI reads it from the environment only now, matching the discipline the TLS opt-in already followed (#224, thanks timkjr).
