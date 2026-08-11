@@ -35,7 +35,8 @@ if [ -x "$REPO_ROOT/.venv/bin/python" ]; then
 elif [ -n "${VIRTUAL_ENV:-}" ] && [ -x "$VIRTUAL_ENV/bin/python" ]; then
     PYTHON_BIN="$VIRTUAL_ENV/bin/python"
 else
-    PYTHON_BIN="$(command -v python3 || command -v python)"
+    echo "❌ No suitable Python found. Activate a venv or set VIRTUAL_ENV." >&2
+    exit 1
 fi
 
 # Test all 17 memory handlers can be imported
