@@ -18,20 +18,29 @@ sys.path.insert(0, src_path)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
+def _sanitize_log_value(value: object) -> str:
+    return str(value).replace("\n", "\\n").replace("\r", "\\r").replace("\x1b", "\\x1b")
+
 if __name__ == "__main__":
     # Log configuration
     logger.info("Starting MCP Memory Service FastAPI server with the following configuration:")
-    logger.info(f"  Storage Backend: {os.environ.get('MCP_MEMORY_STORAGE_BACKEND', 'sqlite_vec')}")
-    logger.info(f"  HTTP Port: {os.environ.get('MCP_HTTP_PORT', '8000')}")
-    logger.info(f"  HTTPS Enabled: {os.environ.get('MCP_HTTPS_ENABLED', 'false')}")
-    logger.info(f"  HTTPS Port: {os.environ.get('MCP_HTTPS_PORT', '8443')}")
-    logger.info(f"  mDNS Enabled: {os.environ.get('MCP_MDNS_ENABLED', 'false')}")
+    logger.info(f"  Storage Backend: {_sanitize_log_value(os.environ.get('MCP_MEMORY_STORAGE_BACKEND', 'sqlite_vec'))}")
+    logger.info(f"  HTTP Port: {_sanitize_log_value(os.environ.get('MCP_HTTP_PORT', '8000'))}")
+    logger.info(f"  HTTPS Enabled: {_sanitize_log_value(os.environ.get('MCP_HTTPS_ENABLED', 'false'))}")
+    logger.info(f"  HTTPS Port: {_sanitize_log_value(os.environ.get('MCP_HTTPS_PORT', '8443'))}")
+    logger.info(f"  mDNS Enabled: {_sanitize_log_value(os.environ.get('MCP_MDNS_ENABLED', 'false'))}")
     logger.info(f"  API Key Set: {'Yes' if os.environ.get('MCP_API_KEY') else 'No'}")
     
     http_port = int(os.environ.get('MCP_HTTP_PORT', 8000))
     
-    # Check if HTTPS is enabled
-    if os.environ.get('MCP_HTTPS_ENABLED', 'false').lower() == 'true':
+    # Check if HTTPS is enabled. Matches the accepted values of
+    # config.base.safe_get_bool_env() without importing it: this script
+    # deliberately avoids importing mcp_memory_service before uvicorn.run()
+    # so it never triggers config/base.py's module-level load_dotenv() call,
+    # keeping this a bare os.environ read -- same "no stray .env" rationale
+    # as cli/lifecycle.py's _is_https_enabled().
+    if os.environ.get('MCP_HTTPS_ENABLED', 'false').strip().lower() in ('true', '1', 'yes', 'on', 'enabled'):
         https_port = int(os.environ.get('MCP_HTTPS_PORT', 8443))
         
         # Check for environment variable certificates first

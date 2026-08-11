@@ -24,8 +24,13 @@ def check_http_server(verbose: bool = False) -> bool:
     Returns:
         bool: True if server is running, False otherwise
     """
-    # Determine the endpoint from environment
-    https_enabled = os.getenv('MCP_HTTPS_ENABLED', 'false').lower() == 'true'
+    # Determine the endpoint from environment. Matches the accepted values
+    # of config.base.safe_get_bool_env() without importing it: this script
+    # deliberately avoids importing mcp_memory_service so it never triggers
+    # config/base.py's module-level load_dotenv() call, keeping this a bare
+    # os.environ read -- same "no stray .env" rationale as
+    # cli/lifecycle.py's _is_https_enabled().
+    https_enabled = os.getenv('MCP_HTTPS_ENABLED', 'false').strip().lower() in ('true', '1', 'yes', 'on', 'enabled')
     http_port = int(os.getenv('MCP_HTTP_PORT', '8000'))
     https_port = int(os.getenv('MCP_HTTPS_PORT', '8443'))
 
@@ -67,7 +72,7 @@ def check_http_server(verbose: bool = False) -> bool:
 
 def main():
     """Main entry point for CLI usage."""
-    import argparse
+    import argparse  # inline import: keeps module import lightweight for callers that only need check_http_server()
 
     parser = argparse.ArgumentParser(
         description="Check if MCP Memory Service HTTP server is running"
