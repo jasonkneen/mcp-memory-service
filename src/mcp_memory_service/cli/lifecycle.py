@@ -83,7 +83,7 @@ def _write_pid(pid: int) -> None:
     # stale PID files after reboot or PID reuse.
     pid_info = {"pid": pid}
     try:
-        import psutil  # inline import: matches this module's stdlib-only, no-heavy-import-at-load-time design
+        import psutil  # inline import: deferred so this third-party dependency doesn't load at module import time, matching this module's fast-load design
         proc = psutil.Process(pid)
         pid_info["create_time"] = proc.create_time()
         pid_info["cmdline_hint"] = " ".join(proc.cmdline()[:3]) if proc.cmdline() else ""
