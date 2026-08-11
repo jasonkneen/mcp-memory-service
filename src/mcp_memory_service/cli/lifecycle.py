@@ -83,7 +83,7 @@ def _write_pid(pid: int) -> None:
     # stale PID files after reboot or PID reuse.
     pid_info = {"pid": pid}
     try:
-        import psutil
+        import psutil  # inline import: matches this module's stdlib-only, no-heavy-import-at-load-time design
         proc = psutil.Process(pid)
         pid_info["create_time"] = proc.create_time()
         pid_info["cmdline_hint"] = " ".join(proc.cmdline()[:3]) if proc.cmdline() else ""
@@ -237,7 +237,12 @@ def _is_https_enabled() -> bool:
     Same discipline as _cli_allow_self_signed_certs() below, for the
     same reason -- previously this function had its own .env fallback,
     deliberately left untouched and out of scope when that sibling
-    function was introduced; this closes that gap."""
+    function was introduced; this closes that gap.
+
+    This guarantee holds only as long as this module stays free of any
+    mcp_memory_service.config imports: importing config.transport
+    triggers load_dotenv, which populates os.environ from .env and
+    would silently restore the fallback this function removes."""
     return os.environ.get("MCP_HTTPS_ENABLED", "").strip().lower() in ("1", "true", "yes")
 
 
@@ -471,7 +476,7 @@ def launch(ctx, http_host, http_port, detach, storage_backend, debug):
         # Foreground: import the heavy stuff and run directly
         click.echo(f"Starting HTTP server on {host}:{port}...")
         from mcp_memory_service.web.app import app  # heavy import
-        import uvicorn
+        import uvicorn  # inline import: heavy dependency, avoided at module load time
         uvicorn.run(app, host=host, port=port,
                     log_level="debug" if debug else "info")
         return
