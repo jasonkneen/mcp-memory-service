@@ -7,6 +7,16 @@ the HTTP server as a background daemon process.
 This module uses ONLY absolute imports from stdlib + click, so it can
 be loaded without triggering the heavy mcp_memory_service.__init__
 (which loads torch/transformers and takes 20+ seconds).
+
+⚠️  Do not add an import of mcp_memory_service.config (or any submodule,
+e.g. config.transport) to this file. That import triggers load_dotenv
+as a side effect, populating os.environ from a stray .env file in
+whatever directory happens to be cwd. _is_https_enabled() and
+_cli_allow_self_signed_certs() below both deliberately read only
+os.environ for security-relevant decisions (which scheme to probe,
+whether to disable TLS verification) -- a config import anywhere in
+this file would silently reintroduce a .env fallback both functions
+are designed to exclude.
 """
 
 import os
@@ -239,10 +249,9 @@ def _is_https_enabled() -> bool:
     deliberately left untouched and out of scope when that sibling
     function was introduced; this closes that gap.
 
-    This guarantee holds only as long as this module stays free of any
-    mcp_memory_service.config imports: importing config.transport
-    triggers load_dotenv, which populates os.environ from .env and
-    would silently restore the fallback this function removes."""
+    See the module docstring for why this file must not import
+    mcp_memory_service.config -- doing so would silently reintroduce
+    the .env fallback removed here."""
     return os.environ.get("MCP_HTTPS_ENABLED", "").strip().lower() in ("1", "true", "yes")
 
 
