@@ -30,6 +30,11 @@ def check_http_server(verbose: bool = False) -> bool:
     # config/base.py's module-level load_dotenv() call, keeping this a bare
     # os.environ read -- same "no stray .env" rationale as
     # cli/lifecycle.py's _is_https_enabled().
+    # KEEP IN SYNC with the accepted-value tuple in
+    # mcp_memory_service.config.base.safe_get_bool_env() (currently
+    # true/1/yes/on/enabled) and with run_server.py's copy above -- this is
+    # a deliberate duplication (see rationale above), not a shared constant,
+    # so it will not update itself if the canonical set changes.
     https_enabled = os.getenv('MCP_HTTPS_ENABLED', 'false').strip().lower() in ('true', '1', 'yes', 'on', 'enabled')
     http_port = int(os.getenv('MCP_HTTP_PORT', '8000'))
     https_port = int(os.getenv('MCP_HTTPS_PORT', '8443'))

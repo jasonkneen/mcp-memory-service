@@ -40,6 +40,11 @@ if __name__ == "__main__":
     # so it never triggers config/base.py's module-level load_dotenv() call,
     # keeping this a bare os.environ read -- same "no stray .env" rationale
     # as cli/lifecycle.py's _is_https_enabled().
+    # KEEP IN SYNC with the accepted-value tuple in
+    # mcp_memory_service.config.base.safe_get_bool_env() (currently
+    # true/1/yes/on/enabled) and with check_http_server.py's copy below --
+    # this is a deliberate duplication (see rationale above), not a shared
+    # constant, so it will not update itself if the canonical set changes.
     if os.environ.get('MCP_HTTPS_ENABLED', 'false').strip().lower() in ('true', '1', 'yes', 'on', 'enabled'):
         https_port = int(os.environ.get('MCP_HTTPS_PORT', 8443))
         
