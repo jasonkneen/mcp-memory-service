@@ -67,6 +67,39 @@ _FORCE_HASH = (
 )
 
 
+def test_get_storage_passes_configured_embedding_model():
+    """CLI sqlite-vec storage must use MCP_EMBEDDING_MODEL, not its default."""
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path = os.path.join(tmp, "status.db")
+        configured_model = "test/configured-embedding-model"
+        result = _run_status(
+            """
+            import asyncio
+            from mcp_memory_service.storage.sqlite_vec import SqliteVecMemoryStorage
+
+            captured = {}
+
+            def fake_init(self, db_path, embedding_model="constructor-default"):
+                captured["embedding_model"] = embedding_model
+
+            async def fake_initialize(self, strict_dimension_check=True):
+                pass
+
+            SqliteVecMemoryStorage.__init__ = fake_init
+            SqliteVecMemoryStorage.initialize = fake_initialize
+
+            from mcp_memory_service.cli.utils import get_storage
+            asyncio.run(get_storage("sqlite_vec"))
+            print(captured["embedding_model"])
+            """,
+            db_path,
+            {"MCP_EMBEDDING_MODEL": configured_model},
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == configured_model
+
+
 def test_status_reports_degraded_hash_backend_and_exits_1():
     """Fresh DB with the hash fallback active -> degraded verdict, exit code 1.
 
