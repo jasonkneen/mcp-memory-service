@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- **fix(cli): make sqlite-vec CLI commands honor `MCP_EMBEDDING_MODEL`.** The CLI storage helper constructed `SqliteVecMemoryStorage` without the configured model, so commands such as `memory status` silently used the constructor default (`all-MiniLM-L6-v2`, 384 dimensions) even when the server correctly used a custom model. The CLI now passes `EMBEDDING_MODEL_NAME`, matching the server and storage factory paths.
+
 ## [11.8.0] - 2026-08-09
 
 MINOR release: the knowledge-graph layer actually works now. `memory_explore` returned nothing on any store because entity extraction discarded every tag (#218) and two features were gated on a storage attribute nothing ever set (#219). Also in this cycle: the `memory` CLI's TLS handling catches up with the self-signed-cert opt-in from v11.7.0 (#216), and `.env`'s `MCP_HTTPS_ENABLED` no longer silently decides the CLI's scheme behind your back (#224) — both from timkjr, his fourth and fifth merged contribution this cycle. Milvus gets the storage methods the web API was calling unguarded (#214, reported by @ghulands). Two new docs cover a set of tools that were previously undocumented: [`docs/guides/token-efficient-retrieval.md`](docs/guides/token-efficient-retrieval.md) and wiki page 20-Token-Efficient-Retrieval.

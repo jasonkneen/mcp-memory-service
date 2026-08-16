@@ -44,8 +44,11 @@ async def get_storage(backend: Optional[str] = None, strict_dimension_check: boo
 
     if backend in ('sqlite_vec', 'sqlite-vec'):
         from ..storage.sqlite_vec import SqliteVecMemoryStorage
-        from ..config import SQLITE_VEC_PATH
-        storage = SqliteVecMemoryStorage(SQLITE_VEC_PATH)
+        from ..config import EMBEDDING_MODEL_NAME, SQLITE_VEC_PATH
+        storage = SqliteVecMemoryStorage(
+            SQLITE_VEC_PATH,
+            embedding_model=EMBEDDING_MODEL_NAME,
+        )
         await storage.initialize(strict_dimension_check=strict_dimension_check)
         return storage
     elif backend == 'cloudflare':
