@@ -7,6 +7,16 @@ the HTTP server as a background daemon process.
 This module uses ONLY absolute imports from stdlib + click, so it can
 be loaded without triggering the heavy mcp_memory_service.__init__
 (which loads torch/transformers and takes 20+ seconds).
+
+⚠️  Do not add an import of mcp_memory_service.config (or any submodule,
+e.g. config.transport) to this file. That import triggers load_dotenv
+as a side effect, populating os.environ from a stray .env file in
+whatever directory happens to be cwd. _is_https_enabled() and
+_cli_allow_self_signed_certs() below both deliberately read only
+os.environ for security-relevant decisions (which scheme to probe,
+whether to disable TLS verification) -- a config import anywhere in
+this file would silently reintroduce a .env fallback both functions
+are designed to exclude.
 """
 
 import os
@@ -83,7 +93,7 @@ def _write_pid(pid: int) -> None:
     # stale PID files after reboot or PID reuse.
     pid_info = {"pid": pid}
     try:
-        import psutil
+        import psutil  # inline import: deferred so this third-party dependency doesn't load at module import time, matching this module's fast-load design
         proc = psutil.Process(pid)
         pid_info["create_time"] = proc.create_time()
         pid_info["cmdline_hint"] = " ".join(proc.cmdline()[:3]) if proc.cmdline() else ""
@@ -237,7 +247,11 @@ def _is_https_enabled() -> bool:
     Same discipline as _cli_allow_self_signed_certs() below, for the
     same reason -- previously this function had its own .env fallback,
     deliberately left untouched and out of scope when that sibling
-    function was introduced; this closes that gap."""
+    function was introduced; this closes that gap.
+
+    See the module docstring for why this file must not import
+    mcp_memory_service.config -- doing so would silently reintroduce
+    the .env fallback removed here."""
     return os.environ.get("MCP_HTTPS_ENABLED", "").strip().lower() in ("1", "true", "yes")
 
 
@@ -471,7 +485,7 @@ def launch(ctx, http_host, http_port, detach, storage_backend, debug):
         # Foreground: import the heavy stuff and run directly
         click.echo(f"Starting HTTP server on {host}:{port}...")
         from mcp_memory_service.web.app import app  # heavy import
-        import uvicorn
+        import uvicorn  # inline import: heavy dependency, avoided at module load time
         uvicorn.run(app, host=host, port=port,
                     log_level="debug" if debug else "info")
         return
