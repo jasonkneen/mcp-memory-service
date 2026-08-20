@@ -14,6 +14,10 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+# Deliberately duplicated from mcp_memory_service.compat._sanitize_log_value:
+# this script avoids importing mcp_memory_service before uvicorn.run() (see
+# the HTTPS-check comment below), so it can't import the canonical helper.
+# KEEP IN SYNC with compat.py and scripts/server/run_server.py's copy.
 def _sanitize_log_value(value: object) -> str:
     return str(value).replace("\n", "\\n").replace("\r", "\\r").replace("\x1b", "\\x1b")
 
