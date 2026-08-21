@@ -258,7 +258,7 @@ def _is_https_enabled() -> bool:
     function can't import that module. See run_server.py and
     check_http_server.py for the same duplication under the same
     constraint."""
-    return os.environ.get("MCP_HTTPS_ENABLED", "").strip().lower() in ("1", "true", "yes", "on", "enabled")
+    return os.environ.get("MCP_HTTPS_ENABLED", "").strip().lower() in ("1", "true", "yes", "on", "enabled")  # sync with config.base.safe_get_bool_env
 
 
 def _base_url(host: str, port: int) -> str:
