@@ -38,7 +38,8 @@ Quick reference; each rule is expanded in the sections below. Violations cause r
 
 ### Source Control & Hosting
 
-- **Codeberg is where the work happens.** CI runs as **Forgejo Actions** in `.forgejo/workflows/` (`ci.yml`, `release.yml`, `deploy-site.yml`, `cleanup-images.yml`). There is no `.github/workflows/` directory. Issues and PRs are on Codeberg, and the tag push that starts a release goes to Codeberg.
+- **Codeberg is where the work happens.** CI runs as **Forgejo Actions** in `.forgejo/workflows/` (`ci.yml`, `release.yml`, `deploy-site.yml`, `cleanup-images.yml`). Issues and PRs are on Codeberg, and the tag push that starts a release goes to Codeberg.
+- **`.github/workflows/` holds exactly one workflow, `codeql.yml`, and that is deliberate.** Forgejo ignores that directory, so it runs only on the mirror. CodeQL is the one capability GitHub has that Codeberg has no equivalent for, and the Forgejo CI has no security-analysis job — so the mirror carries it and reports into the GitHub Security tab. Nothing else may be added there: no release, site-deploy, or image-cleanup workflow, because publishing belongs to exactly one forge.
 - **The GitHub mirror is read-only in practice.** It exists for discovery and as a fallback. Actions are disabled there and it holds no secrets, so nothing can publish from it. Two hard rules: only ever fast-forward `main` onto it, and **never push tags** — tag-triggered workflows run the workflow files of the tag's own commit, and every tag from before June 2026 carries publish workflows that would push to PyPI and Docker Hub a second time.
 - Before pushing the mirror, prove the fast-forward rather than assuming it:
   ```bash
