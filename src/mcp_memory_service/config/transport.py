@@ -2,7 +2,7 @@
 import os
 import logging
 
-from .base import safe_get_int_env
+from .base import safe_get_bool_env, safe_get_int_env
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ OAUTH_MAX_BODY_BYTES = safe_get_int_env(
 )  # 64 KiB default
 
 # HTTPS Configuration
-HTTPS_ENABLED = os.getenv('MCP_HTTPS_ENABLED', 'false').lower() == 'true'
+HTTPS_ENABLED = safe_get_bool_env('MCP_HTTPS_ENABLED', False)
 SSL_CERT_FILE = os.getenv('MCP_SSL_CERT_FILE', None)
 SSL_KEY_FILE = os.getenv('MCP_SSL_KEY_FILE', None)
 
