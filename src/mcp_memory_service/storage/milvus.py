@@ -88,6 +88,7 @@ except ImportError:
     SentenceTransformer = None  # type: ignore
 
 from .base import MemoryStorage
+from .milvus_expr import escape_expr_value
 from .shared import (
     _embedding_cache_get, _embedding_cache_put, _embedding_cache_size,
     _sanitize_log_value, _escape_like, _tags_to_string, _string_to_tags,
@@ -845,7 +846,7 @@ class MilvusMemoryStorage(MemoryStorage):
             stripped = _escape_like(tag.strip())
             if not stripped:
                 continue
-            safe = stripped.replace('"', '\\"')
+            safe = escape_expr_value(stripped)
             tag_clauses.append(f'tags like "%,{safe},%"')
 
         if not tag_clauses:
@@ -1921,7 +1922,7 @@ class MilvusMemoryStorage(MemoryStorage):
         needle = _escape_like(content.lower())
         if not needle:
             return []
-        safe = needle.replace('"', '\\"')
+        safe = escape_expr_value(needle)
         filter_expr = f'content_lower like "%{safe}%"'
         return await self._query_memories(
             filter_expr=filter_expr,
@@ -2566,7 +2567,7 @@ class MilvusMemoryStorage(MemoryStorage):
 
             if self._has_content_lower and combined_filter:
                 # Push all filters (content + time + tags) to Milvus in one query
-                needle = query.lower().replace('"', '\\"')
+                needle = escape_expr_value(query.lower())
                 content_filter = f'content_lower like "%{needle}%"'
                 final_filter = (
                     f"({combined_filter}) and ({content_filter})"
@@ -2996,7 +2997,7 @@ class MilvusMemoryStorage(MemoryStorage):
 
         filters: List[Optional[str]] = []
         if memory_type is not None:
-            safe_type = memory_type.replace('"', '\\"')
+            safe_type = escape_expr_value(memory_type)
             filters.append(f'memory_type == "{safe_type}"')
         if tags:
             joiner = "and" if tag_match == "all" else "or"
@@ -3038,7 +3039,7 @@ class MilvusMemoryStorage(MemoryStorage):
 
         filters: List[Optional[str]] = []
         if memory_type is not None:
-            safe_type = memory_type.replace('"', '\\"')
+            safe_type = escape_expr_value(memory_type)
             filters.append(f'memory_type == "{safe_type}"')
         if tags:
             joiner = "and" if tag_match == "all" else "or"

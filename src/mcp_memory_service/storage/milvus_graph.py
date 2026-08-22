@@ -46,6 +46,7 @@ except ImportError:
     MilvusClient = None  # type: ignore
     DataType = None  # type: ignore
 
+from .milvus_expr import escape_expr_value
 from ..models.ontology import is_symmetric_relationship, validate_relationship
 
 logger = logging.getLogger(__name__)
@@ -311,16 +312,16 @@ class MilvusGraphStorage:
         if not hashes:
             return []
 
-        escaped = [h.replace('"', '\\"') for h in hashes]
+        escaped = [escape_expr_value(h) for h in hashes]
         in_clause = ", ".join(f'"{h}"' for h in escaped)
         expr = f'{field} in [{in_clause}]'
         if relationship_types is not None:
             if len(relationship_types) == 1:
-                safe_rt = relationship_types[0].replace('"', '\\"')
+                safe_rt = escape_expr_value(relationship_types[0])
                 expr += f' and relationship_type == "{safe_rt}"'
             else:
                 safe_rts = ", ".join(
-                    f'"{rt.replace(chr(34), chr(92) + chr(34))}"'
+                    f'"{escape_expr_value(rt)}"'
                     for rt in relationship_types
                 )
                 expr += f' and relationship_type in [{safe_rts}]'
@@ -351,7 +352,7 @@ class MilvusGraphStorage:
         if not hashes:
             return []
 
-        escaped = [h.replace('"', '\\"') for h in hashes]
+        escaped = [escape_expr_value(h) for h in hashes]
         in_clause = ", ".join(f'"{h}"' for h in escaped)
         expr = (
             f'(source_hash in [{in_clause}]) or '
@@ -359,11 +360,11 @@ class MilvusGraphStorage:
         )
         if relationship_types is not None:
             if len(relationship_types) == 1:
-                safe_rt = relationship_types[0].replace('"', '\\"')
+                safe_rt = escape_expr_value(relationship_types[0])
                 rt_filter = f'relationship_type == "{safe_rt}"'
             else:
                 safe_rts = ", ".join(
-                    f'"{rt.replace(chr(34), chr(92) + chr(34))}"'
+                    f'"{escape_expr_value(rt)}"'
                     for rt in relationship_types
                 )
                 rt_filter = f'relationship_type in [{safe_rts}]'
@@ -645,8 +646,8 @@ class MilvusGraphStorage:
 
         try:
             # Query for either direction
-            sh_esc = source_hash.replace('"', '\\"')
-            th_esc = target_hash.replace('"', '\\"')
+            sh_esc = escape_expr_value(source_hash)
+            th_esc = escape_expr_value(target_hash)
             expr = (
                 f'(source_hash == "{sh_esc}" and target_hash == "{th_esc}") or '
                 f'(source_hash == "{th_esc}" and target_hash == "{sh_esc}")'
@@ -735,7 +736,7 @@ class MilvusGraphStorage:
             return 0
 
         try:
-            h_esc = memory_hash.replace('"', '\\"')
+            h_esc = escape_expr_value(memory_hash)
             expr = f'source_hash == "{h_esc}"'
             results = await self._call_client(
                 "query",
@@ -760,7 +761,7 @@ class MilvusGraphStorage:
             return {}
 
         try:
-            h_esc = memory_hash.replace('"', '\\"')
+            h_esc = escape_expr_value(memory_hash)
             expr = f'source_hash == "{h_esc}"'
             results = await self._call_client(
                 "query",
