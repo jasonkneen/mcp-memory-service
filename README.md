@@ -495,21 +495,24 @@ MCP Memory Service is **fully compatible** with the [SHODH Unified Memory API Sp
 
 ---
 
-## Latest Release: **v11.8.0** (August 9, 2026)
+## Latest Release: **v11.8.1** (August 22, 2026)
 
-**MINOR: the knowledge-graph layer actually works now**
+**PATCH: eight fixes on top of v11.8.0 — mind the OAuth issuer and Docker HTTPS behaviour changes**
 
 **What's New:**
-- **Entity graph was never populated.** `memory_explore` returned nothing on any store: `maintain`'s batch extraction discarded every tag before it reached the entity extractor, and `memory_graph action=extract_entities` plus `memory_search`'s `entity` filter were both gated on a storage attribute nothing ever sets. `maintain` on three tagged memories now finds 10 entities, up from 4 (#218, #219).
-- **`memory_search`'s `entity` filter no longer returns unfiltered results when it can't apply the filter** — it reports the problem and returns empty when the entity has no linked memories (#219).
-- **`memory launch/stop/restart/info/health` verify TLS certificates by default**, completing the self-signed-cert opt-in from v11.7.0 (#216, thanks timkjr).
-- **`.env`'s `MCP_HTTPS_ENABLED` no longer affects the `memory` CLI.** The CLI reads it from the environment only now, matching the discipline the TLS opt-in already followed (#224, thanks timkjr).
-- **Milvus backend implements the storage methods the web API was calling unguarded**, fixing 501s on `/api/tags` and friends (#214, reported by @ghulands).
-- **New docs for tools that shipped undocumented since v11.1.0:** [`docs/guides/token-efficient-retrieval.md`](docs/guides/token-efficient-retrieval.md) and wiki page 20-Token-Efficient-Retrieval cover bounding a search response and the two-phase entity map (#215, #217, #220, #222).
+- **sqlite-vec CLI commands honor the configured embedding model.** `memory status` and friends stopped silently falling back to the 384-dimension default when a custom `MCP_EMBEDDING_MODEL` was set, which had been surfacing as a false dimension mismatch (#232, thanks nxxxsooo).
+- **`validate_imports.sh` resolves the venv Python instead of a bare `python3`**, and fails loudly instead of silently falling back to the system interpreter (#230, thanks timkjr).
+- **Truthy env-var parsing for `MCP_HTTPS_ENABLED` is standardized** across the config layer, the server launch scripts, and the repo-root `run_server.py` that the Docker image actually runs. Docker deployments setting `MCP_HTTPS_ENABLED=1`/`yes`/`on`/`enabled` now get HTTPS instead of silently falling through to HTTP (#231, thanks timkjr).
+- **`_is_https_enabled()` accepts `on`/`enabled`**, matching the truthy set the rest of config already accepts (#238, thanks timkjr).
+- **OAuth discovery endpoint URLs no longer contain double slashes**, and the `iss` claim is validated exactly. If `MCP_OAUTH_ISSUER` has a trailing slash, tokens minted before this upgrade need to be reissued (#239, thanks timkjr).
+- **Consolidation no longer feeds its own association records back into meta-association inference**, which had been compounding synthetic associations run over run (#241, thanks timkjr).
+- **`health_check` reports the consolidator's real run counters** instead of an always-empty statistics dict (#242, thanks timkjr).
+- **Milvus filter expressions escape backslashes**, not just double quotes — a value ending in a backslash used to escape the closing quote of its own literal and make Milvus reject the whole expression (#244).
 
-Special thanks to timkjr for his fourth and fifth merged contribution this cycle, and to @ghulands for the Milvus report.
+Special thanks to timkjr for six of this release's eight fixes, and to nxxxsooo for the sqlite-vec CLI one.
 
 **Previous Releases** (v11 series — full history for all earlier versions in [CHANGELOG.md](CHANGELOG.md)):
+- **v11.8.0** - MINOR: the knowledge-graph layer actually works now — entity extraction was discarding every memory tag, and two features were gated on a storage attribute nothing ever set (#218, #219) (August 9, 2026)
 - **v11.7.0** - MINOR: three TLS certificate-verification bypasses gated behind explicit opt-in, a committed credential removed (#198, #210, #197/#200) (August 5, 2026)
 - **v11.6.1** - PATCH: harvest classifier provider chain fix (#180), Claude Code plugin manifest at 1.0.2 (#195) (August 3, 2026)
 - **v11.6.0** - MINOR: migration no longer drops the knowledge graph and derived beliefs when re-embedding (#189), locale-aware NER/NLI via YAML plugins (#54), Docker images ship the maintenance and migration scripts (#188) (August 2, 2026)
