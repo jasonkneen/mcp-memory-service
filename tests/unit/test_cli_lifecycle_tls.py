@@ -98,7 +98,10 @@ class TestIsHttpsEnabled:
     discipline as _cli_allow_self_signed_certs() above: this decides
     which scheme the health check probes with, so a stray .env file
     in whatever directory happens to be cwd shouldn't be able to
-    silently redirect it."""
+    silently redirect it.
+
+    Accepted values must match config.base.safe_get_bool_env()'s
+    truthy set (true/1/yes/on/enabled) -- see #231."""
 
     def test_defaults_to_false(self):
         assert lifecycle._is_https_enabled() is False
@@ -111,7 +114,7 @@ class TestIsHttpsEnabled:
         monkeypatch.setenv("MCP_HTTPS_ENABLED", "false")
         assert lifecycle._is_https_enabled() is False
 
-    @pytest.mark.parametrize("value", ["1", "yes", "TRUE", "True"])
+    @pytest.mark.parametrize("value", ["1", "yes", "TRUE", "True", "on", "ON", "enabled", "Enabled"])
     def test_truthy_variants_enable(self, monkeypatch, value):
         monkeypatch.setenv("MCP_HTTPS_ENABLED", value)
         assert lifecycle._is_https_enabled() is True
