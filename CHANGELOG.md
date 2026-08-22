@@ -10,9 +10,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [11.8.1] - 2026-08-22
+
+PATCH release: eight fixes on top of v11.8.0, six of them from timkjr. Two are worth reading before you upgrade if you run this in production: OAuth issuer validation got stricter (#239) and the Docker image now actually starts HTTPS where it used to silently fall through to HTTP (#231).
+
 ### Fixed
 
 - **fix(cli): make sqlite-vec CLI commands honor `MCP_EMBEDDING_MODEL`.** The CLI storage helper constructed `SqliteVecMemoryStorage` without the configured model, so commands such as `memory status` silently used the constructor default (`all-MiniLM-L6-v2`, 384 dimensions) even when the server correctly used a custom model. The CLI now passes `EMBEDDING_MODEL_NAME`, matching the server and storage factory paths.
+- **`validate_imports.sh` resolves the venv Python instead of a bare `python3`, and fails loudly instead of silently falling back to the system interpreter** (#230, thanks timkjr). A bare `python3` can validate imports against whatever happens to be first on `PATH`, which is not necessarily this project's venv — a false pass in CI tells you nothing about whether the package actually imports in its own environment.
+- **`_is_https_enabled()` accepts `on`/`enabled`** (#238, thanks timkjr), matching the truthy set `config.base.safe_get_bool_env` already accepts everywhere else. Before this, `MCP_HTTPS_ENABLED=on` was silently treated as false by the CLI while the rest of the config layer treated it as true.
+- **Consolidation excludes association records from the candidate pool for meta-association inference** (#241, thanks timkjr). Without this, an association record could itself become the input to a later association-inference pass, and each run compounded on the last run's synthetic associations instead of just the real memories.
+- **`health_check` reports the consolidator's real run counters** (#242, thanks timkjr). The statistics dict `health_check` read from was never populated, so it always reported empty statistics regardless of how many consolidation runs had actually happened.
+- **Milvus filter expressions escape backslashes, not just double quotes** (#244, PR #245). Fifteen sites built expression strings with `value.replace('"', '\"')`, so a value ending in a backslash escaped the closing quote of its own literal and Milvus rejected the whole expression. Entity names come from memory content, so a Windows path or a regex fragment was enough to break graph queries. This also fixes tag search, where `_escape_like()` doubles backslashes for LIKE and the old escaping then handed a single one to the parser.
+
+### Changed
+
+- **Truthy env-var parsing for `MCP_HTTPS_ENABLED` is standardized across `config/transport.py`, `scripts/server/run_server.py`, `scripts/server/check_http_server.py`, and the repo-root `run_server.py`** (#231, thanks timkjr) — the last of those is what the Docker image actually executes. If you run the Docker image with `MCP_HTTPS_ENABLED=1`, `yes`, `on`, or `enabled`, it now starts HTTPS; before this fix, those values fell through to plain HTTP because the root `run_server.py` used a narrower truthy check than the rest of the config layer. If you were relying on that fallthrough, set `MCP_HTTPS_ENABLED=false` explicitly.
+- **OAuth discovery endpoint URLs no longer contain double slashes** (#239, thanks timkjr). `OAUTH_ISSUER` is now rstripped and endpoints are built through a shared `join_url` helper, and the `iss` claim is validated exactly against the normalized issuer. If you set `MCP_OAUTH_ISSUER` with a trailing slash, tokens minted before this upgrade will fail validation until they expire (60 minutes by default) — reissue them, or drop the trailing slash from your existing tokens' issuer if you mint them yourself. Deployments without a trailing slash on `MCP_OAUTH_ISSUER` are unaffected.
 
 ## [11.8.0] - 2026-08-09
 
