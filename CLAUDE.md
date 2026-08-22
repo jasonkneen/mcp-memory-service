@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with th
 
 Quick reference; each rule is expanded in the sections below. Violations cause real incidents.
 
-1. **This repo lives on Codeberg, not GitHub.** `origin` is `codeberg.org:doobidoo/mcp-memory-service`; CI is Forgejo Actions (`.forgejo/workflows/`). The `github` remote is a suspended mirror — do **not** use `gh` or `github.com` URLs for CI, releases, or issues.
+1. **Development happens on Codeberg. GitHub is a mirror.** `origin` is `codeberg.org:doobidoo/mcp-memory-service`; CI is Forgejo Actions (`.forgejo/workflows/`); issues, PRs, and releases are on Codeberg. The `github` remote is a synced mirror with Actions switched off and no repository secrets — `gh` is fine for reading it and for administering the mirror, but nothing about CI, releases, or issue handling runs there. **Never push tags to the mirror**, and never push it anything but a fast-forward of `main` (see "Source Control & Hosting").
 2. **Never manually bump versions.** Follow the documented release workflow for every version bump and release.
 3. **Run `bash scripts/pr/pre_pr_check.sh` before every PR.** It is the mandatory pre-PR gate and must pass.
 4. **Use the project venv.** Run `.venv/bin/python` and `.venv/bin/pytest` (Python 3.11) — the system interpreters are not the project environment.
@@ -36,8 +36,18 @@ Quick reference; each rule is expanded in the sections below. Violations cause r
 - **After completing tasks**: automatically save key learnings, decisions, and patterns to the MCP Memory Server without being asked
 - Include relevant tags: `mcp-memory-service`, task-specific tags, and `learnings`
 
-### Source Control & Hosting (Codeberg, not GitHub)
-- CI runs as **Forgejo Actions** in `.forgejo/workflows/` (`ci.yml`, `release.yml`, `deploy-site.yml`, `cleanup-images.yml`). There is no `.github/workflows/` directory. Issues and PRs are on Codeberg.
+### Source Control & Hosting
+
+- **Codeberg is where the work happens.** CI runs as **Forgejo Actions** in `.forgejo/workflows/` (`ci.yml`, `release.yml`, `deploy-site.yml`, `cleanup-images.yml`). There is no `.github/workflows/` directory. Issues and PRs are on Codeberg, and the tag push that starts a release goes to Codeberg.
+- **The GitHub mirror is read-only in practice.** It exists for discovery and as a fallback. Actions are disabled there and it holds no secrets, so nothing can publish from it. Two hard rules: only ever fast-forward `main` onto it, and **never push tags** — tag-triggered workflows run the workflow files of the tag's own commit, and every tag from before June 2026 carries publish workflows that would push to PyPI and Docker Hub a second time.
+- Before pushing the mirror, prove the fast-forward rather than assuming it:
+  ```bash
+  git fetch origin main
+  git merge-base --is-ancestor "$(git ls-remote github main | cut -f1)" FETCH_HEAD
+  git push github FETCH_HEAD:refs/heads/main
+  ```
+  If the ancestor check fails, stop and investigate. Do not force.
+- **Dependabot only exists on the mirror**, so it is the only automated dependency-alert source. Treat its findings as input and verify the resulting lock update through Forgejo CI, which is where the tests actually run.
 - **GHSA identifiers** (e.g. `GHSA-2r68-g678-7qr3`) are just advisory IDs and remain valid references.
 - **Authorship voice.** Commit messages, PR descriptions, CHANGELOG entries, issue/PR comments, and release notes are written in the maintainer's or contributor's own voice.
 
