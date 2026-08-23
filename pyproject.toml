@@ -105,7 +105,11 @@ sqlite-ml = [
 # Milvus backend — Milvus Lite (single file), self-hosted Milvus, or Zilliz Cloud.
 # Shipped with the ML extras so sentence-transformers embeddings are available.
 milvus = [
-    "pymilvus>=2.5.0,<4.0.0",  # 3.x has breaking API changes; migrate separately
+    # 3.x has breaking API changes and nothing here tests Milvus: the Test Milvus (Docker)
+    # job was a GitHub workflow and was never ported to Forgejo, so a break would be silent.
+    # Do not widen this bound until a Milvus CI job runs green against 3.x — see issue #261.
+    # A bulk uv-group bump (#976) already widened it to <4.0.0 once by accident.
+    "pymilvus>=2.5.0,<3.0.0",
     "milvus-lite>=2.4.10",
     # The default embedding path has been ONNX-first since v11, and [ml] below
     # only brings torch/sentence-transformers. Without onnxruntime a Milvus-only
