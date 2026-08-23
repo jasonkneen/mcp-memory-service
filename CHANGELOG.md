@@ -10,6 +10,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [11.8.2] - 2026-08-23
+
+PATCH release, security. GHSA-5p27-64mv-pr73, CVSS 3.1 9.1 (Critical): an unauthenticated caller could obtain a read+write bearer token and bypass the owner API key entirely. Affected only when `MCP_OAUTH_ENABLED=true` and Dynamic Client Registration is open (`MCP_DCR_REGISTRATION_KEY` unset, which is the default when OAuth is on) — `MCP_OAUTH_ENABLED` itself defaults to false, so a default install was never exposed. If you run OAuth with open DCR, upgrade now. The rest of this release is repository housekeeping left over from the GitHub-mirror reinstatement: dependency updates past their open advisories and a PyPI metadata fix.
+
+### Security
+
+- **fix(oauth): reject `client_credentials` from clients that never registered for it (GHSA-5p27-64mv-pr73, CVE requested).** Registering a public client via `/oauth/register` and replaying its returned credentials against `/oauth/token` with `grant_type=client_credentials` bypassed the owner API key entirely, handing an unauthenticated caller a read+write bearer token. Four defects lined up: `registration.py` issued a `client_secret` even to clients that registered with `token_endpoint_auth_method=none` (an RFC 7591 public client authenticates with PKCE, not a secret); `_handle_client_credentials_grant` never checked the client's registered `grant_types` (RFC 6749 section 4.4) or its auth method, so a public client could authenticate as if it were confidential; and `store_client()` hashed unconditionally, persisting an absent secret as the SHA-256 of the empty string — not exploitable, since the constant-time comparison rejects empty input before the hash is consulted, but indistinguishable from a real one in storage. The `authorization_code` grant was never affected: it already read the auth method off the stored client, and this fix copies that pattern. Affected v10.20.0 through v11.8.1. Operators who cannot upgrade immediately: set `MCP_DCR_REGISTRATION_KEY`, or `MCP_OAUTH_ENABLED=false`. Reported privately by Forrof, with a working proof of concept.
+
+### Changed
+
+- **A public client's registration response no longer contains a `client_secret`.** This is the intended consequence of the fix above, and the one behaviour change to be aware of: register with `token_endpoint_auth_method=none` and the `client_secret` field is now absent rather than populated. That is what RFC 7591 prescribes — a public client authenticates with PKCE — and it is what the `authorization_code` flow already assumed. A client that was reading the secret out of its own registration response and using it was relying on the vulnerability.
+- **chore(deps): move the locked Python and JS dependencies past their open advisories (#249).** `uv.lock`: aiohttp, cryptography, gitpython, joserfc, pydantic-settings, pyjwt, pypdf, python-multipart, starlette. `tests/bridge/package-lock.json` and `tests/integration/package-lock.json`: js-yaml.
+- **chore: publish repository URLs on PyPI (#247).** `pyproject.toml` had no `[project.urls]` section at all, so the PyPI project page for the main distribution showed no Homepage, Repository, Documentation or Issues link. `pyproject-lite.toml` already carried one; both now note that they are kept in sync.
+- **ci: restore CodeQL on the GitHub mirror (#252)** — the one workflow the mirror is allowed to carry, since Forgejo has no equivalent security-analysis job.
+- **chore: point the mirror's issue template config at Codeberg (#251).**
+- **docs: describe the GitHub mirror instead of a suspended account (#248).**
+
 ## [11.8.1] - 2026-08-22
 
 PATCH release: eight fixes on top of v11.8.0, six of them from timkjr. Two are worth reading before you upgrade if you run this in production: OAuth issuer validation got stricter (#239) and the Docker image now actually starts HTTPS where it used to silently fall through to HTTP (#231).

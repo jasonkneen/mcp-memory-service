@@ -77,7 +77,10 @@ class MemoryOAuthStorage(OAuthStorage):
         """
         async with self._lock:
             # Hash the secret at rest unless already hashed (legacy upgrade path).
-            if is_hashed_secret(client.client_secret):
+            # A public client carries no secret; hashing the empty string would
+            # store the SHA-256 of "" and make a secretless client look like it
+            # has one, so leave an empty value as it is.
+            if not client.client_secret or is_hashed_secret(client.client_secret):
                 self._clients[client.client_id] = client
             else:
                 self._clients[client.client_id] = client.model_copy(

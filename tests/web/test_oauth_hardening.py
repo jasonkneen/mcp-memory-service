@@ -31,6 +31,7 @@ from fastapi.testclient import TestClient
 from mcp_memory_service.web.oauth.authorization import (
     authorize_get,
     _handle_authorization_code_grant,
+    _handle_client_credentials_grant,
     token as token_endpoint,
 )
 from mcp_memory_service.web.oauth.models import RegisteredClient
@@ -441,3 +442,152 @@ async def test_body_limit_no_double_start_when_response_already_started():
     starts = [m for m in sent if m["type"] == "http.response.start"]
     assert len(starts) == 1, "headers already sent -> 413 must not be injected"
     assert starts[0]["status"] == 200
+
+
+# ---------------------------------------------------------------------------
+# client_credentials authorization bypass (reported privately, 2026-08-22)
+#
+# Chain that was possible: register a public client (auth method "none") limited
+# to authorization_code, receive a usable client_secret from the registration
+# response anyway, then present that secret at the token endpoint with
+# grant_type=client_credentials. The grant authenticated the secret without
+# checking either the registered grant types or the registered auth method, and
+# issued a read+write bearer token — no owner API key involved.
+# ---------------------------------------------------------------------------
+
+REG_PATCH = "mcp_memory_service.web.oauth.registration.get_oauth_storage"
+
+
+async def _register(storage, **kwargs):
+    from mcp_memory_service.web.oauth.models import ClientRegistrationRequest
+    from mcp_memory_service.web.oauth.registration import register_client
+
+    with patch(REG_PATCH, return_value=storage):
+        return await register_client(ClientRegistrationRequest(**kwargs), None)
+
+
+@pytest.mark.asyncio
+async def test_registration_issues_no_secret_to_public_client():
+    storage = MemoryOAuthStorage()
+    resp = await _register(
+        storage,
+        client_name="attacker",
+        redirect_uris=["https://example.test/cb"],
+        grant_types=["authorization_code"],
+        token_endpoint_auth_method="none",
+    )
+    assert resp.client_secret is None, "a public client must never be issued a secret"
+
+    stored = await storage.get_client(resp.client_id)
+    assert not stored.client_secret
+    # And the stored value must not be usable as one.
+    assert await storage.authenticate_client(resp.client_id, "") is False
+
+
+@pytest.mark.asyncio
+async def test_registration_still_issues_secret_to_confidential_client():
+    storage = MemoryOAuthStorage()
+    resp = await _register(
+        storage,
+        client_name="legit",
+        redirect_uris=["https://example.test/cb"],
+        grant_types=["client_credentials"],
+        token_endpoint_auth_method="client_secret_basic",
+    )
+    assert resp.client_secret
+    assert await storage.authenticate_client(resp.client_id, resp.client_secret) is True
+
+
+@pytest.mark.asyncio
+async def test_client_credentials_rejects_unregistered_grant():
+    """A client that registered only authorization_code may not use this grant."""
+    storage = MemoryOAuthStorage()
+    secret = "s3cret-value"
+    await storage.store_client(
+        RegisteredClient(
+            client_id="conf",
+            client_secret=secret,
+            redirect_uris=["https://example.test/cb"],
+            grant_types=["authorization_code"],
+            response_types=["code"],
+            token_endpoint_auth_method="client_secret_basic",
+            client_name="C",
+            created_at=0,
+        )
+    )
+    with patch(AUTH_PATCH, return_value=storage):
+        with pytest.raises(HTTPException) as exc:
+            await _handle_client_credentials_grant("conf", secret)
+    assert exc.value.status_code == 400
+    assert exc.value.detail["error"] == "unauthorized_client"
+
+
+@pytest.mark.asyncio
+async def test_client_credentials_rejects_public_client_with_secret():
+    """Auth method is read off the stored client, not inferred from the request."""
+    storage = MemoryOAuthStorage()
+    secret = "leaked-from-registration"
+    await storage.store_client(
+        RegisteredClient(
+            client_id="pubc",
+            client_secret=secret,
+            # Deliberately permissive on the grant so the auth-method check is
+            # what has to reject this, not the grant check.
+            grant_types=["authorization_code", "client_credentials"],
+            response_types=["code"],
+            token_endpoint_auth_method="none",
+            client_name="C",
+            created_at=0,
+        )
+    )
+    with patch(AUTH_PATCH, return_value=storage):
+        with pytest.raises(HTTPException) as exc:
+            await _handle_client_credentials_grant("pubc", secret)
+    assert exc.value.status_code == 401
+    assert exc.value.detail["error"] == "invalid_client"
+
+
+@pytest.mark.asyncio
+async def test_client_credentials_allows_properly_registered_client():
+    storage = MemoryOAuthStorage()
+    secret = "s3cret-value"
+    await storage.store_client(
+        RegisteredClient(
+            client_id="cc",
+            client_secret=secret,
+            grant_types=["client_credentials"],
+            response_types=["code"],
+            token_endpoint_auth_method="client_secret_basic",
+            client_name="C",
+            created_at=0,
+        )
+    )
+    with patch(AUTH_PATCH, return_value=storage):
+        resp = await _handle_client_credentials_grant("cc", secret)
+    assert resp.access_token
+    assert resp.scope == "read write"
+
+
+@pytest.mark.asyncio
+async def test_full_reported_chain_is_broken_end_to_end():
+    """The reported chain, start to finish, must not yield a token."""
+    storage = MemoryOAuthStorage()
+    reg = await _register(
+        storage,
+        client_name="attacker",
+        redirect_uris=["https://example.test/cb"],
+        grant_types=["authorization_code"],
+        token_endpoint_auth_method="none",
+    )
+
+    # Step 1 already fails: there is no secret to carry into step 2.
+    assert reg.client_secret is None
+
+    # Even handed the stored value directly, the grant refuses it.
+    stored = await storage.get_client(reg.client_id)
+    with patch(AUTH_PATCH, return_value=storage):
+        with pytest.raises(HTTPException) as exc:
+            await _handle_client_credentials_grant(
+                reg.client_id, stored.client_secret or "anything"
+            )
+    assert exc.value.status_code == 401
