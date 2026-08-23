@@ -281,16 +281,16 @@ class MemoryServer:
             try:
                 logger.info("Consolidation system will be initialized after storage")
             except Exception as e:
-                logger.error(f"Failed to initialize consolidation config: {e}")
+                logger.error("Failed to initialize consolidation config: %s", _sanitize_log_value(e))
 
         try:
             # Initialize paths
-            logger.info(f"Creating directories if they don't exist...")
+            logger.info("Creating directories if they don't exist...")
             os.makedirs(BACKUPS_PATH, exist_ok=True)
 
             # Log system diagnostics
-            logger.info(f"Initializing on {platform.system()} {platform.machine()} with Python {platform.python_version()}")
-            logger.info(f"Using accelerator: {self.system_info.accelerator}")
+            logger.info("Initializing on %s %s with Python %s", platform.system(), platform.machine(), platform.python_version())
+            logger.info("Using accelerator: %s", self.system_info.accelerator)
 
             if storage is not None:
                 # Caller injected an already-initialized storage; adopt it
@@ -305,15 +305,15 @@ class MemoryServer:
             else:
                 # DEFER STORAGE INITIALIZATION - Initialize storage lazily when needed
                 # This prevents hanging during server startup due to embedding model loading
-                logger.info(f"Deferring {STORAGE_BACKEND} storage initialization to prevent hanging")
+                logger.info("Deferring %s storage initialization to prevent hanging", STORAGE_BACKEND)
                 if MCP_CLIENT == 'lm_studio':
-                    print(f"Deferring {STORAGE_BACKEND} storage initialization to prevent startup hanging", file=sys.stdout, flush=True)
+                    print(f"Deferring {STORAGE_BACKEND} storage initialization to prevent startup hanging", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
                 self.storage = None
                 self.memory_service = None
                 self._storage_initialized = False
 
         except Exception as e:
-            logger.error(f"Initialization error: {str(e)}")
+            logger.error("Initialization error: %s", _sanitize_log_value(e))
             logger.error(traceback.format_exc())
 
             # Set storage to None to prevent any hanging
@@ -332,17 +332,17 @@ class MemoryServer:
                 notification_options=NotificationOptions(),
                 experimental_capabilities={}
             )
-            logger.info(f"Server capabilities: {capabilities}")
+            logger.info("Server capabilities: %s", _sanitize_log_value(capabilities))
             if MCP_CLIENT == 'lm_studio':
-                print(f"Server capabilities registered successfully!", file=sys.stdout, flush=True)
+                print(f"Server capabilities registered successfully!", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
         except Exception as e:
-            logger.error(f"Handler registration test failed: {str(e)}")
-            print(f"Handler registration issue: {str(e)}", file=sys.stderr, flush=True)
+            logger.error("Handler registration test failed: %s", _sanitize_log_value(e))
+            print(f"Handler registration issue: {str(e)}", file=sys.stderr, flush=True)  # debug: intentional startup diagnostic on stderr
     
     def record_query_time(self, query_time_ms: float):
         """Record a query time for averaging."""
         self.query_times.append(query_time_ms)
-        logger.debug(f"Recorded query time: {query_time_ms:.2f}ms")
+        logger.debug("Recorded query time: %sms", _sanitize_log_value(query_time_ms))
     
     def get_average_query_time(self) -> float:
         """Get the average query time from recent operations."""
@@ -350,7 +350,7 @@ class MemoryServer:
             return 0.0
         
         avg = sum(self.query_times) / len(self.query_times)
-        logger.debug(f"Average query time: {avg:.2f}ms (from {len(self.query_times)} samples)")
+        logger.debug("Average query time: %sms (from %s samples)", _sanitize_log_value(avg), len(self.query_times))
         return round(avg, 2)
     
     async def send_progress_notification(self, operation_id: str, progress: float, message: str = None):
@@ -378,7 +378,7 @@ class MemoryServer:
                 self.current_progress.pop(operation_id, None)
                 
         except Exception as e:
-            logger.debug(f"Could not send progress notification: {e}")
+            logger.debug("Could not send progress notification: %s", _sanitize_log_value(e))
     
     def get_operation_progress(self, operation_id: str) -> Optional[Dict[str, Any]]:
         """Get the current progress of an operation."""
@@ -392,7 +392,7 @@ class MemoryServer:
         _CACHE_STATS["total_calls"] += 1
         start_time = time.time()
 
-        logger.info(f"🚀 EAGER INIT Call #{_CACHE_STATS['total_calls']}: Checking global cache...")
+        logger.info("🚀 EAGER INIT Call #%s: Checking global cache...", _CACHE_STATS['total_calls'])
 
         # Acquire lock for thread-safe cache access
         cache_lock = _get_cache_lock()
@@ -404,7 +404,7 @@ class MemoryServer:
             if cache_key in _STORAGE_CACHE:
                 self.storage = _STORAGE_CACHE[cache_key]
                 _CACHE_STATS["storage_hits"] += 1
-                logger.info(f"✅ Storage Cache HIT - Reusing {STORAGE_BACKEND} instance (key: {cache_key})")
+                logger.info("✅ Storage Cache HIT - Reusing %s instance (key: %s)", STORAGE_BACKEND, _sanitize_log_value(cache_key))
                 self._storage_initialized = True
 
                 # Check memory service cache and log performance
@@ -415,21 +415,21 @@ class MemoryServer:
 
         # Cache miss - proceed with initialization
         _CACHE_STATS["storage_misses"] += 1
-        logger.info(f"❌ Storage Cache MISS - Initializing {STORAGE_BACKEND} instance...")
+        logger.info("❌ Storage Cache MISS - Initializing %s instance...", STORAGE_BACKEND)
 
         try:
-            logger.info(f"🚀 EAGER INIT: Starting {STORAGE_BACKEND} storage initialization...")
-            logger.info(f"🔧 EAGER INIT: Environment check - STORAGE_BACKEND={STORAGE_BACKEND}")
+            logger.info("🚀 EAGER INIT: Starting %s storage initialization...", STORAGE_BACKEND)
+            logger.info("🔧 EAGER INIT: Environment check - STORAGE_BACKEND=%s", STORAGE_BACKEND)
             
             # Log all Cloudflare config values for debugging
             if STORAGE_BACKEND == 'cloudflare':
-                logger.info(f"🔧 EAGER INIT: Cloudflare config validation:")
-                logger.info(f"   API_TOKEN: {'SET' if CLOUDFLARE_API_TOKEN else 'NOT SET'}")
-                logger.info(f"   ACCOUNT_ID: {CLOUDFLARE_ACCOUNT_ID}")
-                logger.info(f"   VECTORIZE_INDEX: {CLOUDFLARE_VECTORIZE_INDEX}")
-                logger.info(f"   D1_DATABASE_ID: {CLOUDFLARE_D1_DATABASE_ID}")
-                logger.info(f"   R2_BUCKET: {CLOUDFLARE_R2_BUCKET}")
-                logger.info(f"   EMBEDDING_MODEL: {CLOUDFLARE_EMBEDDING_MODEL}")
+                logger.info("🔧 EAGER INIT: Cloudflare config validation:")
+                logger.info("   API_TOKEN: %s", 'SET' if CLOUDFLARE_API_TOKEN else 'NOT SET')
+                logger.info("   ACCOUNT_ID: %s", CLOUDFLARE_ACCOUNT_ID)
+                logger.info("   VECTORIZE_INDEX: %s", CLOUDFLARE_VECTORIZE_INDEX)
+                logger.info("   D1_DATABASE_ID: %s", CLOUDFLARE_D1_DATABASE_ID)
+                logger.info("   R2_BUCKET: %s", CLOUDFLARE_R2_BUCKET)
+                logger.info("   EMBEDDING_MODEL: %s", CLOUDFLARE_EMBEDDING_MODEL)
             
             if STORAGE_BACKEND == 'sqlite_vec':
                 # Check for multi-client coordination mode
@@ -437,13 +437,13 @@ class MemoryServer:
                 coordinator = ServerCoordinator()
                 coordination_mode = await coordinator.detect_mode()
                 
-                logger.info(f"🔧 EAGER INIT: SQLite-vec - detected coordination mode: {coordination_mode}")
+                logger.info("🔧 EAGER INIT: SQLite-vec - detected coordination mode: %s", _sanitize_log_value(coordination_mode))
                 
                 if coordination_mode == "http_client":
                     # Use HTTP client to connect to existing server
                     from .storage.http_client import HTTPClientStorage
                     self.storage = HTTPClientStorage()
-                    logger.info(f"✅ EAGER INIT: Using HTTP client storage")
+                    logger.info("✅ EAGER INIT: Using HTTP client storage")
                 elif coordination_mode == "http_server":
                     # Try to auto-start HTTP server for coordination
                     from .utils.http_server_manager import auto_start_http_server_if_needed
@@ -454,7 +454,7 @@ class MemoryServer:
                         await asyncio.sleep(2)
                         from .storage.http_client import HTTPClientStorage
                         self.storage = HTTPClientStorage()
-                        logger.info(f"✅ EAGER INIT: Started HTTP server and using HTTP client storage")
+                        logger.info("✅ EAGER INIT: Started HTTP server and using HTTP client storage")
                     else:
                         # Fall back to direct SQLite-vec storage
                         from . import storage
@@ -462,7 +462,7 @@ class MemoryServer:
                         storage_module = importlib.import_module('mcp_memory_service.storage.sqlite_vec')
                         SqliteVecMemoryStorage = storage_module.SqliteVecMemoryStorage
                         self.storage = SqliteVecMemoryStorage(SQLITE_VEC_PATH, embedding_model=EMBEDDING_MODEL_NAME)
-                        logger.info(f"✅ EAGER INIT: HTTP server auto-start failed, using direct SQLite-vec storage")
+                        logger.info("✅ EAGER INIT: HTTP server auto-start failed, using direct SQLite-vec storage")
                 else:
                     # Import sqlite-vec storage module (supports dynamic class replacement)
                     from . import storage
@@ -470,12 +470,12 @@ class MemoryServer:
                     storage_module = importlib.import_module('mcp_memory_service.storage.sqlite_vec')
                     SqliteVecMemoryStorage = storage_module.SqliteVecMemoryStorage
                     self.storage = SqliteVecMemoryStorage(SQLITE_VEC_PATH, embedding_model=EMBEDDING_MODEL_NAME)
-                    logger.info(f"✅ EAGER INIT: Using direct SQLite-vec storage at {SQLITE_VEC_PATH}")
+                    logger.info("✅ EAGER INIT: Using direct SQLite-vec storage at %s", SQLITE_VEC_PATH)
             elif STORAGE_BACKEND == 'cloudflare':
                 # Initialize Cloudflare storage
-                logger.info(f"☁️  EAGER INIT: Importing CloudflareStorage...")
+                logger.info("☁️  EAGER INIT: Importing CloudflareStorage...")
                 from .storage.cloudflare import CloudflareStorage
-                logger.info(f"☁️  EAGER INIT: Creating CloudflareStorage instance...")
+                logger.info("☁️  EAGER INIT: Creating CloudflareStorage instance...")
                 self.storage = CloudflareStorage(
                     api_token=CLOUDFLARE_API_TOKEN,
                     account_id=CLOUDFLARE_ACCOUNT_ID,
@@ -487,10 +487,10 @@ class MemoryServer:
                     max_retries=CLOUDFLARE_MAX_RETRIES,
                     base_delay=CLOUDFLARE_BASE_DELAY
                 )
-                logger.info(f"✅ EAGER INIT: CloudflareStorage instance created with index: {CLOUDFLARE_VECTORIZE_INDEX}")
+                logger.info("✅ EAGER INIT: CloudflareStorage instance created with index: %s", CLOUDFLARE_VECTORIZE_INDEX)
             elif STORAGE_BACKEND == 'hybrid':
                 # Initialize Hybrid storage (SQLite-vec + Cloudflare)
-                logger.info(f"🔄 EAGER INIT: Using Hybrid storage...")
+                logger.info("🔄 EAGER INIT: Using Hybrid storage...")
                 from .storage.hybrid import HybridMemoryStorage
 
                 # Prepare Cloudflare configuration dict
@@ -507,7 +507,7 @@ class MemoryServer:
                         'max_retries': CLOUDFLARE_MAX_RETRIES,
                         'base_delay': CLOUDFLARE_BASE_DELAY
                     }
-                    logger.info(f"🔄 EAGER INIT: Cloudflare config prepared for hybrid storage")
+                    logger.info("🔄 EAGER INIT: Cloudflare config prepared for hybrid storage")
                 else:
                     logger.warning("🔄 EAGER INIT: Incomplete Cloudflare config, hybrid will run in SQLite-only mode")
 
@@ -518,10 +518,10 @@ class MemoryServer:
                     sync_interval=HYBRID_SYNC_INTERVAL or 300,
                     batch_size=HYBRID_BATCH_SIZE or 50
                 )
-                logger.info(f"✅ EAGER INIT: HybridMemoryStorage instance created")
+                logger.info("✅ EAGER INIT: HybridMemoryStorage instance created")
             elif STORAGE_BACKEND == 'milvus':
                 # Initialize Milvus storage (Milvus Lite / server / Zilliz Cloud)
-                logger.info(f"🧬 EAGER INIT: Importing MilvusMemoryStorage...")
+                logger.info("🧬 EAGER INIT: Importing MilvusMemoryStorage...")
                 from .storage.milvus import MilvusMemoryStorage
                 logger.info(
                     f"🧬 EAGER INIT: Creating MilvusMemoryStorage (uri={MILVUS_URI}, "
@@ -533,37 +533,37 @@ class MemoryServer:
                     collection_name=MILVUS_COLLECTION_NAME,
                     embedding_model=EMBEDDING_MODEL_NAME,
                 )
-                logger.info(f"✅ EAGER INIT: MilvusMemoryStorage instance created")
+                logger.info("✅ EAGER INIT: MilvusMemoryStorage instance created")
             else:
                 # Unknown backend - should not reach here due to factory validation
-                logger.error(f"❌ EAGER INIT: Unknown storage backend: {STORAGE_BACKEND}")
+                logger.error("❌ EAGER INIT: Unknown storage backend: %s", STORAGE_BACKEND)
                 raise ValueError(f"Unsupported storage backend: {STORAGE_BACKEND}")
 
             # Initialize the storage backend
-            logger.info(f"🔧 EAGER INIT: Calling storage.initialize()...")
+            logger.info("🔧 EAGER INIT: Calling storage.initialize()...")
             await self.storage.initialize()
-            logger.info(f"✅ EAGER INIT: storage.initialize() completed successfully")
+            logger.info("✅ EAGER INIT: storage.initialize() completed successfully")
             
             self._storage_initialized = True
-            logger.info(f"🎉 EAGER INIT: {STORAGE_BACKEND} storage initialization successful")
+            logger.info("🎉 EAGER INIT: %s storage initialization successful", STORAGE_BACKEND)
 
             # Cache the newly initialized storage instance
             async with cache_lock:
                 _STORAGE_CACHE[cache_key] = self.storage
                 init_time = (time.time() - start_time) * 1000
                 _CACHE_STATS["initialization_times"].append(init_time)
-                logger.info(f"💾 Cached storage instance (key: {cache_key}, init_time: {init_time:.1f}ms)")
+                logger.info("💾 Cached storage instance (key: %s, init_time: %sms)", _sanitize_log_value(cache_key), _sanitize_log_value(init_time))
 
                 # Initialize and cache MemoryService
                 _CACHE_STATS["service_misses"] += 1
                 self.memory_service = MemoryService(self.storage)
                 storage_id = id(self.storage)
                 _MEMORY_SERVICE_CACHE[storage_id] = self.memory_service
-                logger.info(f"💾 Cached MemoryService instance (storage_id: {storage_id})")
+                logger.info("💾 Cached MemoryService instance (storage_id: %s)", _sanitize_log_value(storage_id))
 
             # Verify storage type
             storage_type = self.storage.__class__.__name__
-            logger.info(f"🔍 EAGER INIT: Final storage type verification: {storage_type}")
+            logger.info("🔍 EAGER INIT: Final storage type verification: %s", _sanitize_log_value(storage_type))
 
             # Initialize consolidation system after storage is ready
             await self._initialize_consolidation()
@@ -573,8 +573,8 @@ class MemoryServer:
 
             return True
         except Exception as e:
-            logger.error(f"❌ EAGER INIT: Storage initialization failed: {str(e)}")
-            logger.error(f"📋 EAGER INIT: Full traceback:")
+            logger.error("❌ EAGER INIT: Storage initialization failed: %s", _sanitize_log_value(e))
+            logger.error("📋 EAGER INIT: Full traceback:")
             logger.error(traceback.format_exc())
             return False
 
@@ -587,7 +587,7 @@ class MemoryServer:
             _CACHE_STATS["total_calls"] += 1
             start_time = time.time()
 
-            logger.info(f"🔄 LAZY INIT Call #{_CACHE_STATS['total_calls']}: Checking global cache...")
+            logger.info("🔄 LAZY INIT Call #%s: Checking global cache...", _CACHE_STATS['total_calls'])
 
             # Acquire lock for thread-safe cache access
             cache_lock = _get_cache_lock()
@@ -599,7 +599,7 @@ class MemoryServer:
                 if cache_key in _STORAGE_CACHE:
                     self.storage = _STORAGE_CACHE[cache_key]
                     _CACHE_STATS["storage_hits"] += 1
-                    logger.info(f"✅ Storage Cache HIT - Reusing {STORAGE_BACKEND} instance (key: {cache_key})")
+                    logger.info("✅ Storage Cache HIT - Reusing %s instance (key: %s)", STORAGE_BACKEND, _sanitize_log_value(cache_key))
                     self._storage_initialized = True
 
                     # Check memory service cache and log performance
@@ -610,21 +610,21 @@ class MemoryServer:
 
             # Cache miss - proceed with initialization
             _CACHE_STATS["storage_misses"] += 1
-            logger.info(f"❌ Storage Cache MISS - Initializing {STORAGE_BACKEND} instance...")
+            logger.info("❌ Storage Cache MISS - Initializing %s instance...", STORAGE_BACKEND)
 
             try:
-                logger.info(f"🔄 LAZY INIT: Starting {STORAGE_BACKEND} storage initialization...")
-                logger.info(f"🔧 LAZY INIT: Environment check - STORAGE_BACKEND={STORAGE_BACKEND}")
+                logger.info("🔄 LAZY INIT: Starting %s storage initialization...", STORAGE_BACKEND)
+                logger.info("🔧 LAZY INIT: Environment check - STORAGE_BACKEND=%s", STORAGE_BACKEND)
                 
                 # Log all Cloudflare config values for debugging
                 if STORAGE_BACKEND == 'cloudflare':
-                    logger.info(f"🔧 LAZY INIT: Cloudflare config validation:")
-                    logger.info(f"   API_TOKEN: {'SET' if CLOUDFLARE_API_TOKEN else 'NOT SET'}")
-                    logger.info(f"   ACCOUNT_ID: {CLOUDFLARE_ACCOUNT_ID}")
-                    logger.info(f"   VECTORIZE_INDEX: {CLOUDFLARE_VECTORIZE_INDEX}")
-                    logger.info(f"   D1_DATABASE_ID: {CLOUDFLARE_D1_DATABASE_ID}")
-                    logger.info(f"   R2_BUCKET: {CLOUDFLARE_R2_BUCKET}")
-                    logger.info(f"   EMBEDDING_MODEL: {CLOUDFLARE_EMBEDDING_MODEL}")
+                    logger.info("🔧 LAZY INIT: Cloudflare config validation:")
+                    logger.info("   API_TOKEN: %s", 'SET' if CLOUDFLARE_API_TOKEN else 'NOT SET')
+                    logger.info("   ACCOUNT_ID: %s", CLOUDFLARE_ACCOUNT_ID)
+                    logger.info("   VECTORIZE_INDEX: %s", CLOUDFLARE_VECTORIZE_INDEX)
+                    logger.info("   D1_DATABASE_ID: %s", CLOUDFLARE_D1_DATABASE_ID)
+                    logger.info("   R2_BUCKET: %s", CLOUDFLARE_R2_BUCKET)
+                    logger.info("   EMBEDDING_MODEL: %s", CLOUDFLARE_EMBEDDING_MODEL)
                 
                 if STORAGE_BACKEND == 'sqlite_vec':
                     # Check for multi-client coordination mode
@@ -632,13 +632,13 @@ class MemoryServer:
                     coordinator = ServerCoordinator()
                     coordination_mode = await coordinator.detect_mode()
                     
-                    logger.info(f"🔧 LAZY INIT: SQLite-vec - detected coordination mode: {coordination_mode}")
+                    logger.info("🔧 LAZY INIT: SQLite-vec - detected coordination mode: %s", _sanitize_log_value(coordination_mode))
                     
                     if coordination_mode == "http_client":
                         # Use HTTP client to connect to existing server
                         from .storage.http_client import HTTPClientStorage
                         self.storage = HTTPClientStorage()
-                        logger.info(f"✅ LAZY INIT: Using HTTP client storage")
+                        logger.info("✅ LAZY INIT: Using HTTP client storage")
                     elif coordination_mode == "http_server":
                         # Try to auto-start HTTP server for coordination
                         from .utils.http_server_manager import auto_start_http_server_if_needed
@@ -649,26 +649,26 @@ class MemoryServer:
                             await asyncio.sleep(2)
                             from .storage.http_client import HTTPClientStorage
                             self.storage = HTTPClientStorage()
-                            logger.info(f"✅ LAZY INIT: Started HTTP server and using HTTP client storage")
+                            logger.info("✅ LAZY INIT: Started HTTP server and using HTTP client storage")
                         else:
                             # Fall back to direct SQLite-vec storage
                             import importlib
                             storage_module = importlib.import_module('mcp_memory_service.storage.sqlite_vec')
                             SqliteVecMemoryStorage = storage_module.SqliteVecMemoryStorage
                             self.storage = SqliteVecMemoryStorage(SQLITE_VEC_PATH, embedding_model=EMBEDDING_MODEL_NAME)
-                            logger.info(f"✅ LAZY INIT: HTTP server auto-start failed, using direct SQLite-vec storage at: {SQLITE_VEC_PATH}")
+                            logger.info("✅ LAZY INIT: HTTP server auto-start failed, using direct SQLite-vec storage at: %s", SQLITE_VEC_PATH)
                     else:
                         # Use direct SQLite-vec storage (with WAL mode for concurrent access)
                         import importlib
                         storage_module = importlib.import_module('mcp_memory_service.storage.sqlite_vec')
                         SqliteVecMemoryStorage = storage_module.SqliteVecMemoryStorage
                         self.storage = SqliteVecMemoryStorage(SQLITE_VEC_PATH, embedding_model=EMBEDDING_MODEL_NAME)
-                        logger.info(f"✅ LAZY INIT: Created SQLite-vec storage at: {SQLITE_VEC_PATH}")
+                        logger.info("✅ LAZY INIT: Created SQLite-vec storage at: %s", SQLITE_VEC_PATH)
                 elif STORAGE_BACKEND == 'cloudflare':
                     # Cloudflare backend using Vectorize, D1, and R2
-                    logger.info(f"☁️  LAZY INIT: Importing CloudflareStorage...")
+                    logger.info("☁️  LAZY INIT: Importing CloudflareStorage...")
                     from .storage.cloudflare import CloudflareStorage
-                    logger.info(f"☁️  LAZY INIT: Creating CloudflareStorage instance...")
+                    logger.info("☁️  LAZY INIT: Creating CloudflareStorage instance...")
                     self.storage = CloudflareStorage(
                         api_token=CLOUDFLARE_API_TOKEN,
                         account_id=CLOUDFLARE_ACCOUNT_ID,
@@ -680,10 +680,10 @@ class MemoryServer:
                         max_retries=CLOUDFLARE_MAX_RETRIES,
                         base_delay=CLOUDFLARE_BASE_DELAY
                     )
-                    logger.info(f"✅ LAZY INIT: Created Cloudflare storage with Vectorize index: {CLOUDFLARE_VECTORIZE_INDEX}")
+                    logger.info("✅ LAZY INIT: Created Cloudflare storage with Vectorize index: %s", CLOUDFLARE_VECTORIZE_INDEX)
                 elif STORAGE_BACKEND == 'hybrid':
                     # Hybrid backend using SQLite-vec as primary and Cloudflare as secondary
-                    logger.info(f"🔄 LAZY INIT: Importing HybridMemoryStorage...")
+                    logger.info("🔄 LAZY INIT: Importing HybridMemoryStorage...")
                     from .storage.hybrid import HybridMemoryStorage
 
                     # Prepare Cloudflare configuration dict
@@ -700,11 +700,11 @@ class MemoryServer:
                             'max_retries': CLOUDFLARE_MAX_RETRIES,
                             'base_delay': CLOUDFLARE_BASE_DELAY
                         }
-                        logger.info(f"🔄 LAZY INIT: Cloudflare config prepared for hybrid storage")
+                        logger.info("🔄 LAZY INIT: Cloudflare config prepared for hybrid storage")
                     else:
                         logger.warning("🔄 LAZY INIT: Incomplete Cloudflare config, hybrid will run in SQLite-only mode")
 
-                    logger.info(f"🔄 LAZY INIT: Creating HybridMemoryStorage instance...")
+                    logger.info("🔄 LAZY INIT: Creating HybridMemoryStorage instance...")
                     self.storage = HybridMemoryStorage(
                         sqlite_db_path=SQLITE_VEC_PATH,
                         embedding_model=EMBEDDING_MODEL_NAME,
@@ -712,10 +712,10 @@ class MemoryServer:
                         sync_interval=HYBRID_SYNC_INTERVAL or 300,
                         batch_size=HYBRID_BATCH_SIZE or 50
                     )
-                    logger.info(f"✅ LAZY INIT: Created Hybrid storage at: {SQLITE_VEC_PATH} with Cloudflare sync")
+                    logger.info("✅ LAZY INIT: Created Hybrid storage at: %s with Cloudflare sync", SQLITE_VEC_PATH)
                 elif STORAGE_BACKEND == 'milvus':
                     # Milvus backend — Milvus Lite (file) / self-hosted server / Zilliz Cloud
-                    logger.info(f"🧬 LAZY INIT: Importing MilvusMemoryStorage...")
+                    logger.info("🧬 LAZY INIT: Importing MilvusMemoryStorage...")
                     from .storage.milvus import MilvusMemoryStorage
                     logger.info(
                         f"🧬 LAZY INIT: Creating MilvusMemoryStorage (uri={MILVUS_URI}, "
@@ -727,11 +727,11 @@ class MemoryServer:
                         collection_name=MILVUS_COLLECTION_NAME,
                         embedding_model=EMBEDDING_MODEL_NAME,
                     )
-                    logger.info(f"✅ LAZY INIT: MilvusMemoryStorage instance created")
+                    logger.info("✅ LAZY INIT: MilvusMemoryStorage instance created")
                 else:
                     # Unknown/unsupported backend
                     logger.error("=" * 70)
-                    logger.error(f"❌ LAZY INIT: Unsupported storage backend: {STORAGE_BACKEND}")
+                    logger.error("❌ LAZY INIT: Unsupported storage backend: %s", STORAGE_BACKEND)
                     logger.error("")
                     logger.error("Supported backends:")
                     logger.error("  - sqlite_vec (recommended for single-device use)")
@@ -745,43 +745,43 @@ class MemoryServer:
                     )
                 
                 # Initialize the storage backend
-                logger.info(f"🔧 LAZY INIT: Calling storage.initialize()...")
+                logger.info("🔧 LAZY INIT: Calling storage.initialize()...")
                 await self.storage.initialize()
-                logger.info(f"✅ LAZY INIT: storage.initialize() completed successfully")
+                logger.info("✅ LAZY INIT: storage.initialize() completed successfully")
                 
                 # Verify the storage is properly initialized
                 if hasattr(self.storage, 'is_initialized') and not self.storage.is_initialized():
                     # Get detailed status for debugging
                     if hasattr(self.storage, 'get_initialization_status'):
                         status = self.storage.get_initialization_status()
-                        logger.error(f"❌ LAZY INIT: Storage initialization incomplete: {status}")
+                        logger.error("❌ LAZY INIT: Storage initialization incomplete: %s", _sanitize_log_value(status))
                     raise RuntimeError("Storage initialization incomplete")
                 
                 self._storage_initialized = True
                 storage_type = self.storage.__class__.__name__
-                logger.info(f"🎉 LAZY INIT: Storage backend ({STORAGE_BACKEND}) initialization successful")
-                logger.info(f"🔍 LAZY INIT: Final storage type verification: {storage_type}")
+                logger.info("🎉 LAZY INIT: Storage backend (%s) initialization successful", STORAGE_BACKEND)
+                logger.info("🔍 LAZY INIT: Final storage type verification: %s", _sanitize_log_value(storage_type))
 
                 # Cache the newly initialized storage instance
                 async with cache_lock:
                     _STORAGE_CACHE[cache_key] = self.storage
                     init_time = (time.time() - start_time) * 1000
                     _CACHE_STATS["initialization_times"].append(init_time)
-                    logger.info(f"💾 Cached storage instance (key: {cache_key}, init_time: {init_time:.1f}ms)")
+                    logger.info("💾 Cached storage instance (key: %s, init_time: %sms)", _sanitize_log_value(cache_key), _sanitize_log_value(init_time))
 
                     # Initialize and cache MemoryService
                     _CACHE_STATS["service_misses"] += 1
                     self.memory_service = MemoryService(self.storage)
                     storage_id = id(self.storage)
                     _MEMORY_SERVICE_CACHE[storage_id] = self.memory_service
-                    logger.info(f"💾 Cached MemoryService instance (storage_id: {storage_id})")
+                    logger.info("💾 Cached MemoryService instance (storage_id: %s)", _sanitize_log_value(storage_id))
 
                 # Initialize consolidation system after storage is ready
                 await self._initialize_consolidation()
 
             except Exception as e:
-                logger.error(f"❌ LAZY INIT: Failed to initialize {STORAGE_BACKEND} storage: {str(e)}")
-                logger.error(f"📋 LAZY INIT: Full traceback:")
+                logger.error("❌ LAZY INIT: Failed to initialize %s storage: %s", STORAGE_BACKEND, _sanitize_log_value(e))
+                logger.error("📋 LAZY INIT: Full traceback:")
                 logger.error(traceback.format_exc())
                 # Set storage to None to indicate failure
                 self.storage = None
@@ -797,53 +797,53 @@ class MemoryServer:
             
             # Print system diagnostics only for LM Studio (avoid JSON parsing errors in Claude Desktop)
             if MCP_CLIENT == 'lm_studio':
-                print("\n=== System Diagnostics ===", file=sys.stdout, flush=True)
-                print(f"OS: {self.system_info.os_name} {self.system_info.os_version}", file=sys.stdout, flush=True)
-                print(f"Architecture: {self.system_info.architecture}", file=sys.stdout, flush=True)
-                print(f"Memory: {self.system_info.memory_gb:.2f} GB", file=sys.stdout, flush=True)
-                print(f"Accelerator: {self.system_info.accelerator}", file=sys.stdout, flush=True)
-                print(f"Python: {platform.python_version()}", file=sys.stdout, flush=True)
+                print("\n=== System Diagnostics ===", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
+                print(f"OS: {self.system_info.os_name} {self.system_info.os_version}", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
+                print(f"Architecture: {self.system_info.architecture}", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
+                print(f"Memory: {self.system_info.memory_gb:.2f} GB", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
+                print(f"Accelerator: {self.system_info.accelerator}", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
+                print(f"Python: {platform.python_version()}", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
             
             # Log environment info
-            logger.info(f"🔧 SERVER INIT: Environment - STORAGE_BACKEND={STORAGE_BACKEND}")
+            logger.info("🔧 SERVER INIT: Environment - STORAGE_BACKEND=%s", STORAGE_BACKEND)
             
             # Attempt eager storage initialization with timeout
             # Get dynamic timeout based on system and dependency status
             timeout_seconds = get_recommended_timeout()
-            logger.info(f"⏱️  SERVER INIT: Attempting eager storage initialization (timeout: {timeout_seconds}s)...")
+            logger.info("⏱️  SERVER INIT: Attempting eager storage initialization (timeout: %ss)...", _sanitize_log_value(timeout_seconds))
             if MCP_CLIENT == 'lm_studio':
-                print(f"Attempting eager storage initialization (timeout: {timeout_seconds}s)...", file=sys.stdout, flush=True)
+                print(f"Attempting eager storage initialization (timeout: {timeout_seconds}s)...", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
             try:
                 init_task = asyncio.create_task(self._initialize_storage_with_timeout())
                 success = await asyncio.wait_for(init_task, timeout=timeout_seconds)
                 if success:
                     if MCP_CLIENT == 'lm_studio':
-                        print("[OK] Eager storage initialization successful", file=sys.stdout, flush=True)
+                        print("[OK] Eager storage initialization successful", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
                     logger.info("✅ SERVER INIT: Eager storage initialization completed successfully")
                     
                     # Verify storage type after successful eager init
                     if hasattr(self, 'storage') and self.storage:
                         storage_type = self.storage.__class__.__name__
-                        logger.info(f"🔍 SERVER INIT: Eager init resulted in storage type: {storage_type}")
+                        logger.info("🔍 SERVER INIT: Eager init resulted in storage type: %s", _sanitize_log_value(storage_type))
                 else:
                     if MCP_CLIENT == 'lm_studio':
-                        print("[WARNING] Eager storage initialization failed, will use lazy loading", file=sys.stdout, flush=True)
+                        print("[WARNING] Eager storage initialization failed, will use lazy loading", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
                     logger.warning("⚠️  SERVER INIT: Eager initialization failed, falling back to lazy loading")
                     # Reset state for lazy loading
                     self.storage = None
                     self._storage_initialized = False
             except asyncio.TimeoutError:
                 if MCP_CLIENT == 'lm_studio':
-                    print("[TIMEOUT] Eager storage initialization timed out, will use lazy loading", file=sys.stdout, flush=True)
-                logger.warning(f"⏱️  SERVER INIT: Storage initialization timed out after {timeout_seconds}s, falling back to lazy loading")
+                    print("[TIMEOUT] Eager storage initialization timed out, will use lazy loading", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
+                logger.warning("⏱️  SERVER INIT: Storage initialization timed out after %ss, falling back to lazy loading", _sanitize_log_value(timeout_seconds))
                 # Reset state for lazy loading
                 self.storage = None
                 self._storage_initialized = False
             except Exception as e:
                 if MCP_CLIENT == 'lm_studio':
-                    print(f"[WARNING] Eager initialization error: {str(e)}, will use lazy loading", file=sys.stdout, flush=True)
-                logger.warning(f"⚠️  SERVER INIT: Eager initialization error: {str(e)}, falling back to lazy loading")
-                logger.warning(f"📋 SERVER INIT: Eager init error traceback:")
+                    print(f"[WARNING] Eager initialization error: {str(e)}, will use lazy loading", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
+                logger.warning("⚠️  SERVER INIT: Eager initialization error: %s, falling back to lazy loading", _sanitize_log_value(e))
+                logger.warning("📋 SERVER INIT: Eager init error traceback:")
                 logger.warning(traceback.format_exc())
                 # Reset state for lazy loading
                 self.storage = None
@@ -851,16 +851,16 @@ class MemoryServer:
             
             # Add explicit console output for Smithery to see (only for LM Studio)
             if MCP_CLIENT == 'lm_studio':
-                print("MCP Memory Service initialization completed", file=sys.stdout, flush=True)
+                print("MCP Memory Service initialization completed", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
             
             logger.info("🎉 SERVER INIT: Async initialization completed")
             return True
         except Exception as e:
-            logger.error(f"❌ SERVER INIT: Async initialization error: {str(e)}")
-            logger.error(f"📋 SERVER INIT: Full traceback:")
+            logger.error("❌ SERVER INIT: Async initialization error: %s", _sanitize_log_value(e))
+            logger.error("📋 SERVER INIT: Full traceback:")
             logger.error(traceback.format_exc())
             # Add explicit console error output for Smithery to see
-            print(f"Initialization error: {str(e)}", file=sys.stderr, flush=True)
+            print(f"Initialization error: {str(e)}", file=sys.stderr, flush=True)  # debug: intentional startup diagnostic on stderr
             # Don't raise the exception, just return False
             return False
 
@@ -872,23 +872,23 @@ class MemoryServer:
             # Check database health
             is_valid, message = await validate_database(self.storage)
             if not is_valid:
-                logger.warning(f"Database validation failed: {message}")
+                logger.warning("Database validation failed: %s", _sanitize_log_value(message))
                 
                 # Attempt repair
                 logger.info("Attempting database repair...")
                 repair_success, repair_message = await repair_database(self.storage)
                 
                 if not repair_success:
-                    logger.error(f"Database repair failed: {repair_message}")
+                    logger.error("Database repair failed: %s", _sanitize_log_value(repair_message))
                     return False
                 else:
-                    logger.info(f"Database repair successful: {repair_message}")
+                    logger.info("Database repair successful: %s", _sanitize_log_value(repair_message))
                     return True
             else:
-                logger.info(f"Database validation successful: {message}")
+                logger.info("Database validation successful: %s", _sanitize_log_value(message))
                 return True
         except Exception as e:
-            logger.error(f"Database validation error: {str(e)}")
+            logger.error("Database validation error: %s", _sanitize_log_value(e))
             return False
 
     async def _initialize_consolidation(self):
@@ -935,7 +935,7 @@ class MemoryServer:
                             )
                             logger.info("Scheduled distill_check + contradiction_check jobs (every 6h)")
                         except Exception as e:
-                            logger.warning(f"Failed to add distill_check job: {e}")
+                            logger.warning("Failed to add distill_check job: %s", _sanitize_log_value(e))
                     else:
                         logger.warning("Failed to start consolidation scheduler")
                         self.consolidation_scheduler = None
@@ -961,10 +961,10 @@ class MemoryServer:
                         self._distill_scheduler.start()
                         logger.info("Independent distill + contradiction scheduler started (every 6h)")
                     except Exception as e:
-                        logger.warning(f"Failed to start independent distill scheduler: {e}")
+                        logger.warning("Failed to start independent distill scheduler: %s", _sanitize_log_value(e))
                 
         except Exception as e:
-            logger.error(f"Failed to initialize consolidation system: {e}")
+            logger.error("Failed to initialize consolidation system: %s", _sanitize_log_value(e))
             logger.error(traceback.format_exc())
             self.consolidator = None
             self.consolidation_scheduler = None
@@ -977,7 +977,7 @@ class MemoryServer:
 
         # Only applicable to SQLite-based storage backends
         if STORAGE_BACKEND not in ('sqlite_vec', 'sqlite'):
-            logger.info(f"Integrity monitoring not applicable for {STORAGE_BACKEND} backend")
+            logger.info("Integrity monitoring not applicable for %s backend", STORAGE_BACKEND)
             return
 
         try:
@@ -997,7 +997,7 @@ class MemoryServer:
             await self.integrity_monitor.start()
 
         except Exception as e:
-            logger.error(f"Failed to initialize integrity monitor: {e}")
+            logger.error("Failed to initialize integrity monitor: %s", _sanitize_log_value(e))
             logger.error(traceback.format_exc())
             self.integrity_monitor = None
 
@@ -1007,7 +1007,7 @@ class MemoryServer:
         This logs the unsupported method request but doesn't raise an exception,
         allowing the MCP server to handle it with a standard JSON-RPC error response.
         """
-        logger.warning(f"Unsupported method requested: {method}")
+        logger.warning("Unsupported method requested: %s", _sanitize_log_value(method))
         # The MCP server will automatically respond with a Method not found error
         # We don't need to do anything else here
     
@@ -1065,7 +1065,7 @@ class MemoryServer:
                 # get_all_tags method not available on this storage backend
                 pass
             except Exception as e:
-                logger.warning(f"Failed to load tag resources: {e}")
+                logger.warning("Failed to load tag resources: %s", _sanitize_log_value(e))
             
             return resources
         
@@ -1136,7 +1136,7 @@ class MemoryServer:
                     return json.dumps({"error": f"Resource not found: {uri}"}, indent=2)
                     
             except Exception as e:
-                logger.error(f"Error reading resource {uri}: {e}")
+                logger.error("Error reading resource %s: %s", _sanitize_log_value(uri), _sanitize_log_value(e))
                 return json.dumps({"error": str(e)}, indent=2)
         
         @self.server.list_resource_templates()
@@ -1545,15 +1545,15 @@ class MemoryServer:
                     )
                 )
 
-            logger.info(f"Returning {len(tools)} tools")
+            logger.info("Returning %s tools", len(tools))
             return tools
         except Exception as e:
-            logger.error(f"Error in list_tools: {e}")
+            logger.error("Error in list_tools: %s", _sanitize_log_value(e))
             return []
 
     async def call_tool(self, name: str, arguments: dict | None) -> List[types.TextContent]:
         """Dispatch tool call via routing table (replaces elif chain)."""
-        logger.info(f"=== HANDLING TOOL CALL: {name} ===")
+        logger.info("=== HANDLING TOOL CALL: %s ===", _sanitize_log_value(name))
         if arguments is None:
             arguments = {}
 
@@ -1563,7 +1563,10 @@ class MemoryServer:
 
         if handler is None:
             error_msg = f"Unknown tool: {name}"
-            logger.error(error_msg)
+            # Log the sanitized name, but return error_msg to the caller unchanged:
+            # the response is JSON-encoded, so it needs no escaping, and altering it
+            # would change the client-visible text (CodeQL py/log-injection).
+            logger.error("Unknown tool: %s", _sanitize_log_value(name))
             return [types.TextContent(type="text", text=json.dumps({"error": error_msg}))]
 
         try:
@@ -1579,7 +1582,7 @@ class MemoryServer:
                 return result
             return [types.TextContent(type="text", text=str(result))]
         except Exception as e:
-            logger.error(f"Error in tool {name}: {e}", exc_info=True)
+            logger.error("Error in tool %s: %s", _sanitize_log_value(name), _sanitize_log_value(e), exc_info=True)
             error_response = json.dumps({"error": str(e)})
             return [types.TextContent(type="text", text=error_response)]
 
@@ -1763,7 +1766,7 @@ class MemoryServer:
 
     async def handle_memory_harvest(self, arguments: dict) -> List[types.TextContent]:
         """Handle memory_harvest tool calls — extract learnings from session transcripts."""
-        import os
+        import os  # inline import: only needed on this branch
         from pathlib import Path as _Path
         from .harvest.harvester import SessionHarvester
         from .harvest.models import HarvestConfig, MAX_CANDIDATE_PREVIEW_LENGTH
@@ -1873,7 +1876,7 @@ class MemoryServer:
                             metadata={"count": len(all_harvested)},
                         )
                     except Exception as e:
-                        logger.warning(f"Failed to update harvest tracker: {e}")
+                        logger.warning("Failed to update harvest tracker: %s", _sanitize_log_value(e))
 
         output = {
             "dry_run": config.dry_run,
@@ -2005,7 +2008,7 @@ class MemoryServer:
 
     async def handle_memory_distill(self, arguments: dict) -> List[types.TextContent]:
         """Extract insights from existing memories via LLM rewriter (batch mode)."""
-        import json as _json
+        import json as _json  # inline import: local alias, avoids shadowing the module-level json
         await self._ensure_storage_initialized()
 
         batch_size = arguments.get("batch_size", 20)
@@ -2264,7 +2267,7 @@ class MemoryServer:
             }))]
 
         except Exception as e:
-            logger.error(f"Error in commit_session_legacy: {e}")
+            logger.error("Error in commit_session_legacy: %s", _sanitize_log_value(e))
             return [types.TextContent(type="text", text=json.dumps({"status": "error", "message": str(e)}))]
 
     async def _post_commit_learning(self, session_id: str, agent_id: str):
@@ -2278,9 +2281,9 @@ class MemoryServer:
             # Simple threshold: if many observations exist, run distill
             if total >= 10:
                 await self.handle_memory_distill({"batch_size": 20, "dry_run": False})
-                logger.info(f"Post-commit learning: distill completed for session {session_id}")
+                logger.info("Post-commit learning: distill completed for session %s", _sanitize_log_value(session_id))
         except Exception as e:
-            logger.warning(f"Post-commit learning failed (non-fatal): {e}")
+            logger.warning("Post-commit learning failed (non-fatal): %s", _sanitize_log_value(e))
 
     async def _scheduled_distill_check(self):
         """Periodic (6h): run distill if undistilled memories exceed threshold."""
@@ -2296,7 +2299,7 @@ class MemoryServer:
             await self.handle_memory_distill({"batch_size": 20, "dry_run": False})
             logger.info("Scheduled distill_check completed")
         except Exception as e:
-            logger.warning(f"Scheduled distill_check failed (non-fatal): {e}")
+            logger.warning("Scheduled distill_check failed (non-fatal): %s", _sanitize_log_value(e))
 
     # --- §3: Contradiction search (scheduled alongside distill) ---
 
@@ -2315,7 +2318,7 @@ class MemoryServer:
                         f"Contradiction check: {len(unresolved)} unresolved conflict(s)"
                     )
         except Exception as e:
-            logger.warning(f"Scheduled contradiction_check failed (non-fatal): {e}")
+            logger.warning("Scheduled contradiction_check failed (non-fatal): %s", _sanitize_log_value(e))
 
     # --- §3: Threshold trigger for consolidation ---
 
@@ -2341,7 +2344,7 @@ class MemoryServer:
             self._last_consolidation_at = time.time()
             logger.info("Background consolidation (threshold-triggered) completed")
         except Exception as e:
-            logger.warning(f"Background consolidation failed (non-fatal): {e}")
+            logger.warning("Background consolidation failed (non-fatal): %s", _sanitize_log_value(e))
 
     # --- §7: Resource URI helpers ---
 
@@ -2396,7 +2399,7 @@ class MemoryServer:
                 },
             )
         except Exception as e:
-            logger.debug(f"Failed to increment session counter: {e}")
+            logger.debug("Failed to increment session counter: %s", _sanitize_log_value(e))
 
     async def _get_session_count(self, agent_id: str) -> int:
         """Get current session count for an agent."""
@@ -2544,7 +2547,7 @@ class MemoryServer:
                 for b in active_beliefs[:10]:
                     beliefs_entries.append(f"- 🧠 {b['content']} [confidence: {b['confidence']:.2f}]")
             except Exception as e:
-                logger.debug(f"Beliefs fetch skipped: {e}")
+                logger.debug("Beliefs fetch skipped: %s", _sanitize_log_value(e))
 
             # Task-aware memory retrieval (if task_summary provided)
             task_context = []
@@ -2558,7 +2561,7 @@ class MemoryServer:
                         if content and len(content) > 20:
                             task_context.append(f"- {content[:200]}")
                 except Exception as e:
-                    logger.debug(f"Task-aware retrieval skipped: {e}")
+                    logger.debug("Task-aware retrieval skipped: %s", _sanitize_log_value(e))
 
             def _dedup_and_rank(entries: list) -> list:
                 parsed = []
@@ -2594,7 +2597,7 @@ class MemoryServer:
             return [types.TextContent(type="text", text=profile)]
 
         except Exception as e:
-            logger.error(f"Error in get_bootstrap_profile: {e}")
+            logger.error("Error in get_bootstrap_profile: %s", _sanitize_log_value(e))
             return [types.TextContent(type="text", text="=== BEHAVIORAL PROFILE (v1) ===\n\nNo data available yet.\n=== END PROFILE ===")]
 
     # ============================================================
@@ -2756,9 +2759,9 @@ class MemoryServer:
 
         # Fallback: Create backup directly if no scheduler
         from pathlib import Path
-        import sqlite3
+        import sqlite3  # inline import: diagnostics path only
         from datetime import datetime, timezone
-        import tempfile
+        import tempfile  # inline import: diagnostics path only
 
         try:
             # Get database path from storage
@@ -2987,7 +2990,7 @@ class MemoryServer:
         - Embedding model caches (sqlite_vec)
         - Garbage collection to reclaim memory
         """
-        import gc
+        import gc  # inline import: shutdown path only
         from .server.cache_manager import clear_all_caches
         from .storage.sqlite_vec import clear_model_caches
 
@@ -2996,32 +2999,32 @@ class MemoryServer:
         try:
             # Clear service and storage caches
             cache_stats = clear_all_caches()
-            logger.info(f"Cleared service caches: {cache_stats}")
+            logger.info("Cleared service caches: %s", _sanitize_log_value(cache_stats))
 
             # Clear model caches (embedding models)
             model_stats = clear_model_caches()
-            logger.info(f"Cleared model caches: {model_stats}")
+            logger.info("Cleared model caches: %s", _sanitize_log_value(model_stats))
 
             # Force garbage collection to reclaim memory
             gc_collected = gc.collect()
-            logger.info(f"Garbage collection: {gc_collected} objects collected")
+            logger.info("Garbage collection: %s objects collected", _sanitize_log_value(gc_collected))
 
             logger.info("Graceful shutdown complete")
         except Exception as e:
-            logger.warning(f"Error during shutdown cleanup: {e}")
+            logger.warning("Error during shutdown cleanup: %s", _sanitize_log_value(e))
 
 
 def _print_system_diagnostics(system_info: Any) -> None:
     """Print system diagnostics for LM Studio."""
-    print("\n=== MCP Memory Service System Diagnostics ===", file=sys.stdout, flush=True)
-    print(f"OS: {system_info.os_name} {system_info.architecture}", file=sys.stdout, flush=True)
-    print(f"Python: {platform.python_version()}", file=sys.stdout, flush=True)
-    print(f"Hardware Acceleration: {system_info.accelerator}", file=sys.stdout, flush=True)
-    print(f"Memory: {system_info.memory_gb:.2f} GB", file=sys.stdout, flush=True)
-    print(f"Optimal Model: {system_info.get_optimal_model()}", file=sys.stdout, flush=True)
-    print(f"Optimal Batch Size: {system_info.get_optimal_batch_size()}", file=sys.stdout, flush=True)
-    print(f"Storage Backend: {STORAGE_BACKEND}", file=sys.stdout, flush=True)
-    print("================================================\n", file=sys.stdout, flush=True)
+    print("\n=== MCP Memory Service System Diagnostics ===", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
+    print(f"OS: {system_info.os_name} {system_info.architecture}", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
+    print(f"Python: {platform.python_version()}", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
+    print(f"Hardware Acceleration: {system_info.accelerator}", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
+    print(f"Memory: {system_info.memory_gb:.2f} GB", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
+    print(f"Optimal Model: {system_info.get_optimal_model()}", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
+    print(f"Optimal Batch Size: {system_info.get_optimal_batch_size()}", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
+    print(f"Storage Backend: {STORAGE_BACKEND}", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
+    print("================================================\n", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
 
 
 async def async_main():
@@ -3040,7 +3043,7 @@ async def async_main():
     if MCP_CLIENT == 'lm_studio':
         _print_system_diagnostics(system_info)
 
-    logger.info(f"Starting MCP Memory Service with storage backend: {STORAGE_BACKEND}")
+    logger.info("Starting MCP Memory Service with storage backend: %s", STORAGE_BACKEND)
 
     try:
         # Create server instance
@@ -3063,9 +3066,9 @@ async def async_main():
             await run_manager.run_stdio()
 
     except Exception as e:
-        logger.error(f"Server error: {str(e)}")
+        logger.error("Server error: %s", _sanitize_log_value(e))
         logger.error(traceback.format_exc())
-        print(f"Fatal server error: {str(e)}", file=sys.stderr, flush=True)
+        print(f"Fatal server error: {str(e)}", file=sys.stderr, flush=True)  # debug: intentional startup diagnostic on stderr
         raise
 
 def _cleanup_on_shutdown():
@@ -3075,7 +3078,7 @@ def _cleanup_on_shutdown():
     This function clears all caches to free memory and runs garbage collection.
     It's designed to be called from signal handlers (synchronous context).
     """
-    import gc
+    import gc  # inline import: shutdown path only
     from .server.cache_manager import clear_all_caches
     from .storage.sqlite_vec import clear_model_caches
 
@@ -3084,24 +3087,24 @@ def _cleanup_on_shutdown():
 
         # Clear service and storage caches
         cache_stats = clear_all_caches()
-        logger.info(f"Cleared service caches: {cache_stats}")
+        logger.info("Cleared service caches: %s", _sanitize_log_value(cache_stats))
 
         # Clear model caches (embedding models)
         model_stats = clear_model_caches()
-        logger.info(f"Cleared model caches: {model_stats}")
+        logger.info("Cleared model caches: %s", _sanitize_log_value(model_stats))
 
         # Force garbage collection
         gc_collected = gc.collect()
-        logger.info(f"Garbage collection: {gc_collected} objects collected")
+        logger.info("Garbage collection: %s objects collected", _sanitize_log_value(gc_collected))
 
         logger.info("Shutdown cleanup complete")
     except Exception as e:
-        logger.warning(f"Error during shutdown cleanup: {e}")
+        logger.warning("Error during shutdown cleanup: %s", _sanitize_log_value(e))
 
 
 def main():
-    import signal
-    import atexit
+    import signal  # inline import: entry point only
+    import atexit  # inline import: entry point only
     from mcp_memory_service.config import validate_config
 
     # Log any configuration issues at startup for visibility
@@ -3115,7 +3118,7 @@ def main():
 
     # Set up signal handlers for graceful shutdown
     def signal_handler(signum, frame):
-        logger.info(f"Received signal {signum}, shutting down gracefully...")
+        logger.info("Received signal %s, shutting down gracefully...", _sanitize_log_value(signum))
         _cleanup_on_shutdown()
         # Use os._exit(0) instead of sys.exit(0) to avoid buffered I/O lock issues
         # during shutdown. os._exit() bypasses Python's cleanup which is safe here
@@ -3131,14 +3134,14 @@ def main():
         if os.path.exists('/.dockerenv') or os.environ.get('DOCKER_CONTAINER', False):
             logger.info("Running in Docker container")
             if MCP_CLIENT == 'lm_studio':
-                print("MCP Memory Service starting in Docker mode", file=sys.stdout, flush=True)
+                print("MCP Memory Service starting in Docker mode", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
 
         asyncio.run(async_main())
     except KeyboardInterrupt:
         logger.info("Shutting down gracefully (KeyboardInterrupt)...")
         _cleanup_on_shutdown()
     except Exception as e:
-        logger.error(f"Fatal error: {str(e)}\n{traceback.format_exc()}")
+        logger.error("Fatal error: %s\n%s", _sanitize_log_value(e), traceback.format_exc())
         sys.exit(1)
 
 if __name__ == "__main__":
