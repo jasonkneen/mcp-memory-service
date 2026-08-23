@@ -20,6 +20,8 @@ Implements OAuth 2.1 authorization code flow and token endpoints.
 
 import html
 import time
+import json
+import hashlib
 import logging
 import base64
 import secrets
@@ -450,7 +452,6 @@ async def authorize_post(
         # Use HTML meta-refresh + JS redirect for maximum popup compatibility.
         # Some OAuth clients (Claude.ai) use popups where HTTP 302 from a
         # form POST can be unreliable across cross-origin boundaries.
-        import json
 
         # HTML-attribute-escape the URL for the meta refresh tag.
         # For the <script> context, json.dumps() produces a valid JS string
@@ -606,7 +607,6 @@ async def _handle_authorization_code_grant(
                     "error_description": "code_verifier required for PKCE",
                 },
             )
-        import hashlib
 
         computed = (
             base64.urlsafe_b64encode(
@@ -835,6 +835,41 @@ async def _handle_client_credentials_grant(
             detail={
                 "error": "invalid_client",
                 "error_description": "Client authentication failed",
+            },
+        )
+
+    # Authentication is not authorization. Two properties of the registration
+    # have to hold before this grant may issue a token, and both are read off the
+    # stored client rather than taken from the request — the same rule the
+    # authorization_code grant already follows.
+    client = await get_oauth_storage().get_client(final_client_id)
+    if not client:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "error": "invalid_client",
+                "error_description": "Client authentication failed",
+            },
+        )
+
+    # A public client authenticates with PKCE, never with a secret. Accepting one
+    # here let a client registered as public act as a confidential one.
+    if client.token_endpoint_auth_method == "none":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "error": "invalid_client",
+                "error_description": "Client authentication failed",
+            },
+        )
+
+    # RFC 6749 section 4.4: the grant must be one the client registered for.
+    if "client_credentials" not in client.grant_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "unauthorized_client",
+                "error_description": "Client is not authorized to use this grant type",
             },
         )
 
