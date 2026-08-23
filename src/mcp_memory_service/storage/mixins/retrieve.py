@@ -825,6 +825,15 @@ class RetrieveMixin:
                     FROM memories m
                     INNER JOIN memory_graph mg ON m.content_hash = mg.source_hash
                     WHERE m.deleted_at IS NULL
+                      -- has_entity rows point at an entity NAME, not a memory
+                      -- hash, so the edge loop below always drops them. Counting
+                      -- them here selected memories whose connections can never
+                      -- render, filling the view with isolated dots (Issue #256).
+                      -- COALESCE, not a bare !=: relationship_type has no NOT NULL
+                      -- constraint, and `NULL != 'has_entity'` is NULL in SQL, which
+                      -- would silently drop those rows instead of keeping them. The
+                      -- edge loop already reads NULL as 'related'.
+                      AND COALESCE(mg.relationship_type, 'related') != 'has_entity'
                     GROUP BY m.content_hash
                     HAVING connection_count >= ?
                     ORDER BY connection_count DESC
