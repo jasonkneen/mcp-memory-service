@@ -38,6 +38,23 @@ from ...config import (
 logger = logging.getLogger(__name__)
 
 
+def _as_tag_list(value: object) -> List[str]:
+    """Coerce a tag value to a list, splitting a comma-separated string.
+
+    Tags reach entity extraction from two places and either can be a string:
+    the `Memory.tags` attribute, and a caller-supplied `metadata["tags"]` that
+    older HTTP clients wrote as `"seo,ciod,error"`. Unpacking a string yields one
+    entity per character, which is how the graph filled up with `e`, `o` and `,`
+    nodes (Issue #253). Case is left alone — entity names are not lowercased
+    elsewhere in this path.
+    """
+    if isinstance(value, str):
+        return [t.strip() for t in value.split(',') if t.strip()]
+    if not value:
+        return []
+    return list(value)
+
+
 def _sanitize_log_value(value: object) -> str:
     """Sanitize a user-provided value for safe inclusion in log messages."""
     return str(value).replace("\n", "\\n").replace("\r", "\\r").replace("\x1b", "\\x1b")
@@ -137,7 +154,6 @@ async def handle_rate_memory(server, arguments: dict) -> List[types.TextContent]
             return [types.TextContent(type="text", text=f"Error retrieving memory: {str(e)}")]
 
         # Update metadata with user rating
-        import time
         memory.metadata['user_rating'] = rating
         memory.metadata['user_feedback'] = feedback
         memory.metadata['user_rating_timestamp'] = time.time()
@@ -196,7 +212,7 @@ async def handle_rate_memory(server, arguments: dict) -> List[types.TextContent]
         return [types.TextContent(type="text", text="\n".join(response))]
 
     except Exception as e:
-        logger.error(f"Error in rate_memory: {str(e)}\n{traceback.format_exc()}")
+        logger.error("Error in rate_memory: %s\n%s", _sanitize_log_value(e), traceback.format_exc())
         return [types.TextContent(type="text", text=f"Error rating memory: {str(e)}")]
 
 
@@ -267,7 +283,7 @@ async def handle_get_memory_quality(server, arguments: dict) -> List[types.TextC
         return [types.TextContent(type="text", text="\n".join(response_lines))]
 
     except Exception as e:
-        logger.error(f"Error in get_memory_quality: {str(e)}\n{traceback.format_exc()}")
+        logger.error("Error in get_memory_quality: %s\n%s", _sanitize_log_value(e), traceback.format_exc())
         return [types.TextContent(type="text", text=f"Error getting memory quality: {str(e)}")]
 
 
@@ -290,7 +306,7 @@ async def handle_analyze_quality_distribution(server, arguments: dict) -> List[t
         try:
             all_memories = await storage.get_all_memories()
         except Exception as e:
-            logger.error(f"Error retrieving all memories: {str(e)}\n{traceback.format_exc()}")
+            logger.error("Error retrieving all memories: %s\n%s", _sanitize_log_value(e), traceback.format_exc())
             return [types.TextContent(type="text", text=f"Error: Unable to retrieve all memories from storage backend: {str(e)}")]
 
         if not all_memories:
@@ -332,7 +348,7 @@ async def handle_analyze_quality_distribution(server, arguments: dict) -> List[t
         return [types.TextContent(type="text", text="\n".join(response_lines))]
 
     except Exception as e:
-        logger.error(f"Error in analyze_quality_distribution: {str(e)}\n{traceback.format_exc()}")
+        logger.error("Error in analyze_quality_distribution: %s\n%s", _sanitize_log_value(e), traceback.format_exc())
         return [types.TextContent(type="text", text=f"Error analyzing quality distribution: {str(e)}")]
 
 
@@ -501,7 +517,7 @@ async def handle_maintain(server, arguments: dict) -> List[types.TextContent]:
     try:
         from ...config import MAINTAIN_SCAN_LIMIT, MCP_INSIGHT_CARDS_ENABLED
     except ImportError:
-        import os
+        import os  # inline import: only needed on the config-import fallback path
         # Fallback: MCP_MAINTAIN_SCAN_LIMIT limits items scanned to prevent memory exhaustion.
         # High values risk performance degradation; 0 means unlimited.
         raw_limit = os.environ.get('MCP_MAINTAIN_SCAN_LIMIT', '2000') or '2000'
@@ -541,10 +557,12 @@ async def handle_maintain(server, arguments: dict) -> List[types.TextContent]:
             # metadata alone left the extractor's metadata-tag branch dead, so
             # every tag entity was silently dropped (Issue #218). Merge rather
             # than substitute: a caller-supplied metadata["tags"] stays valid.
-            tags = getattr(mem, 'tags', None) or []
-            if isinstance(tags, str):
-                tags = [t.strip() for t in tags.split(',') if t.strip()]
-            merged_tags = list(dict.fromkeys([*metadata.get('tags', []), *tags]))
+            # Both sides can arrive as a comma-separated string, so normalize
+            # each before unpacking — see _as_tag_list and Issue #253.
+            merged_tags = list(dict.fromkeys([
+                *_as_tag_list(metadata.get('tags')),
+                *_as_tag_list(getattr(mem, 'tags', None)),
+            ]))
             extraction_input = {**metadata, 'tags': merged_tags} if merged_tags else metadata
 
             entities = extractor.extract_entities(content, extraction_input)
