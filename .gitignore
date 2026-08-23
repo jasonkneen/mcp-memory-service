@@ -259,3 +259,9 @@ update-check/
 
 # Local-only Claude Code agent definitions (not published)
 .claude/agents/
+
+# Local agent tooling written into the checkout by other assistants
+# (gitnexus skills, Codex hooks, gstack audit log) - machine-local, not published
+.agents/
+.codex/
+.gstack/
