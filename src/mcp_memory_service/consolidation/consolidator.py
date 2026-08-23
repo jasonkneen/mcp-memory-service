@@ -295,7 +295,8 @@ class DreamInspiredConsolidator:
 
         try:
             self.logger.info(
-                f"Starting {time_horizon} consolidation - this may take several minutes depending on memory count..."
+                "Starting %s consolidation - this may take several minutes depending on memory count...",
+                _sanitize_log_value(time_horizon)
             )
 
             # Incremental: initialize run_tracker, concurrency guard, timeout
@@ -324,7 +325,8 @@ class DreamInspiredConsolidator:
 
                 if not memories:
                     self.logger.info(
-                        f"No memories to process for {time_horizon} consolidation"
+                        "No memories to process for %s consolidation",
+                        _sanitize_log_value(time_horizon)
                     )
                     # Record run even on 0 memories to advance timestamp
                     if is_incremental and self.run_tracker:
@@ -465,7 +467,8 @@ class DreamInspiredConsolidator:
         except ConsolidationError as e:
             # Re-raise configuration and validation errors
             self.logger.error(
-                f"Configuration error during {time_horizon} consolidation: {e}"
+                "Configuration error during %s consolidation: %s",
+                _sanitize_log_value(time_horizon), _sanitize_log_value(e)
             )
             self.health_monitor.record_error(
                 "consolidator", e, {"time_horizon": time_horizon}
