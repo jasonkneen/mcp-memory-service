@@ -1003,19 +1003,19 @@ class TestSqliteVecTimeBasedDeletion:
             content="Memory from yesterday",
             content_hash=generate_content_hash("Memory from yesterday"),
             tags=["timeframe-test"],
-            created_at=datetime.combine(yesterday, datetime.min.time()).timestamp()
+            created_at=datetime.combine(yesterday, datetime.min.time(), tzinfo=timezone.utc).timestamp()
         )
         memory_today = Memory(
             content="Memory from today",
             content_hash=generate_content_hash("Memory from today"),
             tags=["timeframe-test"],
-            created_at=datetime.combine(today, datetime.min.time()).timestamp()
+            created_at=datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc).timestamp()
         )
         memory_tomorrow = Memory(
             content="Memory from tomorrow",
             content_hash=generate_content_hash("Memory from tomorrow"),
             tags=["timeframe-test"],
-            created_at=datetime.combine(tomorrow, datetime.min.time()).timestamp()
+            created_at=datetime.combine(tomorrow, datetime.min.time(), tzinfo=timezone.utc).timestamp()
         )
 
         await storage.store(memory_yesterday)
@@ -1159,19 +1159,19 @@ class TestSqliteVecTimeBasedDeletion:
             content="Old memory",
             content_hash=generate_content_hash("Old memory"),
             tags=["before-test"],
-            created_at=datetime.combine(two_days_ago, datetime.min.time()).timestamp()
+            created_at=datetime.combine(two_days_ago, datetime.min.time(), tzinfo=timezone.utc).timestamp()
         )
         memory_yesterday = Memory(
             content="Yesterday memory",
             content_hash=generate_content_hash("Yesterday memory"),
             tags=["before-test"],
-            created_at=datetime.combine(yesterday, datetime.min.time()).timestamp()
+            created_at=datetime.combine(yesterday, datetime.min.time(), tzinfo=timezone.utc).timestamp()
         )
         memory_today = Memory(
             content="Today memory",
             content_hash=generate_content_hash("Today memory"),
             tags=["before-test"],
-            created_at=datetime.combine(today, datetime.min.time()).timestamp()
+            created_at=datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc).timestamp()
         )
 
         await storage.store(memory_old)
@@ -1234,7 +1234,7 @@ class TestSqliteVecTimeBasedDeletion:
             content="Recent memory",
             content_hash=generate_content_hash("Recent memory"),
             tags=["recent"],
-            created_at=datetime.combine(today, datetime.min.time()).timestamp()
+            created_at=datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc).timestamp()
         )
         await storage.store(memory)
 
