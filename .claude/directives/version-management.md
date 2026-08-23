@@ -22,11 +22,53 @@ feature-branches → main (development)
 2. **Release Preparation**: Create `release/vX.Y.Z` branch from `main`
 3. **Version Bump**: Update version files on release branch
 4. **PR & Merge**: Create PR, squash-merge it
-5. **Tag**: Create annotated tag `vX.Y.Z` on main and push it — the tag push is what
-   triggers the publish pipeline (`.forgejo/workflows/release.yml`: PyPI main + lite,
-   Docker Hub)
-6. **Release notes**: Publish a release object from the tag
-7. **Sync**: Release branch deleted, main stays current
+5. **Tag**: Create the annotated tag locally and push it **with git**:
+   ```bash
+   git tag -a vX.Y.Z -m "<summary>" <merge-sha>
+   git push origin refs/tags/vX.Y.Z     # explicit refspec, never --tags
+   ```
+   The **push** is what triggers `.forgejo/workflows/release.yml` (PyPI main + lite,
+   Docker Hub). Never create the tag through the forge API or the web UI — see the
+   rule below.
+6. **Verify the artifacts**, not just the run (see below)
+7. **Release notes**: Publish a release object from the tag
+8. **Sync**: Release branch deleted, main stays current
+
+### The tag must be pushed with git
+
+`release.yml` triggers on `push: tags: 'v*.*.*'`. A tag created inside the forge — via
+the release API, or by filling in the tag field on the release form — is **not a push
+event**, so nothing fires and the release publishes nothing at all.
+
+This is not hypothetical. **v11.8.1 was tagged that way on 2026-08-22 and never
+published.** Paging back through 300 Forgejo action tasks shows the full
+Test → PyPI → Docker chain for v11.8.0 and v11.7.0 and no run whatsoever for v11.8.1.
+PyPI stayed on 11.8.0 and `docker 11.8.1` returned 404 for a full day, with eight
+fixes in it. It hid because a release object with notes looks exactly like a finished
+release, and nothing anywhere says "no artifacts were built" — the green CI you
+remember is the release PR's `ci.yml`, not `release.yml`.
+
+### Verify the artifact, not the run
+
+A release is done when it is installable, not when the tag exists. After the tag push,
+check the publish endpoints directly:
+
+```bash
+# both distributions, not just the main one
+curl -s https://pypi.org/pypi/mcp-memory-service/json      | jq -r .info.version
+curl -s https://pypi.org/pypi/mcp-memory-service-lite/json | jq -r .info.version
+
+# all four image tags: X.Y.Z, X.Y.Z-slim, X.Y, X.Y-slim
+curl -s -o /dev/null -w '%{http_code}\n' \
+  https://hub.docker.com/v2/repositories/doobidoo/mcp-memory-service/tags/X.Y.Z
+```
+
+PyPI's JSON endpoint lags the upload by a minute or two, so a stale version there right
+after a green publish job is cache, not failure — re-check before concluding anything.
+
+`release.yml` has a `workflow_dispatch` fallback, but it is **PyPI catch-up only**: the
+Docker job derives its image tags from `github.ref_name`, so a manual dispatch from
+`main` pushes junk `main` tags and clobbers `latest`.
 
 ### Benefits:
 - `main` = active development (current work)
@@ -44,6 +86,12 @@ Always bumped together, in one commit:
 4. `CLAUDE.md` (Current Version line)
 5. `CHANGELOG.md` (convert [Unreleased] to [X.Y.Z] with date)
 6. `uv lock` to update the dependency lock file
+
+Of those six, **only `_version.py` and `pyproject.toml` are covered by a CI gate.**
+`CLAUDE.md` is the one that actually gets forgotten — v11.8.2 shipped without it, and
+nothing failed, so main announced the previous version until someone noticed by eye.
+Check it explicitly (`grep -n '^\*\*Current Version' CLAUDE.md`) rather than trusting a
+green gate.
 
 Conditional, and each one is enforced by a CI gate:
 
