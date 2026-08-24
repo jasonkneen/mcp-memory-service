@@ -28,6 +28,7 @@ import logging
 import subprocess
 from pathlib import Path
 from collections import deque
+from typing import NamedTuple
 
 import click
 
@@ -87,11 +88,13 @@ def _read_pid() -> int | None:
     return None
 
 
-def _write_pid(pid: int) -> None:
+def _write_pid(pid: int, scheme: str = "http") -> None:
     _ensure_dirs()
     # Record PID alongside process creation time and cmdline hint to detect
-    # stale PID files after reboot or PID reuse.
-    pid_info = {"pid": pid}
+    # stale PID files after reboot or PID reuse. The scheme records what the
+    # server was actually launched with, so later commands probe the right
+    # one instead of re-deriving it -- see _recorded_scheme().
+    pid_info = {"pid": pid, "scheme": scheme}
     try:
         import psutil  # inline import: deferred so this third-party dependency doesn't load at module import time, matching this module's fast-load design
         proc = psutil.Process(pid)
@@ -261,8 +264,124 @@ def _is_https_enabled() -> bool:
     return os.environ.get("MCP_HTTPS_ENABLED", "").strip().lower() in ("1", "true", "yes", "on", "enabled")  # sync with config.base.safe_get_bool_env
 
 
-def _base_url(host: str, port: int) -> str:
-    scheme = "https" if _is_https_enabled() else "http"
+def _dotenv_candidates() -> list:
+    """The .env locations the server's own config will search, in the same
+    priority order. Mirrors config.base._find_and_load_dotenv() -- kept in
+    sync manually, since importing that module here would trigger its
+    load_dotenv side effect (see the module docstring)."""
+    here = Path(__file__)
+    return [
+        Path.cwd() / ".env",
+        here.parent.parent.parent.parent / ".env",
+        *[p.parent / ".env" for p in here.parents if (p / "pyproject.toml").exists()],
+        Path("C:/REPOSITORIES/personal/mcp-memory-service/.env"),
+        Path("C:/REPOSITORIES/mcp-memory-service/.env"),
+        Path.home() / ".mcp-memory" / ".env",
+    ]
+
+
+def _server_env(name: str) -> str | None:
+    """Read a server-side setting the way the spawned child will see it:
+    os.environ first, then the .env file config.base would load.
+
+    Deliberately uses dotenv_values(), which returns a dict, rather than
+    load_dotenv(), which writes into os.environ. Nothing here may leak .env
+    into the process environment -- _is_https_enabled() and
+    _cli_allow_self_signed_certs() read os.environ precisely because a stray
+    .env must not be able to steer them. Precedence matches config.base's
+    load_dotenv(override=False): a real environment variable wins."""
+    value = os.environ.get(name)
+    if value is not None:
+        return value
+    from dotenv import dotenv_values  # inline import: third-party, kept out of module load per this module's fast-load design
+    for env_file in _dotenv_candidates():
+        try:
+            if env_file.exists():
+                return dotenv_values(env_file).get(name)
+        except (OSError, PermissionError):
+            continue
+    return None
+
+
+class _ServerTls(NamedTuple):
+    """What the spawned server needs in order to serve the configured scheme.
+
+    Carries ready-to-splice arguments rather than a bare on/off flag, so the
+    two spawn sites stay branch-free: the background path appends cli_args to
+    the uvicorn command line, the foreground path expands uvicorn_kwargs into
+    uvicorn.run(). Both are empty for plain HTTP."""
+    scheme: str
+    cli_args: list
+    uvicorn_kwargs: dict
+
+
+_NO_TLS = _ServerTls("http", [], {})
+
+
+def _resolve_server_tls() -> _ServerTls:
+    """Return the TLS configuration for the server to be spawned.
+
+    `memory launch` used to build a fixed uvicorn command line with no SSL
+    arguments at all, so a deployment configured for HTTPS came back up on
+    plain HTTP after `memory restart` -- silently, and with `memory info`
+    reporting http:// in agreement. scripts/server/run_http_server.py did
+    honour the same settings, so the two entry points disagreed.
+
+    Raises ClickException rather than falling back to HTTP: a server that
+    was asked for TLS and cannot provide it must not come up unencrypted
+    while looking healthy. Certificate auto-generation is deliberately not
+    reimplemented here -- explicit MCP_SSL_CERT_FILE/MCP_SSL_KEY_FILE paths
+    are required.
+    """
+    raw = (_server_env("MCP_HTTPS_ENABLED") or "").strip().lower()
+    # sync with config.base.safe_get_bool_env
+    if raw not in ("1", "true", "yes", "on", "enabled"):
+        return _NO_TLS
+
+    cert_file = _server_env("MCP_SSL_CERT_FILE")
+    key_file = _server_env("MCP_SSL_KEY_FILE")
+    for name, value in (("MCP_SSL_CERT_FILE", cert_file), ("MCP_SSL_KEY_FILE", key_file)):
+        if not value:
+            raise click.ClickException(
+                f"MCP_HTTPS_ENABLED is set but {name} is not. Set both "
+                "certificate paths, or unset MCP_HTTPS_ENABLED to serve HTTP."
+            )
+        if not Path(value).is_file():
+            raise click.ClickException(
+                f"{name}={value!r} does not exist or is not a file. "
+                "Refusing to start on plain HTTP with TLS requested."
+            )
+    return _ServerTls(
+        "https",
+        ["--ssl-certfile", cert_file, "--ssl-keyfile", key_file],
+        {"ssl_certfile": cert_file, "ssl_keyfile": key_file},
+    )
+
+
+def _recorded_scheme() -> str | None:
+    """Return the scheme the running server was actually launched with, as
+    recorded in the PID file, or None if there is nothing to go on.
+
+    Ground truth beats inference: _is_https_enabled() answers "should this
+    CLI *probe* over HTTPS" from os.environ alone, on purpose. But the
+    server's own TLS config legitimately comes from .env (see
+    _resolve_server_tls), so those two can disagree -- and when they do, an
+    HTTPS server gets probed over HTTP, the health check fails, and launch
+    tears down a child that started perfectly well. Recording what was
+    launched removes the guess without loosening _is_https_enabled()."""
+    pid_path = _pid_file()
+    try:
+        pid_info = json.loads(pid_path.read_text())
+    except (OSError, ValueError):
+        return None
+    if not isinstance(pid_info, dict):
+        return None
+    scheme = pid_info.get("scheme")
+    return scheme if scheme in ("http", "https") else None
+
+
+def _base_url(host: str, port: int, scheme: str | None = None) -> str:
+    scheme = scheme or _recorded_scheme() or ("https" if _is_https_enabled() else "http")
     return f"{scheme}://{host}:{port}"
 
 
@@ -434,7 +553,10 @@ def launch(ctx, http_host, http_port, detach, storage_backend, debug):
     # Resolve host and port
     host = http_host or os.environ.get("MCP_HTTP_HOST", "127.0.0.1")
     port = http_port or int(os.environ.get("MCP_HTTP_PORT", "8000"))
-    base_url = _base_url(host, port)
+    # Resolve TLS before anything probes or spawns: this decides both what the
+    # child gets and which scheme every health check in this invocation uses.
+    tls = _resolve_server_tls()
+    base_url = _base_url(host, port, scheme=tls.scheme)
 
     # Apply env overrides
     os.environ["MCP_HTTP_HOST"] = host
@@ -489,11 +611,11 @@ def launch(ctx, http_host, http_port, detach, storage_backend, debug):
 
     if not detach:
         # Foreground: import the heavy stuff and run directly
-        click.echo(f"Starting HTTP server on {host}:{port}...")
+        click.echo(f"Starting {tls.scheme.upper()} server on {host}:{port}...")
         from mcp_memory_service.web.app import app  # heavy import
         import uvicorn  # inline import: heavy dependency, avoided at module load time
         uvicorn.run(app, host=host, port=port,
-                    log_level="debug" if debug else "info")
+                    log_level="debug" if debug else "info", **tls.uvicorn_kwargs)
         return
 
     # ─── Background (detached) mode ──────────────────────────────────────
@@ -513,6 +635,12 @@ def launch(ctx, http_host, http_port, detach, storage_backend, debug):
         "--port", str(port),
         "--log-level", "info"
     ]
+
+    # uvicorn's CLI knows nothing about MCP_HTTPS_ENABLED -- translating the
+    # config into these flags is exactly the step that was missing, and its
+    # absence downgraded HTTPS deployments to plain HTTP on every restart.
+    # Empty for plain HTTP, so no branch is needed here.
+    cmd += tls.cli_args
 
     # Open log files for the child process
     log_out_handle = open(log_out, "a")
@@ -551,7 +679,7 @@ def launch(ctx, http_host, http_port, detach, storage_backend, debug):
         log_err_handle.close()
         raise
 
-    _write_pid(proc.pid)
+    _write_pid(proc.pid, scheme=tls.scheme)
 
     # Poll health endpoint until server is ready
     click.echo("Waiting for server to start...")
