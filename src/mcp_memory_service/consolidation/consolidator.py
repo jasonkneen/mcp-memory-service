@@ -33,6 +33,7 @@ from ..storage.graph import GraphStorage
 from ..config import GRAPH_STORAGE_MODE, CONSOLIDATION_STORE_ASSOCIATIONS, TYPED_EDGES_ENABLED
 from .relationship_inference import RelationshipInferenceEngine
 from .run_tracker import RunTracker
+from ..compat import _sanitize_log_value
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +91,7 @@ class SyncPauseContext:
                 self.logger.info("Resuming hybrid backend sync after consolidation")
                 await self.storage.resume_sync()
             except Exception as e:
-                self.logger.error(f"Failed to resume sync: {e}", exc_info=True)
+                self.logger.error("Failed to resume sync: %s", _sanitize_log_value(e), exc_info=True)
 
 
 def check_horizon_requirements(
@@ -254,10 +255,10 @@ class DreamInspiredConsolidator:
                 self.graph_storage = None
                 return
 
-            self.logger.info(f"Graph storage mode: {GRAPH_STORAGE_MODE}")
+            self.logger.info("Graph storage mode: %s", GRAPH_STORAGE_MODE)
 
         except Exception as e:
-            self.logger.warning(f"Failed to initialize graph storage: {e}")
+            self.logger.warning("Failed to initialize graph storage: %s", _sanitize_log_value(e))
             self.graph_storage = None
 
     def _resolve_tracker_db_path(self) -> Optional[Path]:
@@ -294,7 +295,8 @@ class DreamInspiredConsolidator:
 
         try:
             self.logger.info(
-                f"Starting {time_horizon} consolidation - this may take several minutes depending on memory count..."
+                "Starting %s consolidation - this may take several minutes depending on memory count...",
+                _sanitize_log_value(time_horizon)
             )
 
             # Incremental: initialize run_tracker, concurrency guard, timeout
@@ -323,14 +325,15 @@ class DreamInspiredConsolidator:
 
                 if not memories:
                     self.logger.info(
-                        f"No memories to process for {time_horizon} consolidation"
+                        "No memories to process for %s consolidation",
+                        _sanitize_log_value(time_horizon)
                     )
                     # Record run even on 0 memories to advance timestamp
                     if is_incremental and self.run_tracker:
                         await self.run_tracker.record_run("incremental", 0)
                     return self._finalize_report(report, [])
 
-                self.logger.info(f"✓ Found {len(memories)} memories to process")
+                self.logger.info("✓ Found %s memories to process", len(memories))
 
                 # 2. Calculate/update relevance scores
                 self.logger.info(
@@ -389,7 +392,7 @@ class DreamInspiredConsolidator:
                         time_horizon, "compression", self.ENABLED_PHASES
                     )
                 ):
-                    self.logger.info(f"🗜️ Phase 4/6: Compressing memory clusters...")
+                    self.logger.info("🗜️ Phase 4/6: Compressing memory clusters...")
                     performance_start = time.time()
                     compression_results = await self.compression_engine.process(
                         clusters, memories
@@ -407,7 +410,7 @@ class DreamInspiredConsolidator:
                 if self.config.forgetting_enabled and check_horizon_requirements(
                     time_horizon, "forgetting", self.ENABLED_PHASES
                 ):
-                    self.logger.info(f"🗂️ Phase 5/6: Applying controlled forgetting...")
+                    self.logger.info("🗂️ Phase 5/6: Applying controlled forgetting...")
                     performance_start = time.time()
                     access_patterns = await self._get_access_patterns()
                     forgetting_results = await self.forgetting_engine.process(
@@ -433,7 +436,7 @@ class DreamInspiredConsolidator:
                 # 6b. Prune orphaned graph edges (#632)
                 orphaned = await self._prune_orphaned_graph_edges()
                 if orphaned > 0:
-                    self.logger.info(f"🧹 Pruned {orphaned} orphaned graph edges")
+                    self.logger.info("🧹 Pruned %s orphaned graph edges", orphaned)
 
                 # 7. Update consolidation statistics
                 self._update_consolidation_stats(report)
@@ -464,14 +467,15 @@ class DreamInspiredConsolidator:
         except ConsolidationError as e:
             # Re-raise configuration and validation errors
             self.logger.error(
-                f"Configuration error during {time_horizon} consolidation: {e}"
+                "Configuration error during %s consolidation: %s",
+                _sanitize_log_value(time_horizon), _sanitize_log_value(e)
             )
             self.health_monitor.record_error(
                 "consolidator", e, {"time_horizon": time_horizon}
             )
             raise
         except Exception as e:
-            self.logger.error(f"Error during {time_horizon} consolidation: {e}")
+            self.logger.error("Error during %s consolidation: %s", _sanitize_log_value(time_horizon), _sanitize_log_value(e))
             self.health_monitor.record_error(
                 "consolidator", e, {"time_horizon": time_horizon}
             )
@@ -626,7 +630,7 @@ class DreamInspiredConsolidator:
             return associations
 
         except Exception as e:
-            self.logger.warning(f"Error getting existing associations: {e}")
+            self.logger.warning("Error getting existing associations: %s", _sanitize_log_value(e))
             return set()
 
     async def _store_associations(self, associations) -> None:
@@ -821,7 +825,7 @@ class DreamInspiredConsolidator:
 
             except Exception as e:
                 failed_count += 1
-                self.logger.warning(f"Failed to store association in graph table: {e}")
+                self.logger.warning("Failed to store association in graph table: %s", _sanitize_log_value(e))
 
         # Batch-mark superseded memories in a single transaction (#732)
         if supersede_pairs:
@@ -912,7 +916,7 @@ class DreamInspiredConsolidator:
             conn.commit()
             return cursor.rowcount
         except Exception as e:
-            self.logger.warning(f"Failed to prune orphaned graph edges: {e}")
+            self.logger.warning("Failed to prune orphaned graph edges: %s", _sanitize_log_value(e))
             return 0
 
     async def _update_consolidation_timestamps(self, memories: List[Memory]) -> None:
@@ -944,7 +948,7 @@ class DreamInspiredConsolidator:
                 )
 
         except Exception as e:
-            self.logger.error(f"Batch timestamp update failed: {e}")
+            self.logger.error("Batch timestamp update failed: %s", _sanitize_log_value(e))
             # Fallback to individual updates if batch fails
             self.logger.info("Falling back to individual timestamp updates")
             success_count = 0
@@ -1027,7 +1031,12 @@ class DreamInspiredConsolidator:
 
     async def health_check(self) -> Dict[str, Any]:
         """Perform health check on the consolidation system."""
-        return await self.health_monitor.check_overall_health()
+        health = await self.health_monitor.check_overall_health()
+        # check_overall_health() always returns an empty 'statistics' dict —
+        # it has no reference to this consolidator's run counters. Merge them
+        # in here so `memory_consolidate status` reports real totals.
+        health['statistics'] = dict(self.consolidation_stats)
+        return health
 
     async def get_health_summary(self) -> Dict[str, Any]:
         """Get a summary of consolidation system health."""

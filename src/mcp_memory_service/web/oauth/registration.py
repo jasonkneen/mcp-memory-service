@@ -150,14 +150,21 @@ async def register_client(
         if request.response_types:
             validate_response_types(request.response_types)
 
-        # Generate client credentials
-        client_id = get_oauth_storage().generate_client_id()
-        client_secret = get_oauth_storage().generate_client_secret()
-
         # Prepare default values
         grant_types = request.grant_types or ["authorization_code"]
         response_types = request.response_types or ["code"]
         token_endpoint_auth_method = request.token_endpoint_auth_method or "client_secret_basic"
+
+        # Generate client credentials. A public client (RFC 7591: auth method
+        # "none", e.g. the PKCE flow claude.ai uses) must not be issued a secret
+        # at all — handing one out let a caller turn a registration into client
+        # authentication. The empty string is stored rather than None so the model
+        # and the SQLite row stay unchanged; verify_client_secret() already
+        # refuses an empty stored secret, so such a client cannot authenticate
+        # with one.
+        client_id = get_oauth_storage().generate_client_id()
+        is_public_client = token_endpoint_auth_method == "none"
+        client_secret = "" if is_public_client else get_oauth_storage().generate_client_secret()
 
         # Create registered client
         registered_client = RegisteredClient(
@@ -174,10 +181,10 @@ async def register_client(
         # Store the client
         await get_oauth_storage().store_client(registered_client)
 
-        # Create response
+        # Create response. client_secret is omitted entirely for a public client.
         response = ClientRegistrationResponse(
             client_id=client_id,
-            client_secret=client_secret,
+            client_secret=client_secret or None,
             redirect_uris=registered_client.redirect_uris,
             grant_types=grant_types,
             response_types=response_types,
@@ -189,7 +196,7 @@ async def register_client(
         return response
 
     except ValidationError as e:
-        logger.warning(f"OAuth client registration validation error: {e}")
+        logger.warning(f"OAuth client registration validation error: {_sanitize_log_value(e)}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
@@ -201,7 +208,7 @@ async def register_client(
         # Re-raise HTTP exceptions (validation errors)
         raise
     except Exception as e:
-        logger.error(f"OAuth client registration error: {e}")
+        logger.error(f"OAuth client registration error: {_sanitize_log_value(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={

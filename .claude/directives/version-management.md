@@ -1,8 +1,8 @@
 # Version Management - Release Workflow
 
-## ⚠️ CRITICAL: Always Use codeberg-release-manager Agent
+## Always use the documented release workflow
 
-**NEVER do manual releases** (major, minor, patch, or hotfixes). Manual workflows miss steps and are error-prone.
+**Never do manual releases** (major, minor, patch, or hotfixes). Manual workflows miss steps and are error-prone.
 
 ## Release Branch Workflow (Adopted 2026-01-27)
 
@@ -21,10 +21,54 @@ feature-branches → main (development)
 1. **Development**: All feature/fix branches merge to `main`
 2. **Release Preparation**: Create `release/vX.Y.Z` branch from `main`
 3. **Version Bump**: Update version files on release branch
-4. **PR & Merge**: Create PR, merge with `--admin --squash`
-5. **Tag**: Create annotated tag `vX.Y.Z`
-6. **GitHub Release**: Create release from tag
-7. **Sync**: Release branch auto-deleted, main stays current
+4. **PR & Merge**: Create PR, squash-merge it
+5. **Tag**: Create the annotated tag locally and push it **with git**:
+   ```bash
+   git tag -a vX.Y.Z -m "<summary>" <merge-sha>
+   git push origin refs/tags/vX.Y.Z     # explicit refspec, never --tags
+   ```
+   The **push** is what triggers `.forgejo/workflows/release.yml` (PyPI main + lite,
+   Docker Hub). Never create the tag through the forge API or the web UI — see the
+   rule below.
+6. **Verify the artifacts**, not just the run (see below)
+7. **Release notes**: Publish a release object from the tag
+8. **Sync**: Release branch deleted, main stays current
+
+### The tag must be pushed with git
+
+`release.yml` triggers on `push: tags: 'v*.*.*'`. A tag created inside the forge — via
+the release API, or by filling in the tag field on the release form — is **not a push
+event**, so nothing fires and the release publishes nothing at all.
+
+This is not hypothetical. **v11.8.1 was tagged that way on 2026-08-22 and never
+published.** Paging back through 300 Forgejo action tasks shows the full
+Test → PyPI → Docker chain for v11.8.0 and v11.7.0 and no run whatsoever for v11.8.1.
+PyPI stayed on 11.8.0 and `docker 11.8.1` returned 404 for a full day, with eight
+fixes in it. It hid because a release object with notes looks exactly like a finished
+release, and nothing anywhere says "no artifacts were built" — the green CI you
+remember is the release PR's `ci.yml`, not `release.yml`.
+
+### Verify the artifact, not the run
+
+A release is done when it is installable, not when the tag exists. After the tag push,
+check the publish endpoints directly:
+
+```bash
+# both distributions, not just the main one
+curl -s https://pypi.org/pypi/mcp-memory-service/json      | jq -r .info.version
+curl -s https://pypi.org/pypi/mcp-memory-service-lite/json | jq -r .info.version
+
+# all four image tags: X.Y.Z, X.Y.Z-slim, X.Y, X.Y-slim
+curl -s -o /dev/null -w '%{http_code}\n' \
+  https://hub.docker.com/v2/repositories/doobidoo/mcp-memory-service/tags/X.Y.Z
+```
+
+PyPI's JSON endpoint lags the upload by a minute or two, so a stale version there right
+after a green publish job is cache, not failure — re-check before concluding anything.
+
+`release.yml` has a `workflow_dispatch` fallback, but it is **PyPI catch-up only**: the
+Docker job derives its image tags from `github.ref_name`, so a manual dispatch from
+`main` pushes junk `main` tags and clobbers `latest`.
 
 ### Benefits:
 - `main` = active development (current work)
@@ -32,57 +76,79 @@ feature-branches → main (development)
 - No permanent `develop` branch to maintain
 - Clear separation of release preparation
 
-## Five-File Version Bump Procedure
+## Version Bump Procedure
 
-1. Update `src/mcp_memory_service/_version.py` (`__version__ = "X.Y.Z"`)
-2. Update `pyproject.toml` (line ~7: `version = "X.Y.Z"`)
-3. Update `README.md` (Latest Release section)
-4. Update `CHANGELOG.md` (convert [Unreleased] to [X.Y.Z] with date)
-5. Run `uv lock` to update dependency lock file
-6. Commit all files together
+Always bumped together, in one commit:
+
+1. `src/mcp_memory_service/_version.py` (`__version__ = "X.Y.Z"`) — this is the canonical source
+2. `pyproject.toml` (line ~7: `version = "X.Y.Z"`)
+3. `README.md` (Latest Release section)
+4. `CLAUDE.md` (Current Version line)
+5. `CHANGELOG.md` (convert [Unreleased] to [X.Y.Z] with date)
+6. `uv lock` to update the dependency lock file
+
+Of those six, **only `_version.py` and `pyproject.toml` are covered by a CI gate.**
+`CLAUDE.md` is the one that actually gets forgotten — v11.8.2 shipped without it, and
+nothing failed, so main announced the previous version until someone noticed by eye.
+Check it explicitly (`grep -n '^\*\*Current Version' CLAUDE.md`) rather than trusting a
+green gate.
+
+Conditional, and each one is enforced by a CI gate:
+
+- `site/index.html` version strings — required whenever MAJOR.MINOR changes, exempt for
+  PATCH (`version-drift-check`, `scripts/ci/check_versions.sh`)
+- `claude-hooks/.claude-plugin/plugin.json` — required when anything under
+  `claude-hooks/` changed since the last commit that moved the manifest version
+  (`plugin-version-check`, `scripts/ci/check_plugin_version.sh`)
+
+Do **not** hand-bump `pyproject-lite.toml`: the publish workflow force-syncs it from
+`_version.py`, and a manual value there is what left the lite distribution stuck on an
+old version once.
 
 ## Release Commands
 
 ```bash
-# Check release status
-gh release list --limit 5
+# Last release, and what has accumulated since
+git tag --list 'v*' --sort=-version:refname | head -1
 git log <last-tag>..HEAD --oneline
-
-# Use the agent for releases
-# The agent handles: version bump, CHANGELOG, PR, merge, tag, release
-
-# Admin merge (branch protection bypass)
-gh pr merge <PR-NUMBER> --admin --squash --delete-branch
 ```
 
-## Branch Protection Setup
+`git describe --tags --abbrev=0` is the wrong tool here — it picks up the non-version
+tag `archive/github-workflows-pre-codeberg`.
 
-Branch protection configured to allow admin bypass:
-- `enforce_admins: false` - Admin can use `--admin` flag
-- Required reviews: 1 (for non-admins)
-- CodeQL scanning enabled
+PR creation, review-comment retrieval, squash-merge, and the release object all run
+against the forge REST API (`https://codeberg.org/api/v1`, token from `.env`). The
+release automation carries the concrete calls; there is no `gh`-based path for the
+release itself.
+
+## Merge Discipline
+
+`main` carries no branch-protection rule, so nothing technically blocks a direct push —
+the discipline is convention, not enforcement:
+
+- Never commit straight to `main`; branch first.
+- Merge through a PR, squash.
+- Verify CI is green on the PR before merging.
+- If several sessions share one checkout, isolate into a worktree first.
 
 ## Hotfix Workflow (Critical Bugs)
 
 - **Speed target**: 8-10 minutes from bug report to release
-- **Process**: Fix → Test → Five-file bump → Commit → codeberg-release-manager agent
+- **Process**: Fix, test, version bump, commit, then the documented release workflow
 - **Branch**: Can go directly to release branch if urgent
 - **Issue management**: Post detailed root cause analysis
 
-## Why Agent-First?
+## Why Not By Hand
 
-**Manual releases** (❌):
-- Forgot README.md update
-- Incomplete GitHub Release
-- Missed workflow verification
+What manual releases have actually cost:
+
+- Forgotten `README.md` update
+- Incomplete release notes
+- Publish pipeline never verified after the tag push
 - Version mismatch between files
-- **Real incident (v10.8.0, Feb 8, 2026)**: Forgot to update `_version.py`, dashboard showed wrong version
+- **Real incident (v10.8.0, Feb 8, 2026)**: `_version.py` not updated, so the dashboard
+  reported the wrong version
 
-**With agent** (✅):
-- All files updated consistently (pyproject.toml, _version.py, README.md, CHANGELOG.md)
-- Proper release created
-- Complete documentation
-- CHANGELOG properly formatted
-- Dashboard version correct
-
-**Lesson**: Always use codeberg-release-manager agent, even for "simple" hotfixes. The five-file version bump is error-prone when done manually.
+The workflow keeps every version file, the CHANGELOG, and the release notes in step,
+which is exactly what goes wrong when the bump is done by hand. That holds for "simple"
+hotfixes too.

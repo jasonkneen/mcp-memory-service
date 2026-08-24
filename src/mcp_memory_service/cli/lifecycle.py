@@ -251,8 +251,14 @@ def _is_https_enabled() -> bool:
 
     See the module docstring for why this file must not import
     mcp_memory_service.config -- doing so would silently reintroduce
-    the .env fallback removed here."""
-    return os.environ.get("MCP_HTTPS_ENABLED", "").strip().lower() in ("1", "true", "yes")
+    the .env fallback removed here.
+
+    Accepted values match config.base.safe_get_bool_env()'s truthy set
+    (true/1/yes/on/enabled) -- kept in sync manually since this
+    function can't import that module. See run_server.py and
+    check_http_server.py for the same duplication under the same
+    constraint."""
+    return os.environ.get("MCP_HTTPS_ENABLED", "").strip().lower() in ("1", "true", "yes", "on", "enabled")  # sync with config.base.safe_get_bool_env
 
 
 def _base_url(host: str, port: int) -> str:

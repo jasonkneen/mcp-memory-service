@@ -51,7 +51,7 @@ class RetrieveMixin:
             try:
                 query_embedding = self._generate_embedding(query)
             except Exception as e:
-                logger.error(f"Failed to generate query embedding: {str(e)}")
+                logger.error("Failed to generate query embedding: %s", _sanitize_log_value(e))
                 return []
 
             def _count_embeddings():
@@ -65,7 +65,7 @@ class RetrieveMixin:
 
             if tags:
                 if len(tags) > _MAX_TAGS_FOR_SEARCH:
-                    logger.warning(f"Too many tags provided for search ({len(tags)}), limiting to {_MAX_TAGS_FOR_SEARCH}")
+                    logger.warning("Too many tags provided for search (%s), limiting to %s", len(tags), _MAX_TAGS_FOR_SEARCH)
                     tags = tags[:_MAX_TAGS_FOR_SEARCH]
                 k_value = min(embedding_count, _MAX_TAG_SEARCH_CANDIDATES)
             elif start_time is not None or end_time is not None:
@@ -88,7 +88,7 @@ class RetrieveMixin:
                     tag_clauses = []
                     for tag in tags:
                         if not isinstance(tag, str):
-                            logger.warning(f"Skipping non-string tag in search: {type(tag).__name__}")
+                            logger.warning("Skipping non-string tag in search: %s", type(tag).__name__)
                             continue
                         stripped = tag.strip()
                         tag_clauses.append(
@@ -133,7 +133,7 @@ class RetrieveMixin:
                 if not results:
                     logger.debug("No results from vector search. Checking database state...")
                     mem_count = self.conn.execute('SELECT COUNT(*) FROM memories').fetchone()[0]
-                    logger.debug(f"Memories table has {mem_count} rows, embeddings table has {embedding_count} rows")
+                    logger.debug("Memories table has %s rows, embeddings table has %s rows", mem_count, embedding_count)
 
                 return results
 
@@ -180,13 +180,13 @@ class RetrieveMixin:
                     ))
 
                 except Exception as parse_error:
-                    logger.warning(f"Failed to parse memory result: {parse_error}")
+                    logger.warning("Failed to parse memory result: %s", _sanitize_log_value(parse_error))
                     continue
 
             try:
                 await self._persist_access_metadata_batch([r.memory for r in results])
             except Exception as e:
-                logger.warning(f"Failed to persist access metadata: {e}")
+                logger.warning("Failed to persist access metadata: %s", _sanitize_log_value(e))
 
             if min_confidence > 0.0:
                 before = len(results)
@@ -194,13 +194,13 @@ class RetrieveMixin:
                     r for r in results
                     if r.debug_info.get("effective_confidence", 1.0) >= min_confidence
                 ][:n_results]
-                logger.debug(f"min_confidence={min_confidence} filtered {before - len(results)} stale memories")
+                logger.debug("min_confidence=%s filtered %s stale memories", _sanitize_log_value(min_confidence), before - len(results))
 
             logger.info(f"Retrieved {len(results)} memories for query: {_sanitize_log_value(query)}")
             return results
 
         except Exception as e:
-            logger.error(f"Failed to retrieve memories: {str(e)}")
+            logger.error("Failed to retrieve memories: %s", _sanitize_log_value(e))
             logger.error(traceback.format_exc())
             return []
 
@@ -259,14 +259,14 @@ class RetrieveMixin:
                     results.append(memory)
 
                 except Exception as parse_error:
-                    logger.warning(f"Failed to parse memory result: {parse_error}")
+                    logger.warning("Failed to parse memory result: %s", _sanitize_log_value(parse_error))
                     continue
 
             logger.info(f"Found {len(results)} memories with tags: {[_sanitize_log_value(t) for t in tags]}")
             return results
 
         except Exception as e:
-            logger.error(f"Failed to search by tags: {str(e)}")
+            logger.error("Failed to search by tags: %s", _sanitize_log_value(e))
             logger.error(traceback.format_exc())
             return []
 
@@ -342,14 +342,14 @@ class RetrieveMixin:
                     results.append(memory)
 
                 except Exception as parse_error:
-                    logger.warning(f"Failed to parse memory result: {parse_error}")
+                    logger.warning("Failed to parse memory result: %s", _sanitize_log_value(parse_error))
                     continue
 
-            logger.info(f"Found {len(results)} memories with tags: {tags} (operation: {operation})")
+            logger.info("Found %s memories with tags: %s (operation: %s)", len(results), _sanitize_log_value(tags), _sanitize_log_value(operation))
             return results
 
         except Exception as e:
-            logger.error(f"Failed to search by tags with operation {operation}: {str(e)}")
+            logger.error("Failed to search by tags with operation %s: %s", _sanitize_log_value(operation), _sanitize_log_value(e))
             logger.error(traceback.format_exc())
             return []
 
@@ -412,14 +412,14 @@ class RetrieveMixin:
                     results.append(memory)
 
                 except Exception as parse_error:
-                    logger.warning(f"Failed to parse memory result: {parse_error}")
+                    logger.warning("Failed to parse memory result: %s", _sanitize_log_value(parse_error))
                     continue
 
-            logger.info(f"Found {len(results)} memories with tags: {tags} using database-level pagination (limit={limit}, offset={offset})")
+            logger.info("Found %s memories with tags: %s using database-level pagination (limit=%s, offset=%s)", len(results), _sanitize_log_value(tags), limit, offset)
             return results
 
         except Exception as e:
-            logger.error(f"Failed to search by tags chronologically: {str(e)}")
+            logger.error("Failed to search by tags chronologically: %s", _sanitize_log_value(e))
             logger.error(traceback.format_exc())
             return []
 
@@ -462,7 +462,7 @@ class RetrieveMixin:
             return memory
 
         except Exception as e:
-            logger.error(f"Failed to get memory by hash {content_hash}: {str(e)}")
+            logger.error("Failed to get memory by hash %s: %s", _sanitize_log_value(content_hash), _sanitize_log_value(e))
             return None
 
     async def get_all_content_hashes(self, include_deleted: bool = False) -> Set[str]:
@@ -482,7 +482,7 @@ class RetrieveMixin:
             return {row[0] for row in rows}
 
         except Exception as e:
-            logger.error(f"Failed to get all content hashes: {str(e)}")
+            logger.error("Failed to get all content hashes: %s", _sanitize_log_value(e))
             return set()
 
     async def get_by_exact_content(self, content: str) -> List[Memory]:
@@ -526,7 +526,7 @@ class RetrieveMixin:
             return memories
 
         except Exception as e:
-            logger.error(f"Error in exact content match: {str(e)}")
+            logger.error("Error in exact content match: %s", _sanitize_log_value(e))
             return []
 
     async def get_all_memories(
@@ -603,7 +603,7 @@ class RetrieveMixin:
             return memories
 
         except Exception as e:
-            logger.error(f"Error getting all memories: {str(e)}")
+            logger.error("Error getting all memories: %s", _sanitize_log_value(e))
             return []
 
     async def get_recent_memories(self, n: int = 10) -> List[Memory]:
@@ -642,13 +642,13 @@ class RetrieveMixin:
                     )
                     memories.append(memory)
                 except Exception as parse_error:
-                    logger.warning(f"Failed to parse memory {row[0]}: {parse_error}")
+                    logger.warning("Failed to parse memory %s: %s", row[0], _sanitize_log_value(parse_error))
                     continue
 
             return memories
 
         except Exception as e:
-            logger.error(f"Error getting largest memories: {e}")
+            logger.error("Error getting largest memories: %s", _sanitize_log_value(e))
             return []
 
     async def get_memory_timestamps(self, days: Optional[int] = None) -> List[float]:
@@ -686,7 +686,7 @@ class RetrieveMixin:
             return timestamps
 
         except Exception as e:
-            logger.error(f"Error getting memory timestamps: {e}")
+            logger.error("Error getting memory timestamps: %s", _sanitize_log_value(e))
             return []
 
     async def count_all_memories(self, memory_type: Optional[str] = None, tags: Optional[List[str]] = None, tag_match: str = "any", stale_days: Optional[int] = None, store: Optional[str] = "default") -> int:
@@ -731,7 +731,7 @@ class RetrieveMixin:
             return await self._execute_with_retry(_count)
 
         except Exception as e:
-            logger.error(f"Error counting memories: {str(e)}")
+            logger.error("Error counting memories: %s", _sanitize_log_value(e))
             return 0
 
     async def get_all_tags_with_counts(self) -> List[Dict[str, Any]]:
@@ -762,10 +762,10 @@ class RetrieveMixin:
             return [{"tag": tag, "count": count} for tag, count in tag_counter.most_common()]
 
         except sqlite3.Error as e:
-            logger.error(f"Database error getting tags with counts: {str(e)}")
+            logger.error("Database error getting tags with counts: %s", _sanitize_log_value(e))
             return []
         except Exception as e:
-            logger.error(f"Unexpected error getting tags with counts: {str(e)}")
+            logger.error("Unexpected error getting tags with counts: %s", _sanitize_log_value(e))
             raise
 
     async def get_relationship_type_distribution(self) -> Dict[str, int]:
@@ -794,10 +794,10 @@ class RetrieveMixin:
             return distribution
 
         except sqlite3.Error as e:
-            logger.error(f"Database error getting relationship type distribution: {str(e)}")
+            logger.error("Database error getting relationship type distribution: %s", _sanitize_log_value(e))
             return {}
         except Exception as e:
-            logger.error(f"Unexpected error getting relationship type distribution: {str(e)}")
+            logger.error("Unexpected error getting relationship type distribution: %s", _sanitize_log_value(e))
             return {}
 
     async def get_graph_visualization_data(
@@ -825,6 +825,15 @@ class RetrieveMixin:
                     FROM memories m
                     INNER JOIN memory_graph mg ON m.content_hash = mg.source_hash
                     WHERE m.deleted_at IS NULL
+                      -- has_entity rows point at an entity NAME, not a memory
+                      -- hash, so the edge loop below always drops them. Counting
+                      -- them here selected memories whose connections can never
+                      -- render, filling the view with isolated dots (Issue #256).
+                      -- COALESCE, not a bare !=: relationship_type has no NOT NULL
+                      -- constraint, and `NULL != 'has_entity'` is NULL in SQL, which
+                      -- would silently drop those rows instead of keeping them. The
+                      -- edge loop already reads NULL as 'related'.
+                      AND COALESCE(mg.relationship_type, 'related') != 'has_entity'
                     GROUP BY m.content_hash
                     HAVING connection_count >= ?
                     ORDER BY connection_count DESC
@@ -908,10 +917,10 @@ class RetrieveMixin:
             }
 
         except sqlite3.Error as e:
-            logger.error(f"Database error getting graph visualization data: {str(e)}")
+            logger.error("Database error getting graph visualization data: %s", _sanitize_log_value(e))
             return {"nodes": [], "edges": []}
         except Exception as e:
-            logger.error(f"Unexpected error getting graph visualization data: {str(e)}")
+            logger.error("Unexpected error getting graph visualization data: %s", _sanitize_log_value(e))
             return {"nodes": [], "edges": []}
 
     async def get_stats(self) -> Dict[str, Any]:
@@ -958,13 +967,13 @@ class RetrieveMixin:
             }
 
         except sqlite3.Error as e:
-            logger.error(f"Database error getting stats: {str(e)}")
+            logger.error("Database error getting stats: %s", _sanitize_log_value(e))
             return {"error": f"Database error: {str(e)}"}
         except OSError as e:
-            logger.error(f"File system error getting stats: {str(e)}")
+            logger.error("File system error getting stats: %s", _sanitize_log_value(e))
             return {"error": f"File system error: {str(e)}"}
         except Exception as e:
-            logger.error(f"Unexpected error getting stats: {str(e)}")
+            logger.error("Unexpected error getting stats: %s", _sanitize_log_value(e))
             return {"error": f"Unexpected error: {str(e)}"}
 
     def sanitized(self, tags):
@@ -1001,7 +1010,7 @@ class RetrieveMixin:
 
             time_where = " AND ".join(time_conditions) if time_conditions else ""
 
-            logger.info(f"Time filtering conditions: {time_where}, params: {params}")
+            logger.info("Time filtering conditions: %s, params: %s", _sanitize_log_value(time_where), _sanitize_log_value(params))
 
             if query and self.embedding_model:
                 try:
@@ -1071,14 +1080,14 @@ class RetrieveMixin:
                             ))
 
                         except Exception as parse_error:
-                            logger.warning(f"Failed to parse memory result: {parse_error}")
+                            logger.warning("Failed to parse memory result: %s", _sanitize_log_value(parse_error))
                             continue
 
-                    logger.info(f"Retrieved {len(results)} memories for semantic query with time filter")
+                    logger.info("Retrieved %s memories for semantic query with time filter", len(results))
                     return results
 
                 except Exception as query_error:
-                    logger.error(f"Error in semantic search with time filter: {str(query_error)}")
+                    logger.error("Error in semantic search with time filter: %s", _sanitize_log_value(query_error))
                     logger.info("Falling back to time-based retrieval")
 
             base_query = '''
@@ -1129,14 +1138,14 @@ class RetrieveMixin:
                     ))
 
                 except Exception as parse_error:
-                    logger.warning(f"Failed to parse memory result: {parse_error}")
+                    logger.warning("Failed to parse memory result: %s", _sanitize_log_value(parse_error))
                     continue
 
-            logger.info(f"Retrieved {len(results)} memories for time-based query")
+            logger.info("Retrieved %s memories for time-based query", len(results))
             return results
 
         except Exception as e:
-            logger.error(f"Error in recall: {str(e)}")
+            logger.error("Error in recall: %s", _sanitize_log_value(e))
             logger.error(traceback.format_exc())
             return []
 
@@ -1179,11 +1188,11 @@ class RetrieveMixin:
                 if memory is not None:
                     results.append(memory)
 
-            logger.info(f"Retrieved {len(results)} memories in time range {start_time}-{end_time}")
+            logger.info("Retrieved %s memories in time range %s-%s", len(results), _sanitize_log_value(start_time), _sanitize_log_value(end_time))
             return results
 
         except Exception as e:
-            logger.error(f"Error getting memories by time range: {str(e)}")
+            logger.error("Error getting memories by time range: %s", _sanitize_log_value(e))
             return []
 
     async def get_memory_connections(self) -> Dict[str, int]:
@@ -1211,7 +1220,7 @@ class RetrieveMixin:
             return connections
 
         except Exception as e:
-            logger.error(f"Error getting memory connections: {str(e)}")
+            logger.error("Error getting memory connections: %s", _sanitize_log_value(e))
             return {}
 
     async def get_access_patterns(self) -> Dict[str, datetime]:
@@ -1240,5 +1249,5 @@ class RetrieveMixin:
             return patterns
 
         except Exception as e:
-            logger.error(f"Error getting access patterns: {str(e)}")
+            logger.error("Error getting access patterns: %s", _sanitize_log_value(e))
             return {}

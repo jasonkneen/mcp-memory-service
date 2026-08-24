@@ -84,7 +84,7 @@ class SQLiteOAuthStorage(OAuthStorage):
         if db_dir and not os.path.exists(db_dir):
             Path(db_dir).mkdir(parents=True, exist_ok=True)
 
-        logger.info(f"Initialized SQLite OAuth storage at {db_path}")
+        logger.info(f"Initialized SQLite OAuth storage at {_sanitize_log_value(db_path)}")
 
     async def _get_connection(self) -> aiosqlite.Connection:
         """
@@ -268,9 +268,12 @@ class SQLiteOAuthStorage(OAuthStorage):
 
             # Hash the secret at rest unless it is already hashed (e.g. a row
             # being re-stored during a legacy upgrade).
+            # A public client carries no secret; hashing the empty string would
+            # store the SHA-256 of "" and make a secretless client look like it
+            # has one, so leave an empty value as it is.
             stored_secret = (
                 client.client_secret
-                if is_hashed_secret(client.client_secret)
+                if not client.client_secret or is_hashed_secret(client.client_secret)
                 else hash_client_secret(client.client_secret)
             )
 
@@ -295,7 +298,7 @@ class SQLiteOAuthStorage(OAuthStorage):
                 )
             )
             await self._commit()
-            logger.debug(f"Stored OAuth client: {client.client_id}")
+            logger.debug(f"Stored OAuth client: {_sanitize_log_value(client.client_id)}")
 
     async def get_client(self, client_id: str) -> Optional[RegisteredClient]:
         """
@@ -457,7 +460,7 @@ class SQLiteOAuthStorage(OAuthStorage):
                 return None
 
             await self._commit()
-            logger.debug(f"Consumed authorization code for client: {row['client_id']}")
+            logger.debug(f"Consumed authorization code for client: {_sanitize_log_value(row['client_id'])}")
 
             return {
                 "client_id": row["client_id"],
@@ -569,7 +572,7 @@ class SQLiteOAuthStorage(OAuthStorage):
             await self._commit()
             revoked = cursor.rowcount > 0
             if revoked:
-                logger.debug(f"Revoked access token")
+                logger.debug("Revoked access token")
             return revoked
 
     async def store_refresh_token(

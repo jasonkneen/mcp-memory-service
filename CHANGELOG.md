@@ -10,9 +10,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [11.8.2] - 2026-08-23
+
+PATCH release, security. GHSA-5p27-64mv-pr73, CVSS 3.1 9.1 (Critical): an unauthenticated caller could obtain a read+write bearer token and bypass the owner API key entirely. Affected only when `MCP_OAUTH_ENABLED=true` and Dynamic Client Registration is open (`MCP_DCR_REGISTRATION_KEY` unset, which is the default when OAuth is on) — `MCP_OAUTH_ENABLED` itself defaults to false, so a default install was never exposed. If you run OAuth with open DCR, upgrade now. The rest of this release is repository housekeeping left over from the GitHub-mirror reinstatement: dependency updates past their open advisories and a PyPI metadata fix.
+
+### Security
+
+- **fix(oauth): reject `client_credentials` from clients that never registered for it (GHSA-5p27-64mv-pr73, CVE requested).** Registering a public client via `/oauth/register` and replaying its returned credentials against `/oauth/token` with `grant_type=client_credentials` bypassed the owner API key entirely, handing an unauthenticated caller a read+write bearer token. Four defects lined up: `registration.py` issued a `client_secret` even to clients that registered with `token_endpoint_auth_method=none` (an RFC 7591 public client authenticates with PKCE, not a secret); `_handle_client_credentials_grant` never checked the client's registered `grant_types` (RFC 6749 section 4.4) or its auth method, so a public client could authenticate as if it were confidential; and `store_client()` hashed unconditionally, persisting an absent secret as the SHA-256 of the empty string — not exploitable, since the constant-time comparison rejects empty input before the hash is consulted, but indistinguishable from a real one in storage. The `authorization_code` grant was never affected: it already read the auth method off the stored client, and this fix copies that pattern. Affected v10.20.0 through v11.8.1. Operators who cannot upgrade immediately: set `MCP_DCR_REGISTRATION_KEY`, or `MCP_OAUTH_ENABLED=false`. Reported privately by Sergio Rodríguez Jové, with a working proof of concept.
+
+### Changed
+
+- **A public client's registration response no longer contains a `client_secret`.** This is the intended consequence of the fix above, and the one behaviour change to be aware of: register with `token_endpoint_auth_method=none` and the `client_secret` field is now absent rather than populated. That is what RFC 7591 prescribes — a public client authenticates with PKCE — and it is what the `authorization_code` flow already assumed. A client that was reading the secret out of its own registration response and using it was relying on the vulnerability.
+- **chore(deps): move the locked Python and JS dependencies past their open advisories (#249).** `uv.lock`: aiohttp, cryptography, gitpython, joserfc, pydantic-settings, pyjwt, pypdf, python-multipart, starlette. `tests/bridge/package-lock.json` and `tests/integration/package-lock.json`: js-yaml.
+- **chore: publish repository URLs on PyPI (#247).** `pyproject.toml` had no `[project.urls]` section at all, so the PyPI project page for the main distribution showed no Homepage, Repository, Documentation or Issues link. `pyproject-lite.toml` already carried one; both now note that they are kept in sync.
+- **ci: restore CodeQL on the GitHub mirror (#252)** — the one workflow the mirror is allowed to carry, since Forgejo has no equivalent security-analysis job.
+- **chore: point the mirror's issue template config at Codeberg (#251).**
+- **docs: describe the GitHub mirror instead of a suspended account (#248).**
+
+## [11.8.1] - 2026-08-22
+
+PATCH release: eight fixes on top of v11.8.0, six of them from timkjr. Two are worth reading before you upgrade if you run this in production: OAuth issuer validation got stricter (#239) and the Docker image now actually starts HTTPS where it used to silently fall through to HTTP (#231).
+
 ### Fixed
 
 - **fix(cli): make sqlite-vec CLI commands honor `MCP_EMBEDDING_MODEL`.** The CLI storage helper constructed `SqliteVecMemoryStorage` without the configured model, so commands such as `memory status` silently used the constructor default (`all-MiniLM-L6-v2`, 384 dimensions) even when the server correctly used a custom model. The CLI now passes `EMBEDDING_MODEL_NAME`, matching the server and storage factory paths.
+- **`validate_imports.sh` resolves the venv Python instead of a bare `python3`, and fails loudly instead of silently falling back to the system interpreter** (#230, thanks timkjr). A bare `python3` can validate imports against whatever happens to be first on `PATH`, which is not necessarily this project's venv — a false pass in CI tells you nothing about whether the package actually imports in its own environment.
+- **`_is_https_enabled()` accepts `on`/`enabled`** (#238, thanks timkjr), matching the truthy set `config.base.safe_get_bool_env` already accepts everywhere else. Before this, `MCP_HTTPS_ENABLED=on` was silently treated as false by the CLI while the rest of the config layer treated it as true.
+- **Consolidation excludes association records from the candidate pool for meta-association inference** (#241, thanks timkjr). Without this, an association record could itself become the input to a later association-inference pass, and each run compounded on the last run's synthetic associations instead of just the real memories.
+- **`health_check` reports the consolidator's real run counters** (#242, thanks timkjr). The statistics dict `health_check` read from was never populated, so it always reported empty statistics regardless of how many consolidation runs had actually happened.
+- **Milvus filter expressions escape backslashes, not just double quotes** (#244, PR #245). Fifteen sites built expression strings with `value.replace('"', '\"')`, so a value ending in a backslash escaped the closing quote of its own literal and Milvus rejected the whole expression. Entity names come from memory content, so a Windows path or a regex fragment was enough to break graph queries. This also fixes tag search, where `_escape_like()` doubles backslashes for LIKE and the old escaping then handed a single one to the parser.
+
+### Changed
+
+- **Truthy env-var parsing for `MCP_HTTPS_ENABLED` is standardized across `config/transport.py`, `scripts/server/run_server.py`, `scripts/server/check_http_server.py`, and the repo-root `run_server.py`** (#231, thanks timkjr) — the last of those is what the Docker image actually executes. If you run the Docker image with `MCP_HTTPS_ENABLED=1`, `yes`, `on`, or `enabled`, it now starts HTTPS; before this fix, those values fell through to plain HTTP because the root `run_server.py` used a narrower truthy check than the rest of the config layer. If you were relying on that fallthrough, set `MCP_HTTPS_ENABLED=false` explicitly.
+- **OAuth discovery endpoint URLs no longer contain double slashes** (#239, thanks timkjr). `OAUTH_ISSUER` is now rstripped and endpoints are built through a shared `join_url` helper, and the `iss` claim is validated exactly against the normalized issuer. If you set `MCP_OAUTH_ISSUER` with a trailing slash, tokens minted before this upgrade will fail validation until they expire (60 minutes by default) — reissue them, or drop the trailing slash from your existing tokens' issuer if you mint them yourself. Deployments without a trailing slash on `MCP_OAUTH_ISSUER` are unaffected.
 
 ## [11.8.0] - 2026-08-09
 

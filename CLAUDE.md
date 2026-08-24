@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with th
 
 Quick reference; each rule is expanded in the sections below. Violations cause real incidents.
 
-1. **This repo lives on Codeberg, not GitHub.** `origin` is `codeberg.org:doobidoo/mcp-memory-service`; CI is Forgejo Actions (`.forgejo/workflows/`). The `github` remote is a suspended mirror — do **not** use `gh` or `github.com` URLs for CI, releases, or issues.
+1. **Development happens on Codeberg. GitHub is a mirror.** `origin` is `codeberg.org:doobidoo/mcp-memory-service`; CI is Forgejo Actions (`.forgejo/workflows/`); issues, PRs, and releases are on Codeberg. The `github` remote is a synced mirror with Actions switched off and no repository secrets — `gh` is fine for reading it and for administering the mirror, but nothing about CI, releases, or issue handling runs there. **Never push tags to the mirror**, and never push it anything but a fast-forward of `main` (see "Source Control & Hosting").
 2. **Never manually bump versions.** Follow the documented release workflow for every version bump and release.
 3. **Run `bash scripts/pr/pre_pr_check.sh` before every PR.** It is the mandatory pre-PR gate and must pass.
 4. **Use the project venv.** Run `.venv/bin/python` and `.venv/bin/pytest` (Python 3.11) — the system interpreters are not the project environment.
@@ -36,8 +36,19 @@ Quick reference; each rule is expanded in the sections below. Violations cause r
 - **After completing tasks**: automatically save key learnings, decisions, and patterns to the MCP Memory Server without being asked
 - Include relevant tags: `mcp-memory-service`, task-specific tags, and `learnings`
 
-### Source Control & Hosting (Codeberg, not GitHub)
-- CI runs as **Forgejo Actions** in `.forgejo/workflows/` (`ci.yml`, `release.yml`, `deploy-site.yml`, `cleanup-images.yml`). There is no `.github/workflows/` directory. Issues and PRs are on Codeberg.
+### Source Control & Hosting
+
+- **Codeberg is where the work happens.** CI runs as **Forgejo Actions** in `.forgejo/workflows/` (`ci.yml`, `release.yml`, `deploy-site.yml`, `cleanup-images.yml`). Issues and PRs are on Codeberg, and the tag push that starts a release goes to Codeberg.
+- **`.github/workflows/` holds exactly one workflow, `codeql.yml`, and that is deliberate.** Forgejo ignores that directory, so it runs only on the mirror. CodeQL is the one capability GitHub has that Codeberg has no equivalent for, and the Forgejo CI has no security-analysis job — so the mirror carries it and reports into the GitHub Security tab. Nothing else may be added there: no release, site-deploy, or image-cleanup workflow, because publishing belongs to exactly one forge.
+- **The GitHub mirror is read-only in practice.** It exists for discovery and as a fallback. Actions are disabled there and it holds no secrets, so nothing can publish from it. Two hard rules: only ever fast-forward `main` onto it, and **never push tags** — tag-triggered workflows run the workflow files of the tag's own commit, and every tag from before June 2026 carries publish workflows that would push to PyPI and Docker Hub a second time.
+- Before pushing the mirror, prove the fast-forward rather than assuming it:
+  ```bash
+  git fetch origin main
+  git merge-base --is-ancestor "$(git ls-remote github main | cut -f1)" FETCH_HEAD
+  git push github FETCH_HEAD:refs/heads/main
+  ```
+  If the ancestor check fails, stop and investigate. Do not force.
+- **Dependabot only exists on the mirror**, so it is the only automated dependency-alert source. Treat its findings as input and verify the resulting lock update through Forgejo CI, which is where the tests actually run.
 - **GHSA identifiers** (e.g. `GHSA-2r68-g678-7qr3`) are just advisory IDs and remain valid references.
 - **Authorship voice.** Commit messages, PR descriptions, CHANGELOG entries, issue/PR comments, and release notes are written in the maintainer's or contributor's own voice.
 
@@ -51,7 +62,9 @@ Before merging or releasing:
 
 ## Overview
 
-**Current Version:** v11.8.0 - MINOR release: the knowledge-graph layer actually works now. Entity extraction was discarding every memory tag before it reached the extractor, and two features were gated on a storage attribute nothing ever set, so `memory_explore` returned nothing on any store (#218, #219). Also: the `memory` CLI's TLS verification catches up with v11.7.0's self-signed-cert opt-in (#216), `.env`'s `MCP_HTTPS_ENABLED` no longer silently decides the CLI's scheme (#224), Milvus implements the storage methods the web API calls unguarded (#214), and `memory_explore`/`memory_detail` finally get user-facing docs (#215/#217/#220/#222); see [CHANGELOG.md](CHANGELOG.md) for details. (Issue/PR numbers refer to Codeberg.)
+**Current Version:** v11.8.2 - PATCH release, security. GHSA-5p27-64mv-pr73 (CVSS 3.1 9.1): with `MCP_OAUTH_ENABLED=true` and Dynamic Client Registration left open, an unauthenticated caller could register a public client and replay its returned credentials against `/oauth/token` with `grant_type=client_credentials`, obtaining a read+write bearer token without the owner API key. Affected v10.20.0 through v11.8.1; OAuth is off by default, so a default install was never exposed. Behaviour change: a public client (`token_endpoint_auth_method=none`) no longer receives a `client_secret` at all. Also in this release: dependency lockfiles moved past their open advisories (#249) and `pyproject.toml` finally publishes `[project.urls]` so the PyPI page links back here (#247). See [CHANGELOG.md](CHANGELOG.md) for details. (Issue/PR numbers refer to Codeberg.)
+
+> Note: v11.8.1 was tagged but never published — its tag was created through the forge API rather than pushed with git, so `release.yml` never fired. v11.8.2 supersedes it on PyPI and Docker Hub, and anyone installing from either goes 11.8.0 → 11.8.2. See the tag rule in [`.claude/directives/version-management.md`](.claude/directives/version-management.md).
 
 > **History (v10.0.0):** The v10 API consolidation unified 34 tools into 12. The deprecated tool-name alias layer (`compat.DEPRECATED_TOOLS`) was later **removed in v11** (Issue #53) — old tool names no longer resolve. The registry has since grown to ~28 tools (see `src/mcp_memory_service/tools/registry.py`).
 
@@ -372,7 +385,7 @@ https://codeberg.org/doobidoo/mcp-memory-service/wiki
 - **CLAUDE.md** - Architecture changes, new patterns, development workflows
 - **README.md** - New features, installation changes, user-facing updates
 - **CHANGELOG.md** - Every version bump (via the release workflow)
-- **site/index.html** - Landing page: MINOR/MAJOR releases only (title, og:title, hero badge, "What's New" cards, test count, release link). No manual publish step: merging to main triggers `.forgejo/workflows/deploy-site.yml`, which deploys `site/` to Cloudflare Pages (mcpmemory.services). GitHub Pages and the here.now mirror are retired; `docs/index.html` is only a redirect stub — never put version strings or content there.
+- **site/index.html** - Landing page: MINOR/MAJOR releases only (title, og:title, hero badge, "What's New" cards, test count, release link). No manual publish step: merging to main triggers `.forgejo/workflows/deploy-site.yml`, which deploys `site/` to Cloudflare Pages (mcpmemory.services). The here.now mirror is retired. **GitHub Pages is still enabled on the mirror and that is intentional**: it serves `docs/` from `main`, where `docs/index.html` is a 19-line stub that redirects to mcpmemory.services, so `doobidoo.github.io/mcp-memory-service/` keeps working for the GitHub-era links still pointing at it. Every mirror sync therefore fires a `pages build and deployment` run — expected, not a stray workflow. Never put version strings or content in `docs/index.html`; `site/index.html` is canonical.
 - **Wiki** - Detailed guides, troubleshooting, tutorials
 
 ## Additional Resources
