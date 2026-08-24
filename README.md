@@ -495,16 +495,19 @@ MCP Memory Service is **fully compatible** with the [SHODH Unified Memory API Sp
 
 ---
 
-## Latest Release: **v11.8.2** (August 23, 2026)
+## Latest Release: **v11.8.3** (August 24, 2026)
 
-**PATCH, security: OAuth `client_credentials` bypassed the owner API key — upgrade if you run OAuth with open Dynamic Client Registration**
+**PATCH, security and correctness: a reachable MCP transport advisory, HTTPS silently downgraded to HTTP on every restart, and the API key written to the access log**
 
 **What's New:**
-- **fix(oauth): reject `client_credentials` from clients that never registered for it** (GHSA-5p27-64mv-pr73, CVSS 9.1 Critical, CVE requested). Registering a public client via `/oauth/register` and replaying its returned credentials against `/oauth/token` with `grant_type=client_credentials` bypassed the owner API key entirely, handing an unauthenticated caller a read+write bearer token. Affected only when `MCP_OAUTH_ENABLED=true` and Dynamic Client Registration is open (`MCP_DCR_REGISTRATION_KEY` unset, the default when OAuth is on) — `MCP_OAUTH_ENABLED` itself defaults to false, so a default install was never exposed. Affected v10.20.0 through v11.8.1. Can't upgrade immediately? Set `MCP_DCR_REGISTRATION_KEY`, or `MCP_OAUTH_ENABLED=false`. Reported privately by Sergio Rodríguez Jové, with a working proof of concept.
-- **chore(deps): dependency lockfiles moved past their open advisories** (#249) — aiohttp, cryptography, gitpython, joserfc, pydantic-settings, pyjwt, pypdf, python-multipart, starlette in `uv.lock`, js-yaml in the bridge and integration test lockfiles.
-- **chore: PyPI project page now links Homepage, Repository, Documentation and Issues** (#247) — `pyproject.toml` had no `[project.urls]` section at all before this.
+- **fix(deps): MCP SDK to 1.29.0, closing a reachable transport advisory** (#277). CVE-2026-52869 — HTTP transports served session requests without verifying the authenticated principal — applies here, because both affected transports are wired up. The other two advisories in the bump (experimental task handlers, WebSocket transport) do not apply to this project but are cleared anyway. Also bumps `brace-expansion` to 5.0.9 in the Node test harnesses.
+- **fix(cli): `memory launch` now honours the configured TLS settings** (#279). It never passed `--ssl-certfile`/`--ssl-keyfile` to uvicorn, so a deployment configured for HTTPS came back up on plain HTTP after every restart — and `memory info` reported `http://` in agreement, which is what made it hard to spot. TLS that is requested but unusable now fails the launch instead of falling back silently, and the launched scheme is recorded so later health checks probe what actually runs.
+- **fix(web): the API key no longer lands in the access log** (#285). The dashboard authenticates its SSE connection through the query string, because `EventSource` cannot send an `Authorization` header, and uvicorn logs the full request line. TLS protects the wire, not the log file. Sensitive query parameters are redacted before the record is formatted.
+- **chore(logging): log-injection sanitisation across the consolidator, retrieve path and server_impl** (#268, #270, #271).
+- **fix(compat): an LM Studio compatibility patch had silently stopped applying** (#284) — its target left the MCP SDK some time ago, and the `hasattr` guard meant nothing ever said so. Behaviour is unchanged; the module now has an alarm for the next time.
 
 **Previous Releases** (v11 series — full history for all earlier versions in [CHANGELOG.md](CHANGELOG.md)):
+- **v11.8.2** - PATCH: OAuth `client_credentials` bypassed the owner API key (GHSA-5p27-64mv-pr73, CVSS 9.1) (August 23, 2026)
 - **v11.8.1** - PATCH: eight fixes on top of v11.8.0, six from timkjr — OAuth issuer validation and Docker HTTPS behaviour (#239, #231) (August 22, 2026)
 - **v11.8.0** - MINOR: the knowledge-graph layer actually works now — entity extraction was discarding every memory tag, and two features were gated on a storage attribute nothing ever set (#218, #219) (August 9, 2026)
 - **v11.7.0** - MINOR: three TLS certificate-verification bypasses gated behind explicit opt-in, a committed credential removed (#198, #210, #197/#200) (August 5, 2026)
