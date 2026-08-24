@@ -7,7 +7,7 @@
 #
 #   1. a failing test run aborted the script under `set -e` before its own
 #      TEST_EXIT_CODE handling could report anything
-#   2. a skipped quality gate (Gemini CLI absent) was reported as a pass
+#   2. a skipped quality gate (no analysis backend available) was reported as a pass
 #
 # Both are verified against the extracted logic rather than a full run.
 
@@ -60,8 +60,8 @@ test_gate_guards_the_coverage_run() {
 test_quality_gate_skip_uses_exit_3() {
   local tmpbin out code
   tmpbin="$(mktemp -d)"
-  # PATH with no `gemini`, but keep `gh` available since the script requires it
-  # before reaching the gemini check.
+  # PATH without python3 or gemini, so no analysis backend resolves. `gh` is kept
+  # available because PR mode requires it; --staged does not.
   for tool in gh git bash grep sed awk; do
     command -v "$tool" >/dev/null 2>&1 && ln -sf "$(command -v "$tool")" "$tmpbin/$tool"
   done

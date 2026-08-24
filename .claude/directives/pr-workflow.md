@@ -46,6 +46,14 @@ ready-made `tea pr create` line at the end if the Forgejo/Gitea CLI is configure
 
 Blocking conditions: any security finding, or a health score below 50.
 
+Checks 1 and 2 of the quality gate (complexity, security) need a text model. They call a
+local OpenAI-compatible endpoint through `scripts/pr/lib/llm_prompt.py` — default
+`http://127.0.0.1:11437/v1`, override with `MCP_QUALITY_LLM_URL`,
+`MCP_QUALITY_LLM_MODEL`, `MCP_QUALITY_LLM_API_KEY`. With no endpoint reachable the gate
+exits 3 and `pre_pr_check.sh` reports SKIP, so those two checks are simply not evaluated —
+that is the `PASS`-hides-`SKIP` case above, and it was the standing state on this machine
+until the local backend was wired up. `MCP_QUALITY_LLM=gemini` uses the Gemini CLI instead.
+
 ### Manual fallback (if the script is unavailable)
 
 ```bash
