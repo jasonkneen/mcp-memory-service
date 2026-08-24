@@ -566,15 +566,21 @@ class MemoryStorage(ABC):
                         # Convert date strings to timestamps
                         if after:
                             after_date = datetime.fromisoformat(after)
+                            # Treat naive datetimes as UTC (created_at in DB is time.time() = UTC)
+                            if after_date.tzinfo is None:
+                                after_date = after_date.replace(tzinfo=timezone.utc)
                             start_time = after_date.timestamp()
                         else:
                             start_time = 0.0
 
                         if before:
                             before_date = datetime.fromisoformat(before)
+                            # Treat naive datetimes as UTC (created_at in DB is time.time() = UTC)
+                            if before_date.tzinfo is None:
+                                before_date = before_date.replace(tzinfo=timezone.utc)
                             end_time = before_date.timestamp()
                         else:
-                            end_time = datetime.now().timestamp()
+                            end_time = datetime.now(timezone.utc).timestamp()
 
                         filtered_memories = await self.get_memories_by_time_range(
                             start_time=start_time,
