@@ -26,7 +26,7 @@ import pytest
 import pytest_asyncio
 
 try:
-    import sqlite_vec  # noqa: F401
+    import sqlite_vec  # inline import: availability probe, the module may be absent  # noqa: F401
     SQLITE_VEC_AVAILABLE = True
 except ImportError:
     SQLITE_VEC_AVAILABLE = False
@@ -111,7 +111,15 @@ async def test_non_empty_db_refuses_hash_fallback(monkeypatch, temp_db_path):
     try:
         with pytest.raises(RuntimeError) as excinfo:
             await storage2.initialize()
-        assert "MCP_MEMORY_ALLOW_HASH_EMBEDDINGS" in str(excinfo.value)
+        message = str(excinfo.value)
+        assert "MCP_MEMORY_ALLOW_HASH_EMBEDDINGS" in message
+        # Exactly one memory was seeded above, and it has one embedding row.
+        # The message used to report the sum of both tables as a memory count,
+        # so it said "2 existing memories" here and roughly double the truth on
+        # a real database (#228). Asserting the phrasing keeps that from
+        # regressing quietly.
+        assert "1 memories and 1 embedding rows" in message, message
+        assert "2 existing memories" not in message
     finally:
         if storage2.conn:
             storage2.conn.close()
