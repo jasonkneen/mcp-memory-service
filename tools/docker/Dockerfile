@@ -10,7 +10,7 @@ ARG FORCE_CPU_PYTORCH=false
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     MCP_MEMORY_STORAGE_BACKEND=sqlite_vec \
-    MCP_MEMORY_SQLITE_PATH=/app/sqlite_db \
+    MCP_MEMORY_SQLITE_PATH=/app/sqlite_db/memory.db \
     MCP_MEMORY_BACKUPS_PATH=/app/backups \
     PYTHONPATH=/app/src \
     DOCKER_CONTAINER=1 \
