@@ -137,20 +137,19 @@ docker-compose -f docker-compose.pythonpath.yml up -d
 docker build -t mcp-memory-service .
 
 # Create directories for persistent storage
-mkdir -p ./data/sqlite_data ./data/backups
+mkdir -p ./data/sqlite_db ./data/backups
 
 # Run in standard mode (for MCP clients)
 docker run -d --name memory-service \
-  -v $(pwd)/data/sqlite_data:/app/sqlite_data \
+  -v $(pwd)/data/sqlite_db:/app/sqlite_db \
   -v $(pwd)/data/backups:/app/backups \
   -e MCP_MEMORY_STORAGE_BACKEND=sqlite_vec \
-  -e MCP_MEMORY_SQLITE_PATH=/app/sqlite_data/memory.db \
   --stdin --tty \
   mcp-memory-service
 
 # Run in standalone/HTTP mode
 docker run -d -p 8000:8000 --name memory-service \
-  -v $(pwd)/data/sqlite_data:/app/sqlite_data \
+  -v $(pwd)/data/sqlite_db:/app/sqlite_db \
   -v $(pwd)/data/backups:/app/backups \
   -e MCP_STANDALONE_MODE=1 \
   -e MCP_HTTP_HOST=0.0.0.0 \
@@ -158,6 +157,13 @@ docker run -d -p 8000:8000 --name memory-service \
   --stdin --tty \
   mcp-memory-service
 ```
+
+The images declare `/app/sqlite_db` and `/app/backups` as volumes and default
+`MCP_MEMORY_SQLITE_PATH` to `/app/sqlite_db/memory.db`, so mounting those two
+paths is all persistence needs. Override the variable only to put the database
+somewhere else, and give it a **file** path — pointing it at a directory is
+rejected with an explanatory error rather than sqlite's "unable to open database
+file".
 
 ### Using Specific Docker Images
 

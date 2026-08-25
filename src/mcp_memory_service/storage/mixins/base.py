@@ -280,6 +280,7 @@ SOLUTIONS:
     def _connect_and_load_extension(self):
         """Connect to database and load the sqlite-vec extension."""
         timeout_seconds = self._get_connection_timeout()
+        self._reject_directory_path()
         self.conn = sqlite3.connect(self.db_path, timeout=timeout_seconds, check_same_thread=False)
 
         self._load_sqlite_vec_extension()
@@ -307,6 +308,23 @@ SOLUTIONS:
                 logger.debug(f"Applied pragma: {pragma_name}={pragma_value}")
             except sqlite3.Error as e:
                 logger.warning(f"Failed to apply pragma {pragma_name}: {e}")
+
+    def _reject_directory_path(self) -> None:
+        """
+        Fail with a usable message when the database path is a directory.
+
+        sqlite3 reports this as "unable to open database file", which reads like a
+        permission or corruption problem and sends people looking in the wrong
+        place. A directory here is almost always a container volume mount point
+        being passed where a file was meant.
+        """
+        if not os.path.isdir(self.db_path):
+            return
+        suggestion = os.path.join(self.db_path, "memory.db")
+        raise sqlite3.OperationalError(
+            f"database path is a directory, not a file: {self.db_path} — "
+            f"point MCP_MEMORY_SQLITE_PATH at a file inside it, e.g. {suggestion}"
+        )
 
     def _is_docker_environment(self) -> bool:
         """Detect if running inside a Docker container."""
