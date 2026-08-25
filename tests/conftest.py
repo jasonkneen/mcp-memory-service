@@ -33,6 +33,33 @@ os.environ.setdefault('MCP_MEMORY_ALLOW_HASH_EMBEDDINGS', '1')
 # still exercises the real ONNX path. setdefault so a test can opt back in explicitly.
 os.environ.setdefault('MCP_MEMORY_ONNX_ALLOW_DOWNLOAD', '0')
 
+# Scrub the settings that decide the embedding dimension (#234). Unlike the
+# setdefault calls above, these are removed rather than defaulted, and the
+# difference is the point: an outer value winning is exactly the bug. Whatever a
+# developer has exported picks the model, and with it the vector width, so
+# tests/unit/test_multi_store_migration_dimension.py built 1024-dimensional vec0
+# tables and then loaded the 384-dimensional default. Three tests failed on one
+# machine and passed on another, and a contributor reasonably read that as
+# pre-existing breakage in the tree.
+#
+# Tests that care about these set them explicitly -- per-test via monkeypatch, or
+# per-subprocess as tests/unit/test_cli_status_embedding.py does -- and that keeps
+# working, because this only clears the ambient value at import time.
+#
+# HF_HUB_OFFLINE is deliberately left alone. Both pinning and clearing it change
+# whether the harness may reach the network, which interacts with the download
+# switch above; that decision needs its own look rather than being folded in here.
+for _dimension_var in (
+    'MCP_EMBEDDING_MODEL',
+    'MCP_MEMORY_USE_ONNX',
+    'MCP_EXTERNAL_EMBEDDING_URL',
+    'MCP_EXTERNAL_EMBEDDING_MODEL',
+    'MCP_EXTERNAL_EMBEDDING_API_KEY',
+):
+    if _dimension_var in os.environ:
+        print(f"[Test Safety] Ignoring host {_dimension_var} so the embedding dimension is deterministic")
+        del os.environ[_dimension_var]
+
 # CRITICAL: Force sqlite_vec backend for tests to prevent accidental Cloudflare operations
 # This prevents tests from soft-deleting production memories in Cloudflare D1
 #

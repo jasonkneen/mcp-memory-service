@@ -164,7 +164,7 @@ class ServerRunManager:
         """Run server in standalone mode (Docker without active client)."""
         self.logger.info("Running in standalone mode - keeping server alive without active client")
         if MCP_CLIENT == 'lm_studio':
-            print("MCP Memory Service running in standalone mode", file=sys.stdout, flush=True)
+            print("MCP Memory Service running in standalone mode", file=sys.stderr, flush=True)  # debug: startup diagnostic, stderr keeps it off the JSON-RPC channel
 
         # Keep the server running indefinitely
         try:
@@ -183,7 +183,7 @@ class ServerRunManager:
             if self.is_docker_environment():
                 self.logger.info("Detected Docker environment - ensuring proper stdio handling")
                 if MCP_CLIENT == 'lm_studio':
-                    print("MCP Memory Service running in Docker container", file=sys.stdout, flush=True)
+                    print("MCP Memory Service running in Docker container", file=sys.stderr, flush=True)  # debug: inside run_stdio, so stdout is the JSON-RPC channel it would corrupt
 
             try:
                 await self.server.server.run(

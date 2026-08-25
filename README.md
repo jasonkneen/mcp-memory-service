@@ -495,16 +495,20 @@ MCP Memory Service is **fully compatible** with the [SHODH Unified Memory API Sp
 
 ---
 
-## Latest Release: **v11.8.2** (August 23, 2026)
+## Latest Release: **v11.8.4** (August 25, 2026)
 
-**PATCH, security: OAuth `client_credentials` bypassed the owner API key — upgrade if you run OAuth with open Dynamic Client Registration**
+**PATCH: a hybrid deployment was burning through Cloudflare's D1 free-tier read allowance, plus three smaller correctness fixes**
 
 **What's New:**
-- **fix(oauth): reject `client_credentials` from clients that never registered for it** (GHSA-5p27-64mv-pr73, CVSS 9.1 Critical, CVE requested). Registering a public client via `/oauth/register` and replaying its returned credentials against `/oauth/token` with `grant_type=client_credentials` bypassed the owner API key entirely, handing an unauthenticated caller a read+write bearer token. Affected only when `MCP_OAUTH_ENABLED=true` and Dynamic Client Registration is open (`MCP_DCR_REGISTRATION_KEY` unset, the default when OAuth is on) — `MCP_OAUTH_ENABLED` itself defaults to false, so a default install was never exposed. Affected v10.20.0 through v11.8.1. Can't upgrade immediately? Set `MCP_DCR_REGISTRATION_KEY`, or `MCP_OAUTH_ENABLED=false`. Reported privately by Sergio Rodríguez Jové, with a working proof of concept.
-- **chore(deps): dependency lockfiles moved past their open advisories** (#249) — aiohttp, cryptography, gitpython, joserfc, pydantic-settings, pyjwt, pypdf, python-multipart, starlette in `uv.lock`, js-yaml in the bridge and integration test lockfiles.
-- **chore: PyPI project page now links Homepage, Repository, Documentation and Issues** (#247) — `pyproject.toml` had no `[project.urls]` section at all before this.
+- **fix(hybrid): stop the sync loop from scanning D1 on every cycle** (#289). Cloudflare's D1 free-tier daily limits start being enforced on 1 September 2026, and this account regularly exceeded them: the background sync called `get_stats()` twice per cycle, and that call scanned the memories table four times over, adding up to roughly 19 million D1 rows read per day against a 5 million allowance. Four changes fix it — a `SELECT 1` health probe, capacity monitoring on its own hourly cadence (`MCP_HYBRID_CAPACITY_CHECK_INTERVAL`), a single-pass `get_stats()`, and a tombstone purge that now reaches the Cloudflare secondary, not just the primary. Sync drops to well under 1M rows read per day. The first run after upgrading hard-deletes D1 tombstones already past the 30-day retention window.
+- **fix(health): report the embedding model actually in use** (#290). With an external embedding endpoint configured, health reporting kept naming `all-MiniLM-L6-v2` regardless. Closes #254.
+- **fix(sqlite_vec): stop reporting memories plus embedding rows as a memory count** (#290). The hash-fallback refusal message summed two tables and presented the sum as a memory count, roughly double the truth. Closes #228.
+- **fix(stdio): keep startup diagnostics off the JSON-RPC channel** (#287) — LM Studio diagnostics were landing on stdout, which is the protocol channel on a stdio server. Closes #275.
+- **fix(cli): give `get_storage` a hybrid branch** (#287) — `memory status --storage-backend hybrid` raised outright. Closes #233.
 
 **Previous Releases** (v11 series — full history for all earlier versions in [CHANGELOG.md](CHANGELOG.md)):
+- **v11.8.3** - PATCH: reachable MCP transport advisory (CVE-2026-52869), HTTPS silently downgraded to HTTP on every restart, API key written to the access log (#277, #279, #285) (August 24, 2026)
+- **v11.8.2** - PATCH: OAuth `client_credentials` bypassed the owner API key (GHSA-5p27-64mv-pr73, CVSS 9.1) (August 23, 2026)
 - **v11.8.1** - PATCH: eight fixes on top of v11.8.0, six from timkjr — OAuth issuer validation and Docker HTTPS behaviour (#239, #231) (August 22, 2026)
 - **v11.8.0** - MINOR: the knowledge-graph layer actually works now — entity extraction was discarding every memory tag, and two features were gated on a storage attribute nothing ever set (#218, #219) (August 9, 2026)
 - **v11.7.0** - MINOR: three TLS certificate-verification bypasses gated behind explicit opt-in, a committed credential removed (#198, #210, #197/#200) (August 5, 2026)

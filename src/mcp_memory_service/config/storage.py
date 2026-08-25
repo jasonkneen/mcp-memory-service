@@ -164,6 +164,10 @@ if STORAGE_BACKEND == 'hybrid':
     HYBRID_DRIFT_CHECK_INTERVAL = safe_get_int_env('MCP_HYBRID_DRIFT_CHECK_INTERVAL', 3600, min_value=60)  # 1 hour default
     HYBRID_DRIFT_BATCH_SIZE = safe_get_int_env('MCP_HYBRID_DRIFT_BATCH_SIZE', 100, min_value=1)
 
+    # Capacity monitoring cadence. Each check counts rows on Cloudflare, which D1
+    # bills as a full table scan, so this runs hourly rather than every sync cycle.
+    HYBRID_CAPACITY_CHECK_INTERVAL = safe_get_int_env('MCP_HYBRID_CAPACITY_CHECK_INTERVAL', 3600, min_value=60)
+
     # Initial sync behavior tuning (v7.5.4+)
     HYBRID_MAX_EMPTY_BATCHES = safe_get_int_env('MCP_HYBRID_MAX_EMPTY_BATCHES', 20, min_value=1)  # Stop after N batches without new syncs
     HYBRID_MIN_CHECK_COUNT = safe_get_int_env('MCP_HYBRID_MIN_CHECK_COUNT', 1000, min_value=1)  # Minimum memories to check before early stop
@@ -212,6 +216,7 @@ else:
     HYBRID_SYNC_UPDATES = None
     HYBRID_DRIFT_CHECK_INTERVAL = None
     HYBRID_DRIFT_BATCH_SIZE = None
+    HYBRID_CAPACITY_CHECK_INTERVAL = None
     HYBRID_MAX_EMPTY_BATCHES = None
     HYBRID_MIN_CHECK_COUNT = None
     HYBRID_FALLBACK_TO_PRIMARY = None
