@@ -495,18 +495,18 @@ MCP Memory Service is **fully compatible** with the [SHODH Unified Memory API Sp
 
 ---
 
-## Latest Release: **v11.8.4** (August 25, 2026)
+## Latest Release: **v11.8.5** (August 25, 2026)
 
-**PATCH: a hybrid deployment was burning through Cloudflare's D1 free-tier read allowance, plus three smaller correctness fixes**
+**PATCH: two Docker fixes reproduced against the published images, plus a timezone-boundary bug in timeframe deletion (external contributor)**
 
 **What's New:**
-- **fix(hybrid): stop the sync loop from scanning D1 on every cycle** (#289). Cloudflare's D1 free-tier daily limits start being enforced on 1 September 2026, and this account regularly exceeded them: the background sync called `get_stats()` twice per cycle, and that call scanned the memories table four times over, adding up to roughly 19 million D1 rows read per day against a 5 million allowance. Four changes fix it — a `SELECT 1` health probe, capacity monitoring on its own hourly cadence (`MCP_HYBRID_CAPACITY_CHECK_INTERVAL`), a single-pass `get_stats()`, and a tombstone purge that now reaches the Cloudflare secondary, not just the primary. Sync drops to well under 1M rows read per day. The first run after upgrading hard-deletes D1 tombstones already past the 30-day retention window.
-- **fix(health): report the embedding model actually in use** (#290). With an external embedding endpoint configured, health reporting kept naming `all-MiniLM-L6-v2` regardless. Closes #254.
-- **fix(sqlite_vec): stop reporting memories plus embedding rows as a memory count** (#290). The hash-fallback refusal message summed two tables and presented the sum as a memory count, roughly double the truth. Closes #228.
-- **fix(stdio): keep startup diagnostics off the JSON-RPC channel** (#287) — LM Studio diagnostics were landing on stdout, which is the protocol channel on a stdio server. Closes #275.
-- **fix(cli): give `get_storage` a hybrid branch** (#287) — `memory status --storage-backend hybrid` raised outright. Closes #233.
+- **fix(docker): move the remaining images off Python 3.10** (#295). The `:slim` image was the last one on an interpreter EOL in October 2026, and onnxruntime had already stopped publishing wheels for it, so `:slim` was six minor versions behind on the embedding runtime. Now on 3.12.14 for both amd64 and arm64, verified by building each exactly as `release.yml` does.
+- **fix(docker): make the images start without a path override** (#297). Every published image set `MCP_MEMORY_SQLITE_PATH` to a directory, so a bare `docker run` exited on startup with "unable to open database file." Default is now a file path; a directory is rejected with a message naming both the problem and the fix. Closes #296.
+- **fix(storage): use UTC midnight for timeframe-delete date boundaries** (#237, thanks timkjr). `delete_by_timeframe` and `delete_before_date` interpreted a naive datetime as host-local time while `created_at` is a UTC epoch everywhere else, silently missing memories near day boundaries on any host away from UTC.
+- **test(tz): give the timezone back after a test borrows it** (#298) — follow-up to #237, fixing a test-teardown ordering bug that leaked a changed timezone into later tests in the same worker.
 
 **Previous Releases** (v11 series — full history for all earlier versions in [CHANGELOG.md](CHANGELOG.md)):
+- **v11.8.4** - PATCH: hybrid deployment was burning through Cloudflare's D1 free-tier read allowance, plus three smaller correctness fixes (#289, #290, #287) (August 25, 2026)
 - **v11.8.3** - PATCH: reachable MCP transport advisory (CVE-2026-52869), HTTPS silently downgraded to HTTP on every restart, API key written to the access log (#277, #279, #285) (August 24, 2026)
 - **v11.8.2** - PATCH: OAuth `client_credentials` bypassed the owner API key (GHSA-5p27-64mv-pr73, CVSS 9.1) (August 23, 2026)
 - **v11.8.1** - PATCH: eight fixes on top of v11.8.0, six from timkjr — OAuth issuer validation and Docker HTTPS behaviour (#239, #231) (August 22, 2026)
