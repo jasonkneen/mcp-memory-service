@@ -307,6 +307,27 @@ class MemoryStorage(ABC):
         """
         return False
 
+    async def health_probe(self) -> bool:
+        """
+        Report whether the backend is responding.
+
+        Args:
+            None
+
+        Returns:
+            True if the backend answered, False otherwise
+
+        Note:
+            The default asks get_stats(), which is fine for a local database but
+            expensive for a remote one. Backends where counting rows costs money
+            or quota should override this with a cheaper probe.
+        """
+        try:
+            stats = await self.get_stats()
+        except Exception:
+            return False
+        return stats.get("status") != "error" if isinstance(stats, dict) else bool(stats)
+
     async def purge_deleted(self, older_than_days: int = 30) -> int:
         """
         Permanently delete tombstones older than specified days.

@@ -185,6 +185,12 @@ class BackgroundSyncService:
         self.drift_check_enabled = getattr(app_config, 'HYBRID_SYNC_UPDATES', True)
         self.drift_check_interval = getattr(app_config, 'HYBRID_DRIFT_CHECK_INTERVAL', 3600)
 
+        # Capacity monitoring cadence. Reading real counts means scanning the
+        # secondary's whole table, so this deliberately runs far less often than
+        # the sync loop itself.
+        cap_int = getattr(app_config, 'HYBRID_CAPACITY_CHECK_INTERVAL', 3600)
+        self.capacity_check_interval = cap_int if cap_int is not None else 3600
+
         # Tombstone purge state (v8.64.0+)
         self.last_purge_time = 0
         self.purge_interval = 86400  # Daily purge check (24 hours)
@@ -590,18 +596,24 @@ class BackgroundSyncService:
         This runs daily to clean up tombstones that have been synced to all devices.
         Default retention: 30 days (configurable via TOMBSTONE_RETENTION_DAYS).
         """
-        try:
-            if hasattr(self.primary, 'purge_deleted'):
-                purged_count = await self.primary.purge_deleted(
+        for label, backend in (('primary', self.primary), ('secondary', self.secondary)):
+            if backend is None:
+                continue
+            if not hasattr(backend, 'purge_deleted'):
+                logger.debug(f"{label.capitalize()} storage does not support tombstone purging")
+                continue
+            try:
+                purged_count = await backend.purge_deleted(
                     older_than_days=self.tombstone_retention_days
                 )
                 if purged_count > 0:
-                    logger.info(f"Purged {purged_count} tombstones older than {self.tombstone_retention_days} days")
+                    logger.info(
+                        f"Purged {purged_count} {label} tombstones older than "
+                        f"{self.tombstone_retention_days} days"
+                    )
                     self.sync_stats['tombstones_purged'] = self.sync_stats.get('tombstones_purged', 0) + purged_count
-            else:
-                logger.debug("Primary storage does not support tombstone purging")
-        except Exception as e:
-            logger.error(f"Error purging old tombstones: {e}")
+            except Exception as e:
+                logger.error(f"Error purging old {label} tombstones: {e}")
 
     async def _process_operations_batch(self, operations: List[SyncOperation]):
         """Process a batch of sync operations."""
@@ -755,6 +767,22 @@ class BackgroundSyncService:
             self.sync_stats['cloudflare_available'] = False
             raise
 
+    async def _probe_secondary(self) -> bool:
+        """
+        Check that the secondary is answering, as cheaply as it allows.
+
+        Backends that implement `health_probe` get asked that; anything else
+        (older backends, duck-typed test doubles) falls back to the previous
+        behaviour of calling get_stats().
+        """
+        probe = getattr(self.secondary, 'health_probe', None)
+        if probe is not None:
+            return bool(await probe())
+        # Without a probe, a call that returns at all is the only signal available,
+        # which is what this check relied on before probes existed.
+        await self.secondary.get_stats()
+        return True
+
     async def _periodic_sync(self):
         """Perform periodic full synchronization."""
         logger.debug("Starting periodic sync")
@@ -769,19 +797,23 @@ class BackgroundSyncService:
 
             # Perform a lightweight health check
             try:
-                stats = await self.secondary.get_stats()
-                logger.debug(f"Secondary storage health check passed: {stats}")
-                self.sync_stats['cloudflare_available'] = True
+                healthy = await self._probe_secondary()
+                logger.debug(f"Secondary storage health check passed: {healthy}")
+                self.sync_stats['cloudflare_available'] = bool(healthy)
 
-                # Check Cloudflare capacity every periodic sync
-                capacity_status = await self.check_cloudflare_capacity()
-                if capacity_status.get('approaching_limits'):
-                    logger.warning("Cloudflare approaching capacity limits")
-                    for warning in capacity_status.get('warnings', []):
-                        logger.warning(warning)
+                # Capacity monitoring counts rows on the secondary, which on D1 is a
+                # full table scan. Running it every cycle was the single largest
+                # source of our D1 row reads, so it now has its own cadence.
+                since_capacity_check = time.time() - self.cloudflare_stats.get('last_capacity_check', 0)
+                if healthy and since_capacity_check >= self.capacity_check_interval:
+                    capacity_status = await self.check_cloudflare_capacity()
+                    if capacity_status.get('approaching_limits'):
+                        logger.warning("Cloudflare approaching capacity limits")
+                        for warning in capacity_status.get('warnings', []):
+                            logger.warning(warning)
 
                 # Periodic drift detection (v8.25.0+)
-                if self.drift_check_enabled:
+                if healthy and self.drift_check_enabled:
                     time_since_last_check = time.time() - self.last_drift_check_time
                     if time_since_last_check >= self.drift_check_interval:
                         logger.info(f"Running periodic drift check (interval: {self.drift_check_interval}s)")
@@ -1076,7 +1108,6 @@ class HybridMemoryStorage(MemoryStorage):
             - message: str
             - time_taken_seconds: float
         """
-        import time
         sync_start_time = time.time()
 
         try:
@@ -1939,7 +1970,6 @@ class HybridMemoryStorage(MemoryStorage):
                 'message': 'Sync service not available'
             }
 
-        import time
         start = time.time()
         initial_processed = self.sync_service.sync_stats.get('operations_processed', 0)
         initial_failed = self.sync_service.sync_stats.get('operations_failed', 0)
