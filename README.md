@@ -495,18 +495,19 @@ MCP Memory Service is **fully compatible** with the [SHODH Unified Memory API Sp
 
 ---
 
-## Latest Release: **v11.8.3** (August 24, 2026)
+## Latest Release: **v11.8.4** (August 25, 2026)
 
-**PATCH, security and correctness: a reachable MCP transport advisory, HTTPS silently downgraded to HTTP on every restart, and the API key written to the access log**
+**PATCH: a hybrid deployment was burning through Cloudflare's D1 free-tier read allowance, plus three smaller correctness fixes**
 
 **What's New:**
-- **fix(deps): MCP SDK to 1.29.0, closing a reachable transport advisory** (#277). CVE-2026-52869 — HTTP transports served session requests without verifying the authenticated principal — applies here, because both affected transports are wired up. The other two advisories in the bump (experimental task handlers, WebSocket transport) do not apply to this project but are cleared anyway. Also bumps `brace-expansion` to 5.0.9 in the Node test harnesses.
-- **fix(cli): `memory launch` now honours the configured TLS settings** (#279). It never passed `--ssl-certfile`/`--ssl-keyfile` to uvicorn, so a deployment configured for HTTPS came back up on plain HTTP after every restart — and `memory info` reported `http://` in agreement, which is what made it hard to spot. TLS that is requested but unusable now fails the launch instead of falling back silently, and the launched scheme is recorded so later health checks probe what actually runs.
-- **fix(web): the API key no longer lands in the access log** (#285). The dashboard authenticates its SSE connection through the query string, because `EventSource` cannot send an `Authorization` header, and uvicorn logs the full request line. TLS protects the wire, not the log file. Sensitive query parameters are redacted before the record is formatted.
-- **chore(logging): log-injection sanitisation across the consolidator, retrieve path and server_impl** (#268, #270, #271).
-- **fix(compat): an LM Studio compatibility patch had silently stopped applying** (#284) — its target left the MCP SDK some time ago, and the `hasattr` guard meant nothing ever said so. Behaviour is unchanged; the module now has an alarm for the next time.
+- **fix(hybrid): stop the sync loop from scanning D1 on every cycle** (#289). Cloudflare's D1 free-tier daily limits start being enforced on 1 September 2026, and this account regularly exceeded them: the background sync called `get_stats()` twice per cycle, and that call scanned the memories table four times over, adding up to roughly 19 million D1 rows read per day against a 5 million allowance. Four changes fix it — a `SELECT 1` health probe, capacity monitoring on its own hourly cadence (`MCP_HYBRID_CAPACITY_CHECK_INTERVAL`), a single-pass `get_stats()`, and a tombstone purge that now reaches the Cloudflare secondary, not just the primary. Sync drops to well under 1M rows read per day. The first run after upgrading hard-deletes D1 tombstones already past the 30-day retention window.
+- **fix(health): report the embedding model actually in use** (#290). With an external embedding endpoint configured, health reporting kept naming `all-MiniLM-L6-v2` regardless. Closes #254.
+- **fix(sqlite_vec): stop reporting memories plus embedding rows as a memory count** (#290). The hash-fallback refusal message summed two tables and presented the sum as a memory count, roughly double the truth. Closes #228.
+- **fix(stdio): keep startup diagnostics off the JSON-RPC channel** (#287) — LM Studio diagnostics were landing on stdout, which is the protocol channel on a stdio server. Closes #275.
+- **fix(cli): give `get_storage` a hybrid branch** (#287) — `memory status --storage-backend hybrid` raised outright. Closes #233.
 
 **Previous Releases** (v11 series — full history for all earlier versions in [CHANGELOG.md](CHANGELOG.md)):
+- **v11.8.3** - PATCH: reachable MCP transport advisory (CVE-2026-52869), HTTPS silently downgraded to HTTP on every restart, API key written to the access log (#277, #279, #285) (August 24, 2026)
 - **v11.8.2** - PATCH: OAuth `client_credentials` bypassed the owner API key (GHSA-5p27-64mv-pr73, CVSS 9.1) (August 23, 2026)
 - **v11.8.1** - PATCH: eight fixes on top of v11.8.0, six from timkjr — OAuth issuer validation and Docker HTTPS behaviour (#239, #231) (August 22, 2026)
 - **v11.8.0** - MINOR: the knowledge-graph layer actually works now — entity extraction was discarding every memory tag, and two features were gated on a storage attribute nothing ever set (#218, #219) (August 9, 2026)
