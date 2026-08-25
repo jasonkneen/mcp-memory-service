@@ -160,6 +160,12 @@ class EmbeddingsMixin:
 
                     if cache_key in _MODEL_CACHE:
                         self.embedding_model = _MODEL_CACHE[cache_key]
+                        # Also on the cache-hit path, not just the fresh connect
+                        # below: the global model cache means this is the normal
+                        # path for every process after the first, so setting the
+                        # name only on a cold start would leave health reporting
+                        # wrong almost everywhere.
+                        self.embedding_model_name = external_model_name
                         if cache_key in _DIMENSION_CACHE:
                             self.embedding_dimension = _DIMENSION_CACHE[cache_key]
                         elif hasattr(self.embedding_model, 'embedding_dimension'):
@@ -170,6 +176,10 @@ class EmbeddingsMixin:
 
                     ext_model = get_external_embedding_model(external_api_url, external_model_name)
                     self.embedding_model = ext_model
+                    # Without this the attribute keeps the constructor's local
+                    # default, and every health surface that reads it reports a
+                    # model that is not the one producing the vectors (#254).
+                    self.embedding_model_name = external_model_name
                     self.embedding_dimension = ext_model.embedding_dimension
                     _MODEL_CACHE[cache_key] = ext_model
                     _DIMENSION_CACHE[cache_key] = self.embedding_dimension

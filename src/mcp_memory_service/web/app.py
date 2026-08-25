@@ -318,7 +318,7 @@ def create_app() -> FastAPI:
         logger.info(f"✓ Included documents router with {len(documents_router.routes)} routes")
     except Exception as e:
         logger.error(f"✗ Failed to include documents router: {e}")
-        import traceback
+        import traceback  # inline import: only reached on this router-import failure
         logger.error(traceback.format_exc())
 
     # Include consolidation router
@@ -952,7 +952,14 @@ def create_app() -> FastAPI:
                                 <div class="stat-label">Total Memories</div>
                             </div>
                             <div class="stat-card">
-                                <div class="stat-value">all-MiniLM-L6-v2</div>
+                                <!-- Two paths, same order as static/app.js's
+                                     settingsEmbeddingModel sources: the hybrid
+                                     backend reports the name under
+                                     primary_stats, everything else at the top
+                                     level. Reading only one of them shows
+                                     "unknown" on whichever backend is not
+                                     covered. -->
+                                <div class="stat-value">${detailed.storage?.primary_stats?.embedding_model || detailed.storage?.embedding_model || 'unknown'}</div>
                                 <div class="stat-label">Embedding Model</div>
                             </div>
                             <div class="stat-card">
