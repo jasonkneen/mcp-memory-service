@@ -3,6 +3,7 @@ import os
 import sys
 import tempfile
 import shutil
+import time
 import uuid
 from typing import Callable, Optional, List
 
@@ -164,6 +165,39 @@ def test_store():
         return store(content, tags=all_tags, **kwargs)
 
     return _store
+
+
+@pytest.fixture
+def local_timezone():
+    """
+    Run a test under a chosen process timezone and put the old one back after.
+
+    monkeypatch.setenv on its own is not enough. It restores the variable during
+    teardown, which runs after the test body, so a time.tzset() the test makes in
+    a finally block still reads the overridden value and does nothing. Nothing
+    calls tzset() once the variable is back, and the C library keeps the test's
+    timezone for every later test in the same worker (#237).
+
+    Usage:
+        def test_example(local_timezone):
+            local_timezone("Asia/Tokyo")
+            ...
+    """
+    original = os.environ.get("TZ")
+
+    def _set(name: str) -> None:
+        os.environ["TZ"] = name
+        if hasattr(time, "tzset"):
+            time.tzset()
+
+    yield _set
+
+    if original is None:
+        os.environ.pop("TZ", None)
+    else:
+        os.environ["TZ"] = original
+    if hasattr(time, "tzset"):
+        time.tzset()
 
 
 def pytest_sessionfinish(session, exitstatus):
