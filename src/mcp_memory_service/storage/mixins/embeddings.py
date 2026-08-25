@@ -31,7 +31,7 @@ _HASH_FALLBACK_WARNED = False
 
 def clear_model_caches() -> dict:
     """Clear embedding model caches to free memory."""
-    import gc
+    import gc  # inline import: only needed by this cache-clearing helper
 
     global _MODEL_CACHE, _EMBEDDING_CACHE, _DIMENSION_CACHE
 
@@ -383,23 +383,33 @@ class EmbeddingsMixin:
                 self._hash_fallback_warned = True
             await self._initialize_hash_embedding_fallback()
 
-    def _count_existing_memory_rows(self) -> int:
-        """Return the number of existing memory rows, treating missing tables as empty.
+    def _count_existing_rows(self) -> tuple:
+        """Return (memories, embedding_rows), treating missing tables as empty.
 
-        Counts both the primary ``memories`` table and the ``memory_embeddings`` vec0
-        table so that a database holding real embeddings is never treated as empty.
+        Both counts matter, for different reasons. The emptiness decision needs
+        their sum, so a database holding real embeddings is never treated as
+        empty. The error message needs them apart: they are separate tables of
+        roughly equal size on a normally-populated database, so reporting the
+        sum as a memory count overstated it by about a factor of two (#228).
         """
-        total = 0
+        counts = []
         for table in ("memories", "memory_embeddings"):
+            count = 0
             try:
                 cursor = self.conn.execute(f"SELECT COUNT(*) FROM {table}")
                 row = cursor.fetchone()
                 if row and row[0]:
-                    total += int(row[0])
+                    count = int(row[0])
             except Exception as exc:
                 # Missing table (fresh DB) or unreadable — treat as empty for this table.
                 logger.debug("Could not count rows in %s: %s", table, exc)
-        return total
+            counts.append(count)
+        return counts[0], counts[1]
+
+    def _describe_existing_rows(self) -> str:
+        """Phrase the row counts for an error message, without inventing a total."""
+        memories, embedding_rows = self._count_existing_rows() if self.conn else (0, 0)
+        return f"{memories} memories and {embedding_rows} embedding rows"
 
     def _hash_fallback_allowed(self) -> bool:
         """Decide whether writing hash pseudo-vectors into this database is safe.
@@ -418,23 +428,23 @@ class EmbeddingsMixin:
         if override in ('1', 'true', 'yes'):
             return True
         if override in ('0', 'false', 'no'):
-            existing = self._count_existing_memory_rows() if self.conn else 0
             raise RuntimeError(
                 "The configured embedding backend is unavailable and "
                 "MCP_MEMORY_ALLOW_HASH_EMBEDDINGS is set to refuse the hash fallback. "
-                f"Refusing to write hash pseudo-vectors into a database with {existing} "
-                "existing memories. Install a real embedding backend "
+                "Refusing to write hash pseudo-vectors into a database holding "
+                f"{self._describe_existing_rows()}. Install a real embedding backend "
                 "(pip install 'mcp-memory-service[sqlite-ml]' or 'mcp-memory-service[ml]') "
                 "or set MCP_MEMORY_ALLOW_HASH_EMBEDDINGS=1 to override for testing."
             )
 
         # Default policy: allow only on an effectively-empty database.
-        existing = self._count_existing_memory_rows() if self.conn else 0
-        if existing == 0:
+        memories, embedding_rows = self._count_existing_rows() if self.conn else (0, 0)
+        if memories + embedding_rows == 0:
             return True
         raise RuntimeError(
             "The configured embedding backend is unavailable; refusing to write hash "
-            f"pseudo-vectors into a database with {existing} existing memories "
+            f"pseudo-vectors into a database holding {memories} memories and "
+            f"{embedding_rows} embedding rows "
             "(this would permanently poison semantic search with no per-row marker to "
             "find affected rows later). Install a real embedding backend "
             "(pip install 'mcp-memory-service[sqlite-ml]' or 'mcp-memory-service[ml]') "
