@@ -11,6 +11,7 @@ Tests cover:
 """
 
 import asyncio
+import time
 import pytest
 import pytest_asyncio
 import tempfile
@@ -99,6 +100,27 @@ class MockCloudflareStorage:
         pass
 
 
+class SlowMockCloudflareStorage(MockCloudflareStorage):
+    """A secondary that takes a long, well-known time to answer.
+
+    Exists so the performance tests can assert the property they were always
+    about -- that a hybrid write reaches local storage without waiting on a
+    cloud round trip -- rather than a bare wall-clock number. Against this
+    secondary a correct implementation is unaffected and a regression that
+    awaited the sync would take at least SECONDARY_LATENCY.
+    """
+
+    SECONDARY_LATENCY = 1.5
+
+    async def store(self, memory: Memory):
+        await asyncio.sleep(self.SECONDARY_LATENCY)
+        return await super().store(memory)
+
+    async def delete(self, content_hash: str):
+        await asyncio.sleep(self.SECONDARY_LATENCY)
+        return await super().delete(content_hash)
+
+
 @pytest_asyncio.fixture
 async def temp_sqlite_db():
     """Create a temporary SQLite database for testing."""
@@ -132,6 +154,22 @@ async def hybrid_storage(temp_sqlite_db, mock_cloudflare_config):
             embedding_model="all-MiniLM-L6-v2",
             cloudflare_config=mock_cloudflare_config,
             sync_interval=1,  # Short interval for testing
+            batch_size=5
+        )
+        await storage.initialize()
+        yield storage
+        await storage.close()
+
+
+@pytest_asyncio.fixture
+async def hybrid_storage_slow_secondary(temp_sqlite_db, mock_cloudflare_config):
+    """A hybrid store whose secondary is deliberately slow (see the class)."""
+    with patch('mcp_memory_service.storage.hybrid.CloudflareStorage', SlowMockCloudflareStorage):
+        storage = HybridMemoryStorage(
+            sqlite_db_path=temp_sqlite_db,
+            embedding_model="all-MiniLM-L6-v2",
+            cloudflare_config=mock_cloudflare_config,
+            sync_interval=1,
             batch_size=5
         )
         await storage.initialize()
@@ -557,25 +595,49 @@ class TestPerformanceCharacteristics:
     """Test performance characteristics of hybrid storage."""
 
     @pytest.mark.asyncio
-    async def test_read_performance(self, hybrid_storage, sample_memory):
-        """Test that reads are fast (should use SQLite-vec)."""
-        # Store a memory
-        await hybrid_storage.store(sample_memory)
+    async def test_read_does_not_touch_the_secondary(
+        self, hybrid_storage_slow_secondary, sample_memory
+    ):
+        """Reads must be served from the primary store alone.
 
-        # Measure read performance
-        import time
+        This used to assert `duration < 0.1` against a fast mock, which measured
+        the machine rather than the design: the call phase alone was 0.14-0.21s
+        locally, and the embedding generation inside it is documented at
+        80-150ms, so the budget contradicted the project's own figures (#274).
 
-        start_time = time.time()
-        results = await hybrid_storage.retrieve(sample_memory.content[:10], n_results=1)
-        duration = time.time() - start_time
+        Against a secondary that takes SECONDARY_LATENCY to answer, the margin
+        is what carries the assertion: a read that reached the cloud could not
+        possibly come back inside half that time.
+        """
+        await hybrid_storage_slow_secondary.store(sample_memory)
 
-        # Should be very fast (< 100ms for local SQLite-vec)
-        assert duration < 0.1
-        assert len(results) >= 0  # Should get some results
+        start_time = time.perf_counter()
+        results = await hybrid_storage_slow_secondary.retrieve(
+            sample_memory.content[:10], n_results=1
+        )
+        duration = time.perf_counter() - start_time
+
+        budget = SlowMockCloudflareStorage.SECONDARY_LATENCY / 2
+        assert duration < budget, (
+            f"read took {duration:.3f}s against a secondary answering in "
+            f"{SlowMockCloudflareStorage.SECONDARY_LATENCY}s -- it appears to be "
+            "waiting on the cloud path"
+        )
+        assert len(results) >= 0
 
     @pytest.mark.asyncio
-    async def test_write_performance(self, hybrid_storage):
-        """Test that writes are fast (immediate SQLite-vec write)."""
+    async def test_write_does_not_wait_for_the_secondary(
+        self, hybrid_storage_slow_secondary
+    ):
+        """A write must return once the primary has it, leaving the cloud to the
+        background sync.
+
+        That is what hybrid.store() implements -- it awaits only
+        `self.primary.store(...)` and then enqueues a SyncOperation -- and it is
+        what the old `duration < 0.1` was reaching for. The old form failed
+        about half the time on an idle machine, because the embedding step it
+        was unavoidably timing costs 80-150ms on its own (#274).
+        """
         content = "Performance test memory"
         memory = Memory(
             content=content,
@@ -584,15 +646,17 @@ class TestPerformanceCharacteristics:
             memory_type="performance_test"
         )
 
-        import time
+        start_time = time.perf_counter()
+        success, message = await hybrid_storage_slow_secondary.store(memory)
+        duration = time.perf_counter() - start_time
 
-        start_time = time.time()
-        success, message = await hybrid_storage.store(memory)
-        duration = time.time() - start_time
-
-        # Should be very fast (< 100ms for local SQLite-vec)
-        assert duration < 0.1
+        budget = SlowMockCloudflareStorage.SECONDARY_LATENCY / 2
         assert success
+        assert duration < budget, (
+            f"write took {duration:.3f}s against a secondary answering in "
+            f"{SlowMockCloudflareStorage.SECONDARY_LATENCY}s -- it appears to be "
+            "waiting for the sync instead of queueing it"
+        )
 
     @pytest.mark.asyncio
     async def test_concurrent_operations(self, hybrid_storage):
