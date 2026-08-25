@@ -1248,6 +1248,59 @@ class TestSqliteVecTimeBasedDeletion:
         remaining = await storage.search_by_tag(["recent"])
         assert len(remaining) == 1
 
+    @pytest.mark.asyncio
+    async def test_delete_memories_before_naive_date_treated_as_utc(self, storage, monkeypatch):
+        """delete_memories(before=...) must match search_memories: a naive
+        YYYY-MM-DD boundary is UTC, not host-local time.
+
+        Regression test for the base.py:568/574 gap doobidoo flagged on #237 -
+        the optimized time-only path in delete_memories built its boundary with
+        a naive datetime.fromisoformat(before).timestamp(), which resolves
+        against the host's local timezone. At TZ=Asia/Tokyo (UTC+9) that put
+        the cutoff nine hours earlier than intended, splitting memory_delete
+        and delete_before_date results for the same date argument.
+        """
+        monkeypatch.setenv("TZ", "Asia/Tokyo")
+        if hasattr(time, "tzset"):
+            time.tzset()
+        try:
+            today = date.today()
+            true_utc_midnight = datetime.combine(
+                today, datetime.min.time(), tzinfo=timezone.utc
+            ).timestamp()
+
+            # Naive datetime.fromisoformat(before).timestamp() at TZ=Asia/Tokyo
+            # (UTC+9) resolves "before" as Tokyo local midnight, i.e. 9 hours
+            # *before* true UTC midnight. A memory created in that 9-hour gap
+            # is < true UTC midnight (should be deleted per the UTC
+            # convention search_memories already uses) but > the buggy
+            # early cutoff (so the unfixed code leaves it behind).
+            memory_in_gap = Memory(
+                content="Created 4 hours before true UTC midnight",
+                content_hash=generate_content_hash("Created 4 hours before true UTC midnight"),
+                tags=["delete-memories-utc-test"],
+                created_at=true_utc_midnight - (4 * 3600),
+            )
+            memory_well_before = Memory(
+                content="Created 12 hours before true UTC midnight",
+                content_hash=generate_content_hash("Created 12 hours before true UTC midnight"),
+                tags=["delete-memories-utc-test"],
+                created_at=true_utc_midnight - (12 * 3600),
+            )
+            await storage.store(memory_in_gap)
+            await storage.store(memory_well_before)
+
+            result = await storage.delete_memories(before=str(today))
+
+            assert result["success"] is True
+            assert result["deleted_count"] == 2
+
+            remaining = await storage.search_by_tag(["delete-memories-utc-test"])
+            assert len(remaining) == 0
+        finally:
+            if hasattr(time, "tzset"):
+                time.tzset()
+
     # get_by_exact_content tests
 
     @pytest.mark.asyncio
