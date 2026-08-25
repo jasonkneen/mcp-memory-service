@@ -307,7 +307,7 @@ class MemoryServer:
                 # This prevents hanging during server startup due to embedding model loading
                 logger.info("Deferring %s storage initialization to prevent hanging", STORAGE_BACKEND)
                 if MCP_CLIENT == 'lm_studio':
-                    print(f"Deferring {STORAGE_BACKEND} storage initialization to prevent startup hanging", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
+                    print(f"Deferring {STORAGE_BACKEND} storage initialization to prevent startup hanging", file=sys.stderr, flush=True)  # debug: startup diagnostic, stderr keeps it off the JSON-RPC channel
                 self.storage = None
                 self.memory_service = None
                 self._storage_initialized = False
@@ -334,7 +334,7 @@ class MemoryServer:
             )
             logger.info("Server capabilities: %s", _sanitize_log_value(capabilities))
             if MCP_CLIENT == 'lm_studio':
-                print(f"Server capabilities registered successfully!", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
+                print(f"Server capabilities registered successfully!", file=sys.stderr, flush=True)  # debug: startup diagnostic, stderr keeps it off the JSON-RPC channel
         except Exception as e:
             logger.error("Handler registration test failed: %s", _sanitize_log_value(e))
             print(f"Handler registration issue: {str(e)}", file=sys.stderr, flush=True)  # debug: intentional startup diagnostic on stderr
@@ -795,14 +795,17 @@ class MemoryServer:
             # Run any async initialization tasks here
             logger.info("🚀 SERVER INIT: Starting async initialization...")
             
-            # Print system diagnostics only for LM Studio (avoid JSON parsing errors in Claude Desktop)
+            # Diagnostics for LM Studio, on stderr. The old comment here said stdout
+            # avoided JSON parsing errors in Claude Desktop, but LM Studio is a stdio
+            # client too, so stdout was corrupting the channel it was meant to protect
+            # (issue #275).
             if MCP_CLIENT == 'lm_studio':
-                print("\n=== System Diagnostics ===", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
-                print(f"OS: {self.system_info.os_name} {self.system_info.os_version}", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
-                print(f"Architecture: {self.system_info.architecture}", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
-                print(f"Memory: {self.system_info.memory_gb:.2f} GB", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
-                print(f"Accelerator: {self.system_info.accelerator}", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
-                print(f"Python: {platform.python_version()}", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
+                print("\n=== System Diagnostics ===", file=sys.stderr, flush=True)  # debug: startup diagnostic, stderr keeps it off the JSON-RPC channel
+                print(f"OS: {self.system_info.os_name} {self.system_info.os_version}", file=sys.stderr, flush=True)  # debug: startup diagnostic, stderr keeps it off the JSON-RPC channel
+                print(f"Architecture: {self.system_info.architecture}", file=sys.stderr, flush=True)  # debug: startup diagnostic, stderr keeps it off the JSON-RPC channel
+                print(f"Memory: {self.system_info.memory_gb:.2f} GB", file=sys.stderr, flush=True)  # debug: startup diagnostic, stderr keeps it off the JSON-RPC channel
+                print(f"Accelerator: {self.system_info.accelerator}", file=sys.stderr, flush=True)  # debug: startup diagnostic, stderr keeps it off the JSON-RPC channel
+                print(f"Python: {platform.python_version()}", file=sys.stderr, flush=True)  # debug: startup diagnostic, stderr keeps it off the JSON-RPC channel
             
             # Log environment info
             logger.info("🔧 SERVER INIT: Environment - STORAGE_BACKEND=%s", STORAGE_BACKEND)
@@ -812,13 +815,13 @@ class MemoryServer:
             timeout_seconds = get_recommended_timeout()
             logger.info("⏱️  SERVER INIT: Attempting eager storage initialization (timeout: %ss)...", _sanitize_log_value(timeout_seconds))
             if MCP_CLIENT == 'lm_studio':
-                print(f"Attempting eager storage initialization (timeout: {timeout_seconds}s)...", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
+                print(f"Attempting eager storage initialization (timeout: {timeout_seconds}s)...", file=sys.stderr, flush=True)  # debug: startup diagnostic, stderr keeps it off the JSON-RPC channel
             try:
                 init_task = asyncio.create_task(self._initialize_storage_with_timeout())
                 success = await asyncio.wait_for(init_task, timeout=timeout_seconds)
                 if success:
                     if MCP_CLIENT == 'lm_studio':
-                        print("[OK] Eager storage initialization successful", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
+                        print("[OK] Eager storage initialization successful", file=sys.stderr, flush=True)  # debug: startup diagnostic, stderr keeps it off the JSON-RPC channel
                     logger.info("✅ SERVER INIT: Eager storage initialization completed successfully")
                     
                     # Verify storage type after successful eager init
@@ -827,21 +830,21 @@ class MemoryServer:
                         logger.info("🔍 SERVER INIT: Eager init resulted in storage type: %s", _sanitize_log_value(storage_type))
                 else:
                     if MCP_CLIENT == 'lm_studio':
-                        print("[WARNING] Eager storage initialization failed, will use lazy loading", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
+                        print("[WARNING] Eager storage initialization failed, will use lazy loading", file=sys.stderr, flush=True)  # debug: startup diagnostic, stderr keeps it off the JSON-RPC channel
                     logger.warning("⚠️  SERVER INIT: Eager initialization failed, falling back to lazy loading")
                     # Reset state for lazy loading
                     self.storage = None
                     self._storage_initialized = False
             except asyncio.TimeoutError:
                 if MCP_CLIENT == 'lm_studio':
-                    print("[TIMEOUT] Eager storage initialization timed out, will use lazy loading", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
+                    print("[TIMEOUT] Eager storage initialization timed out, will use lazy loading", file=sys.stderr, flush=True)  # debug: startup diagnostic, stderr keeps it off the JSON-RPC channel
                 logger.warning("⏱️  SERVER INIT: Storage initialization timed out after %ss, falling back to lazy loading", _sanitize_log_value(timeout_seconds))
                 # Reset state for lazy loading
                 self.storage = None
                 self._storage_initialized = False
             except Exception as e:
                 if MCP_CLIENT == 'lm_studio':
-                    print(f"[WARNING] Eager initialization error: {str(e)}, will use lazy loading", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
+                    print(f"[WARNING] Eager initialization error: {str(e)}, will use lazy loading", file=sys.stderr, flush=True)  # debug: startup diagnostic, stderr keeps it off the JSON-RPC channel
                 logger.warning("⚠️  SERVER INIT: Eager initialization error: %s, falling back to lazy loading", _sanitize_log_value(e))
                 logger.warning("📋 SERVER INIT: Eager init error traceback:")
                 logger.warning(traceback.format_exc())
@@ -849,9 +852,9 @@ class MemoryServer:
                 self.storage = None
                 self._storage_initialized = False
             
-            # Add explicit console output for Smithery to see (only for LM Studio)
+            # Explicit console output for Smithery, on stderr (only for LM Studio)
             if MCP_CLIENT == 'lm_studio':
-                print("MCP Memory Service initialization completed", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
+                print("MCP Memory Service initialization completed", file=sys.stderr, flush=True)  # debug: startup diagnostic, stderr keeps it off the JSON-RPC channel
             
             logger.info("🎉 SERVER INIT: Async initialization completed")
             return True
@@ -3015,16 +3018,23 @@ class MemoryServer:
 
 
 def _print_system_diagnostics(system_info: Any) -> None:
-    """Print system diagnostics for LM Studio."""
-    print("\n=== MCP Memory Service System Diagnostics ===", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
-    print(f"OS: {system_info.os_name} {system_info.architecture}", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
-    print(f"Python: {platform.python_version()}", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
-    print(f"Hardware Acceleration: {system_info.accelerator}", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
-    print(f"Memory: {system_info.memory_gb:.2f} GB", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
-    print(f"Optimal Model: {system_info.get_optimal_model()}", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
-    print(f"Optimal Batch Size: {system_info.get_optimal_batch_size()}", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
-    print(f"Storage Backend: {STORAGE_BACKEND}", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
-    print("================================================\n", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
+    """Write system diagnostics to stderr, for LM Studio.
+
+    stderr, not stdout: LM Studio is a stdio client, so stdout is the JSON-RPC
+    channel and these nine lines landed in front of the initialize response
+    (issue #275). The old comments on each line called stdout intentional,
+    which is how they got past the debug-code check; the stream was the bug.
+    The LM Studio guard at the call site stays -- nine lines of diagnostics on
+    every start is noise for clients that never asked for them."""
+    print("\n=== MCP Memory Service System Diagnostics ===", file=sys.stderr, flush=True)  # debug: startup diagnostic, stderr keeps it off the JSON-RPC channel
+    print(f"OS: {system_info.os_name} {system_info.architecture}", file=sys.stderr, flush=True)  # debug: startup diagnostic, stderr keeps it off the JSON-RPC channel
+    print(f"Python: {platform.python_version()}", file=sys.stderr, flush=True)  # debug: startup diagnostic, stderr keeps it off the JSON-RPC channel
+    print(f"Hardware Acceleration: {system_info.accelerator}", file=sys.stderr, flush=True)  # debug: startup diagnostic, stderr keeps it off the JSON-RPC channel
+    print(f"Memory: {system_info.memory_gb:.2f} GB", file=sys.stderr, flush=True)  # debug: startup diagnostic, stderr keeps it off the JSON-RPC channel
+    print(f"Optimal Model: {system_info.get_optimal_model()}", file=sys.stderr, flush=True)  # debug: startup diagnostic, stderr keeps it off the JSON-RPC channel
+    print(f"Optimal Batch Size: {system_info.get_optimal_batch_size()}", file=sys.stderr, flush=True)  # debug: startup diagnostic, stderr keeps it off the JSON-RPC channel
+    print(f"Storage Backend: {STORAGE_BACKEND}", file=sys.stderr, flush=True)  # debug: startup diagnostic, stderr keeps it off the JSON-RPC channel
+    print("================================================\n", file=sys.stderr, flush=True)  # debug: startup diagnostic, stderr keeps it off the JSON-RPC channel
 
 
 async def async_main():
@@ -3134,7 +3144,7 @@ def main():
         if os.path.exists('/.dockerenv') or os.environ.get('DOCKER_CONTAINER', False):
             logger.info("Running in Docker container")
             if MCP_CLIENT == 'lm_studio':
-                print("MCP Memory Service starting in Docker mode", file=sys.stdout, flush=True)  # debug: intentional startup diagnostic on stdout
+                print("MCP Memory Service starting in Docker mode", file=sys.stderr, flush=True)  # debug: startup diagnostic, stderr keeps it off the JSON-RPC channel
 
         asyncio.run(async_main())
     except KeyboardInterrupt:
