@@ -327,9 +327,13 @@ class TestIntegrationScenarios:
 
     @pytest.mark.asyncio
     async def test_periodic_capacity_check(self, hybrid_with_limits):
-        """Test that periodic sync checks capacity."""
+        """Test that periodic sync checks capacity once its interval is due."""
         # Set up near-limit scenario in the mock backend
         hybrid_with_limits.sync_service.secondary.vector_count = 85
+
+        # Capacity monitoring counts rows on the secondary, so it runs on its own
+        # interval rather than every cycle. Startup already used up the first slot.
+        hybrid_with_limits.sync_service.cloudflare_stats['last_capacity_check'] = 0
 
         # Run periodic sync
         await hybrid_with_limits.sync_service._periodic_sync()

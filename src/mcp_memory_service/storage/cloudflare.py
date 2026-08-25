@@ -1436,6 +1436,90 @@ class CloudflareStorage(MemoryStorage):
         if new_tags:
             await self._store_d1_tags(memory_id, new_tags)
     
+    async def health_probe(self) -> bool:
+        """
+        Cheap liveness check for D1 that reads no table rows.
+
+        `get_stats()` scans the whole `memories` table, so using it as the
+        background sync health check cost tens of thousands of D1 row reads
+        every cycle — on its own enough to exhaust the D1 free tier's daily
+        read allowance. This answers the only question the health check
+        actually asks, namely whether D1 is responding.
+        """
+        payload = {"sql": "SELECT 1"}
+        response = await self._retry_request("POST", f"{self.d1_url}/query", json=payload)
+        return bool(response.json().get("success"))
+
+    async def purge_deleted(self, older_than_days: int = 30) -> int:
+        """
+        Permanently remove D1 tombstones past the retention window.
+
+        `delete()` already drops the Vectorize entry and any R2 object at
+        soft-delete time, so a tombstone is nothing but a D1 row by the time it
+        gets here. Leaving them costs more than tidiness: every stats query
+        scans them, and they had grown to more than half the table.
+
+        Batches are bounded by id rather than by a bound-parameter list, which
+        keeps each statement to two parameters regardless of batch size.
+        """
+        cutoff = time.time() - (older_than_days * 86400)
+        batch_size = 1000
+        total_purged = 0
+
+        while True:
+            select_sql = (
+                "SELECT id FROM memories WHERE deleted_at IS NOT NULL AND deleted_at < ? "
+                "ORDER BY id ASC LIMIT ?"
+            )
+            response = await self._retry_request(
+                "POST", f"{self.d1_url}/query",
+                json={"sql": select_sql, "params": [cutoff, batch_size]}
+            )
+            result = response.json()
+            if not result.get("success"):
+                logger.error(f"Tombstone purge lookup failed: {_sanitize_log_value(result.get('errors'))}")
+                break
+
+            rows = result["result"][0].get("results", [])
+            if not rows:
+                break
+            max_id = rows[-1]["id"]
+
+            # Join rows first: D1 does not guarantee the schema's ON DELETE CASCADE
+            # is enforced, and an orphaned memory_tags row would outlive its memory.
+            tags_sql = (
+                "DELETE FROM memory_tags WHERE memory_id IN "
+                "(SELECT id FROM memories WHERE deleted_at IS NOT NULL AND deleted_at < ? AND id <= ?)"
+            )
+            response = await self._retry_request(
+                "POST", f"{self.d1_url}/query",
+                json={"sql": tags_sql, "params": [cutoff, max_id]}
+            )
+            result = response.json()
+            if not result.get("success"):
+                # Stop here rather than delete the memories anyway: that would leave
+                # behind exactly the orphaned join rows this ordering exists to avoid.
+                logger.error(f"Tombstone tag purge failed: {_sanitize_log_value(result.get('errors'))}")
+                break
+
+            delete_sql = "DELETE FROM memories WHERE deleted_at IS NOT NULL AND deleted_at < ? AND id <= ?"
+            response = await self._retry_request(
+                "POST", f"{self.d1_url}/query",
+                json={"sql": delete_sql, "params": [cutoff, max_id]}
+            )
+            result = response.json()
+            if not result.get("success"):
+                logger.error(f"Tombstone purge failed: {_sanitize_log_value(result.get('errors'))}")
+                break
+
+            total_purged += len(rows)
+            if len(rows) < batch_size:
+                break
+
+        if total_purged:
+            logger.info("Purged %d D1 tombstones older than %d days", total_purged, older_than_days)
+        return total_purged
+
     async def get_stats(self) -> Dict[str, Any]:
         """Get storage statistics."""
         try:
@@ -1447,17 +1531,20 @@ class CloudflareStorage(MemoryStorage):
             # show CF counts inflated by soft-deleted rows, which looks like sync drift
             # but is just an unfiltered stats query (see issue #750 follow-up).
             # COALESCE guards against NULL when the filtered set is empty.
+            # One pass over `memories` instead of four. The previous version put the
+            # week and tombstone counts in subqueries, so D1 scanned the table again
+            # for each of them — measurable as roughly a third of this query's
+            # rows_read. Conditional aggregates give the same numbers for one scan.
             sql = """
             SELECT
-                COUNT(*) as total_memories,
-                COALESCE(SUM(content_size), 0) as total_content_size,
-                COUNT(DISTINCT vector_id) as total_vectors,
-                COUNT(r2_key) as r2_stored_count,
+                COUNT(*) FILTER (WHERE deleted_at IS NULL) as total_memories,
+                COALESCE(SUM(content_size) FILTER (WHERE deleted_at IS NULL), 0) as total_content_size,
+                COUNT(DISTINCT CASE WHEN deleted_at IS NULL THEN vector_id END) as total_vectors,
+                COUNT(r2_key) FILTER (WHERE deleted_at IS NULL) as r2_stored_count,
                 (SELECT COUNT(*) FROM tags) as unique_tags,
-                (SELECT COUNT(*) FROM memories WHERE created_at >= ? AND deleted_at IS NULL) as memories_this_week,
-                (SELECT COUNT(*) FROM memories WHERE deleted_at IS NOT NULL) as tombstone_count
+                COUNT(*) FILTER (WHERE created_at >= ? AND deleted_at IS NULL) as memories_this_week,
+                COUNT(*) FILTER (WHERE deleted_at IS NOT NULL) as tombstone_count
             FROM memories
-            WHERE deleted_at IS NULL
             """
 
             payload = {"sql": sql, "params": [week_ago]}
