@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from mcp_memory_service.quality import onnx_ranker
 from mcp_memory_service.quality.onnx_ranker import (
     DEFAULT_ONNX_MODEL_DIR,
     onnx_model_dir,
@@ -76,3 +77,49 @@ def test_loader_appends_the_model_name(monkeypatch, tmp_path):
     base = onnx_model_dir()
     assert base / "nvidia-quality-classifier-deberta" == tmp_path / "nvidia-quality-classifier-deberta"
     assert base / "ms-marco-MiniLM-L-6-v2" == tmp_path / "ms-marco-MiniLM-L-6-v2"
+
+
+class TestFactoryHonorsTheOverride:
+    """get_onnx_ranker_model used to check Path.home() directly.
+
+    ONNXRankerModel resolves its own paths through onnx_model_dir(), but the
+    factory in front of it hardcoded the default. With the override set, the
+    gate looked under HOME, found nothing, and returned None for a model that
+    was sitting in the configured directory the whole time (issue #304).
+    """
+
+    MODEL = "nvidia-quality-classifier-deberta"
+
+    @pytest.fixture(autouse=True)
+    def _isolate_home(self, monkeypatch, tmp_path):
+        """Point HOME somewhere empty.
+
+        Without this the tests pass against the old code too on any machine that
+        happens to have a model exported under the real HOME -- which is exactly
+        the state that made this bug invisible.
+        """
+        monkeypatch.setenv("HOME", str(tmp_path / "home"))
+
+    def _export(self, base: Path) -> None:
+        target = base / self.MODEL
+        target.mkdir(parents=True)
+        (target / "model.onnx").write_bytes(b"not a real graph")
+
+    def test_finds_an_exported_model_under_the_override(self, monkeypatch, tmp_path):
+        self._export(tmp_path / "models")
+        monkeypatch.setenv(ENV_VAR, str(tmp_path / "models"))
+        monkeypatch.setattr(onnx_ranker, "ONNX_AVAILABLE", True)
+        # transformers absent is the interesting case: the export path is
+        # unavailable, so an already-exported model is the only way through.
+        monkeypatch.setattr(onnx_ranker, "TRANSFORMERS_AVAILABLE", False)
+        sentinel = object()
+        monkeypatch.setattr(onnx_ranker, "ONNXRankerModel", lambda **kwargs: sentinel)
+
+        assert onnx_ranker.get_onnx_ranker_model(self.MODEL) is sentinel
+
+    def test_returns_none_when_the_override_holds_no_export(self, monkeypatch, tmp_path):
+        monkeypatch.setenv(ENV_VAR, str(tmp_path))
+        monkeypatch.setattr(onnx_ranker, "ONNX_AVAILABLE", True)
+        monkeypatch.setattr(onnx_ranker, "TRANSFORMERS_AVAILABLE", False)
+
+        assert onnx_ranker.get_onnx_ranker_model(self.MODEL) is None
