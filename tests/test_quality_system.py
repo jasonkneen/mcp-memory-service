@@ -882,6 +882,24 @@ class TestQualityAPILayer:
         from src.mcp_memory_service.models.memory import Memory
 
         scorer = AsyncQualityScorer()
+
+        # What is under test here is the queue: enqueue returns immediately, the
+        # worker runs, the counters add up. Scoring quality is not.
+        #
+        # The default evaluator scores for real, and with onnxscript installed
+        # that means the worker performs a torch.onnx.export of DeBERTa on its
+        # first item — minutes of synchronous work inside an async worker, which
+        # blocks the event loop, so stop()'s own 5s wait_for cannot even fire.
+        # In CI this test hit pytest's 120s timeout. A disabled evaluator returns
+        # a neutral score without loading anything (see ai_evaluator), which
+        # leaves every assertion below testing exactly what it did before.
+        #
+        # Only the evaluator needs replacing. The worker also holds a composite
+        # QualityScorer, but it hands that one the already-computed ai_score, and
+        # calculate_quality_score only consults its own evaluator when ai_score
+        # is None — so it is not a second path into a model load.
+        scorer.evaluator = QualityEvaluator(QualityConfig(enabled=False))
+
         await scorer.start()
 
         try:
