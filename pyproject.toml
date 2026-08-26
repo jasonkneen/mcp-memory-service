@@ -82,6 +82,14 @@ ml = [
     "tokenizers>=0.22.2",
     "torch>=2.0.0",
     "transformers>=5.5.0,<6.0.0",
+    # torch.onnx.export routes through the dynamo exporter, which imports
+    # onnxscript. Without it the quality ranker cannot export a model at all --
+    # `ONNXRankerModel('nvidia-quality-classifier-deberta')` dies with
+    # ModuleNotFoundError partway through the export. It was declared only in
+    # tools/docker/Dockerfile.quality-cpu, the image that pre-exports models, so
+    # a plain `pip install mcp-memory-service[ml]` could never do the export
+    # itself. Same lower bound as that Dockerfile.
+    "onnxscript>=0.1.0",
     "wandb>=0.18.0"  # Fix for Issue #311: Ensure wandb is compatible with protobuf 5.x
 ]
 # NLI contradiction detection (Phase 3, RFC #732)
