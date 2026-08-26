@@ -9,11 +9,6 @@ updates:
       uv:
         patterns:
           - "*"
-    ignore:
-      # transformers 5.x is a major bump — defer until stable release and
-      # sentence-transformers compatibility is verified
-      - dependency-name: "transformers"
-        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"

@@ -81,12 +81,12 @@ ml = [
     "sentence-transformers>=2.2.2",
     "tokenizers>=0.22.2",
     "torch>=2.0.0",
-    "transformers>=4.30,<5.0.0",
+    "transformers>=5.5.0,<6.0.0",
     "wandb>=0.18.0"  # Fix for Issue #311: Ensure wandb is compatible with protobuf 5.x
 ]
 # NLI contradiction detection (Phase 3, RFC #732)
 nli = [
-    "transformers>=4.30.0",
+    "transformers>=5.5.0,<6.0.0",
     "onnxruntime>=1.17.0",
 ]
 # SQLite-vec with lightweight ONNX embeddings (recommended for most users)
