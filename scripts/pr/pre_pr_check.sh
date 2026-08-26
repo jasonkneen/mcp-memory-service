@@ -188,8 +188,11 @@ echo -e "\n${YELLOW}[5/9]${NC} Checking import ordering (PEP 8)..."
 IMPORT_ISSUES=0
 for file in $(echo "$STAGED_FILES" | grep '\.py$' | grep -v '^claude-hooks/' || true); do
     if [ -f "$file" ]; then
-        # Check for inline imports (not at top of file)
-        if grep -n "^    import\|^        import" "$file" | grep -v "# inline import" > /dev/null; then
+        # Check for inline imports (not at top of file). The trailing space is
+        # load-bearing: without it the pattern also matches any indented line
+        # starting with `importlib`, e.g. `    importlib.util.find_spec(...)`,
+        # and reports it as a misplaced import.
+        if grep -n "^    import \|^        import " "$file" | grep -v "# inline import" > /dev/null; then
             echo -e "${RED}   Found inline imports in $file (should be at top)${NC}"
             IMPORT_ISSUES=$((IMPORT_ISSUES + 1))
         fi
