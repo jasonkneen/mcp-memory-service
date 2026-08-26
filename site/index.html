@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Memory for AI Agents — REST, MCP, OAuth, CLI · mcp-memory-service v11.8.0</title>
+<title>Memory for AI Agents — REST, MCP, OAuth, CLI · mcp-memory-service v11.9.0</title>
 <meta name="description" content="Memory layer for AI agents. REST API + MCP + OAuth + CLI + dashboard — one self-hosted service, every transport. 14+ client integrations, knowledge graph, automatic consolidation. LongMemEval R@5 86%, session ingestion, zero cloud cost.">
-<meta property="og:title" content="MCP Memory Service v11.8.0">
-<meta property="og:description" content="The knowledge-graph layer actually works now: entity extraction was discarding every memory tag. Self-hosted AI memory — REST, MCP, OAuth 2.1, CLI. LongMemEval R@5 86%.">
+<meta property="og:title" content="MCP Memory Service v11.9.0">
+<meta property="og:description" content="transformers 5.x closes two high-severity advisories with no fix in the 4.x line. Self-hosted AI memory — REST, MCP, OAuth 2.1, CLI. LongMemEval R@5 86%.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://mcpmemory.services/">
 <meta property="twitter:card" content="summary_large_image">
@@ -121,7 +121,7 @@ footer a{color:var(--cyan)}
 <!-- Hero -->
 <header class="hero">
   <img src="brain-icon.png" alt="Memory for AI Agents" class="hero-logo">
-  <span class="hero-badge">mcp-memory-service v11.8 &mdash; Now Available</span>
+  <span class="hero-badge">mcp-memory-service v11.9 &mdash; Now Available</span>
   <h1>Memory for AI Agents</h1>
   <p>Persistent memory for AI agents &mdash; REST API, MCP, OAuth, CLI, dashboard. Semantic search, knowledge graph, automatic consolidation. One self-hosted service, every transport.</p>
   <div class="hero-buttons">
@@ -161,23 +161,23 @@ footer a{color:var(--cyan)}
 <!-- Features -->
 <section id="features">
   <div class="container">
-    <h2 class="section-title">What's New in v11.8</h2>
-    <p class="section-subtitle">MINOR release: the knowledge-graph layer actually works now. Entity extraction was discarding every memory tag, so memory_explore returned nothing on any store. ~2,839 tests.</p>
+    <h2 class="section-title">What's New in v11.9</h2>
+    <p class="section-subtitle">MINOR release: transformers 5.x closes two high-severity advisories with no fix in the 4.x line, verified by a new CI job that finally installs the ml/nli extras — and that job caught a real quality-system bug on day one. ~2,966 tests.</p>
     <div class="features-grid">
       <div class="feature-card" data-delay="0">
-        <div class="feature-icon consolidation">&#128295;</div>
-        <h3>Entity Graph Was Never Populated</h3>
-        <p>maintain's batch extraction discarded every memory tag before it reached the entity extractor, and two graph features were gated on a storage attribute nothing ever set, so the graph stayed empty. (#218, #219)</p>
+        <div class="feature-icon privacy">&#128274;</div>
+        <h3>transformers 5.x, Two Advisories Closed</h3>
+        <p>GHSA-29pf-2h5f-8g72 and GHSA-fgcw-684q-jj6r are both fixed only in 5.x, so the [ml] and [nli] extras now pin transformers&gt;=5.5.0,&lt;6.0.0. The reason to upgrade if you install either extra. (#305)</p>
       </div>
       <div class="feature-card" data-delay="150">
-        <div class="feature-icon privacy">&#128274;</div>
-        <h3>CLI TLS Handling Catches Up</h3>
-        <p>The memory CLI's launch/stop/restart/info/health commands verify certificates by default now, completing the self-signed-cert opt-in, and a stray .env no longer decides the CLI's scheme behind your back. (#216, #224, thanks timkjr)</p>
+        <div class="feature-icon consolidation">&#128295;</div>
+        <h3>Disabled Quality System Stopped Exporting Models</h3>
+        <p>MCP_MEMORY_QUALITY_ENABLED=false still triggered a full torch.onnx.export of DeBERTa on the first call, because both entry points checked config.enabled after initializing. Found when it blew pytest's 120s CI timeout. (#316, closes #315)</p>
       </div>
       <div class="feature-card" data-delay="300">
         <div class="feature-icon http">&#128240;</div>
-        <h3>Milvus Fix &amp; New Retrieval Docs</h3>
-        <p>Milvus implements the storage methods the web API was calling unguarded, fixing 501s on /api/tags (#214, reported by @ghulands). Token-efficient retrieval and the two-phase entity tools get their first user-facing docs. (#215, #217, #220, #222)</p>
+        <h3>ML Extras Finally Run in CI</h3>
+        <p>transformers and sentence-transformers had never been imported in CI before this job (#303) — it's what made the transformers 5.x move verifiable, and what caught the quality-system bug above. Cache-resolution and setuptools fixes ride along. (#307, #300, #310)</p>
       </div>
     </div>
   </div>
@@ -228,7 +228,7 @@ footer a{color:var(--cyan)}
     <p class="section-subtitle">Battle-tested with comprehensive testing and optimized for performance.</p>
     <div class="stats-grid">
       <div class="stat-card" data-delay="0">
-        <div class="stat-number" data-target="2839">0</div>
+        <div class="stat-number" data-target="2966">0</div>
         <div class="stat-label">Tests</div>
       </div>
       <div class="stat-card" data-delay="100">
@@ -290,7 +290,7 @@ footer a{color:var(--cyan)}
       <a href="blog/remote-mcp-tutorial.html" class="btn btn-secondary">
         Blog: 5-Min claude.ai Setup
       </a>
-      <a href="https://codeberg.org/doobidoo/mcp-memory-service/releases/tag/v11.8.0" class="btn btn-secondary" target="_blank">
+      <a href="https://codeberg.org/doobidoo/mcp-memory-service/releases/tag/v11.9.0" class="btn btn-secondary" target="_blank">
         Release Notes
       </a>
     </div>
