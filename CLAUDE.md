@@ -13,7 +13,7 @@ Quick reference; each rule is expanded in the sections below. Violations cause r
 1. **Development happens on Codeberg. GitHub is a mirror.** `origin` is `codeberg.org:doobidoo/mcp-memory-service`; CI is Forgejo Actions (`.forgejo/workflows/`); issues, PRs, and releases are on Codeberg. The `github` remote is a synced mirror with Actions switched off and no repository secrets — `gh` is fine for reading it and for administering the mirror, but nothing about CI, releases, or issue handling runs there. **Never push tags to the mirror**, and never push it anything but a fast-forward of `main` (see "Source Control & Hosting").
 2. **Never manually bump versions.** Follow the documented release workflow for every version bump and release.
 3. **Run `bash scripts/pr/pre_pr_check.sh` before every PR.** It is the mandatory pre-PR gate and must pass.
-4. **Use the project venv.** Run `.venv/bin/python` and `.venv/bin/pytest` (Python 3.11) — the system interpreters are not the project environment.
+4. **Use the project venv.** Run `.venv/bin/python` and `.venv/bin/pytest` (Python 3.12) — the system interpreters are not the project environment.
 5. **Store context in the MCP Memory Server first, tagged `mcp-memory-service`.** Claude Code's file-based memory (`~/.claude/projects/<project>/memory/`) may run alongside it as a local cache — it is a supplement, not a substitute, and it lives outside the repo. Never commit memory files into the working tree.
 6. **Access `Memory` fields by attribute** (`memory.tags`), never via `memory.metadata.get('tags')`. This has caused 3 production bugs.
 7. **Sanitize user-provided values in logs** with `_sanitize_log_value()` (from `mcp_memory_service.compat`).
@@ -72,13 +72,27 @@ Before merging or releasing:
 
 ### Python Environment
 
-This repo uses a project virtualenv at `.venv` (Python 3.11). The system `python`/`pytest` are **not** the project interpreter. Always use the venv binaries:
+This repo uses a project virtualenv at `.venv` (Python 3.12). The system `python`/`pytest` are **not** the project interpreter. Always use the venv binaries:
 
 ```bash
 .venv/bin/python -m mcp_memory_service.server   # run a module
 .venv/bin/pytest                                # run the test suite
 .venv/bin/python -m pip install -e .            # editable install
 ```
+
+The venv is not guaranteed to carry the dev tooling: a `uv`-created one holds the
+runtime dependencies only, with no `pip` and no `pytest`. `scripts/pr/pre_pr_check.sh`
+resolves its interpreter from `.venv/bin/` before it looks at `$VIRTUAL_ENV`, so it
+cannot be pointed elsewhere, and it discards the output of its own `pip install
+pytest-cov`. The result is a bare `FAIL - Test suite` at step `[3/9]` with no test
+names under it. That is an environment failure, not a broken change. Repair it with:
+
+```bash
+uv pip install --python .venv/bin/python pip pytest pytest-cov pytest-asyncio \
+    pytest-subtests pytest-timeout pytest-mock
+```
+
+`pytest-timeout` is required, not optional -- the gate passes `--timeout=120`.
 
 The commands below are written as bare `python`/`pytest` for brevity — run them via `.venv/bin/...`. For `git commit`, the pre-commit hook uses **system** Python and will fail with "Package not installed"; prefix commits with `PATH=".venv/bin:$PATH"` (see Troubleshooting). `uv` is also used (`uv.lock` present); `uv pip install -e .` and `uv run memory ...` work too.
 
