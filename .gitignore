@@ -35,13 +35,16 @@ __pycache__/
 *.so
 
 # Python environment & build artifacts
+# No trailing slashes on the venv names: a git worktree usually gets .venv as a
+# symlink to the main checkout's venv, and a symlink is not a directory, so
+# `.venv/` does not match it and `git add -A` stages the link.
 .Python
-env/
-.venv/
-venv/
-py310_venv/
-venv_py310/
-.uv/
+env
+.venv
+venv
+py310_venv
+venv_py310
+.uv
 build/
 develop-eggs/
 dist/
