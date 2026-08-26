@@ -10,6 +10,7 @@ import httpx
 from .config import QualityConfig
 from .onnx_ranker import get_onnx_ranker_model, ONNXRankerModel
 from .implicit_signals import ImplicitSignalsEvaluator
+from ..compat import _sanitize_log_value
 from ..models.memory import Memory
 
 logger = logging.getLogger(__name__)
@@ -39,55 +40,89 @@ class QualityEvaluator:
         self._httpx_client: Optional[httpx.AsyncClient] = None
         self._initialized = False
 
+    def _load_fallback_rankers(self):
+        """Load the comma-separated model list used by fallback scoring."""
+        try:
+            self._load_fallback_rankers_inner()
+        except Exception as e:
+            logger.error("Failed to initialize fallback models: %s", _sanitize_log_value(str(e)))
+            self._onnx_ranker = None
+
+    def _load_fallback_rankers_inner(self):
+        """Load each configured fallback model, skipping the ones that fail."""
+        model_names = [m.strip() for m in self.config.local_model.split(',')]
+        logger.info("Loading %d models for fallback mode", len(model_names))
+
+        for model_name in model_names:
+            try:
+                model = get_onnx_ranker_model(
+                    model_name=model_name,
+                    device=self.config.local_device
+                )
+                if model:
+                    self._onnx_models[model_name] = model
+                    logger.info("Loaded fallback model: %s", _sanitize_log_value(model_name))
+            except Exception as e:
+                logger.warning(
+                    "Failed to load model %s: %s",
+                    _sanitize_log_value(model_name), _sanitize_log_value(str(e))
+                )
+
+        if len(self._onnx_models) < 2:
+            logger.warning(
+                "Fallback mode enabled but only %d models loaded. "
+                "Falling back to single model mode.", len(self._onnx_models)
+            )
+            # Use first available model as single model fallback
+            if self._onnx_models:
+                self._onnx_ranker = list(self._onnx_models.values())[0]
+
+    def _load_single_ranker(self):
+        """Load the one model used when fallback scoring is off."""
+        try:
+            self._onnx_ranker = get_onnx_ranker_model(
+                model_name=self.config.local_model,
+                device=self.config.local_device
+            )
+            if self._onnx_ranker:
+                logger.info(
+                    "ONNX ranker model initialized: %s",
+                    _sanitize_log_value(self.config.local_model)
+                )
+        except Exception as e:
+            logger.warning("Failed to initialize ONNX ranker: %s", _sanitize_log_value(str(e)))
+            self._onnx_ranker = None
+
+    def _init_local_rankers(self):
+        """Load the local ONNX ranker(s).
+
+        Extracted from _ensure_initialized, which was one method carrying the
+        provider branch, both loading strategies, and their error handling.
+        Each strategy keeps the log level and message it had before.
+        """
+        if self.config.fallback_enabled:
+            self._load_fallback_rankers()
+        else:
+            self._load_single_ranker()
+
     def _ensure_initialized(self):
         """Lazy initialization of heavy components."""
         if self._initialized:
             return
 
+        # Nothing to load when the quality system is off. Both public methods
+        # return a neutral score in that case without consulting a model, so
+        # loading one here is pure cost — and not a small one: with onnxscript
+        # present the local ranker performs a real torch.onnx.export of DeBERTa,
+        # which is what made tests/test_quality_system.py's disabled-path test
+        # exceed pytest's 120s timeout in CI. Deliberately not setting
+        # _initialized, so enabling the config later still initializes.
+        if not self.config.enabled:
+            return
+
         # Initialize local ONNX ranker(s) if using local provider
         if self.config.ai_provider in ['local', 'auto']:
-            # Check if fallback mode enabled
-            if self.config.fallback_enabled:
-                # Load multiple models for fallback scoring
-                try:
-                    model_names = [m.strip() for m in self.config.local_model.split(',')]
-                    logger.info(f"Loading {len(model_names)} models for fallback mode")
-
-                    for model_name in model_names:
-                        try:
-                            model = get_onnx_ranker_model(
-                                model_name=model_name,
-                                device=self.config.local_device
-                            )
-                            if model:
-                                self._onnx_models[model_name] = model
-                                logger.info(f"✓ Loaded fallback model: {model_name}")
-                        except Exception as e:
-                            logger.warning(f"Failed to load model {model_name}: {e}")
-
-                    if len(self._onnx_models) < 2:
-                        logger.warning(
-                            f"Fallback mode enabled but only {len(self._onnx_models)} models loaded. "
-                            "Falling back to single model mode."
-                        )
-                        # Use first available model as single model fallback
-                        if self._onnx_models:
-                            self._onnx_ranker = list(self._onnx_models.values())[0]
-                except Exception as e:
-                    logger.error(f"Failed to initialize fallback models: {e}")
-                    self._onnx_ranker = None
-            else:
-                # Single model mode (current behavior)
-                try:
-                    self._onnx_ranker = get_onnx_ranker_model(
-                        model_name=self.config.local_model,
-                        device=self.config.local_device
-                    )
-                    if self._onnx_ranker:
-                        logger.info(f"ONNX ranker model initialized: {self.config.local_model}")
-                except Exception as e:
-                    logger.warning(f"Failed to initialize ONNX ranker: {e}")
-                    self._onnx_ranker = None
+            self._init_local_rankers()
 
         # Initialize Groq bridge if using Groq provider
         if self.config.can_use_groq:
@@ -103,7 +138,7 @@ class QualityEvaluator:
                     self._groq_bridge = GroqAgentBridge(api_key=self.config.groq_api_key)
                     logger.info("Groq bridge initialized successfully")
             except Exception as e:
-                logger.warning(f"Failed to initialize Groq bridge: {e}")
+                logger.warning("Failed to initialize Groq bridge: %s", _sanitize_log_value(str(e)))
                 self._groq_bridge = None
 
         self._initialized = True
@@ -119,11 +154,12 @@ class QualityEvaluator:
         Returns:
             Quality score between 0.0 and 1.0
         """
-        self._ensure_initialized()
-
         if not self.config.enabled:
-            # Quality system disabled, return neutral score
+            # Quality system disabled, return neutral score. Checked before
+            # initialization, not after — see _ensure_initialized.
             return 0.5
+
+        self._ensure_initialized()
 
         # Try tiers in order based on configuration
         provider_used = None
@@ -149,16 +185,16 @@ class QualityEvaluator:
                         f"DeBERTa: {deberta_s}, MS-MARCO: {msmarco_s}"
                     )
                 except Exception as e:
-                    logger.error(f"Fallback scoring failed: {e}, falling back to single model")
+                    logger.error("Fallback scoring failed: %s, falling back to single model", _sanitize_log_value(str(e)))
                     score = None
             # Single model mode (existing code)
             elif self._onnx_ranker:
                 try:
                     score = self._onnx_ranker.score_quality(query, memory.content)
                     provider_used = 'onnx_local'
-                    logger.debug(f"Local ONNX score: {score:.3f}")
+                    logger.debug("Local ONNX score: %.3f", score)
                 except Exception as e:
-                    logger.warning(f"ONNX scoring failed: {e}")
+                    logger.warning("ONNX scoring failed: %s", _sanitize_log_value(str(e)))
                     score = None
             else:
                 score = None
@@ -168,9 +204,9 @@ class QualityEvaluator:
             try:
                 score = await self._score_with_openai_compatible(query, memory)
                 provider_used = 'openai_compatible'
-                logger.debug(f"OpenAI-compatible score: {score:.3f}")
+                logger.debug("OpenAI-compatible score: %.3f", score)
             except Exception as e:
-                logger.warning(f"OpenAI-compatible scoring failed: {e}")
+                logger.warning("OpenAI-compatible scoring failed: %s", _sanitize_log_value(str(e)))
                 score = None
 
         # Tier 3: Groq API (if available and ONNX failed or in auto mode)
@@ -178,9 +214,9 @@ class QualityEvaluator:
             try:
                 score = await self._score_with_groq(query, memory)
                 provider_used = 'groq'
-                logger.debug(f"Groq score: {score:.3f}")
+                logger.debug("Groq score: %.3f", score)
             except Exception as e:
-                logger.warning(f"Groq scoring failed: {e}")
+                logger.warning("Groq scoring failed: %s", _sanitize_log_value(str(e)))
                 score = None
 
         # Tier 4: Gemini API (if available and previous tiers failed)
@@ -188,16 +224,16 @@ class QualityEvaluator:
             try:
                 score = await self._score_with_gemini(query, memory)
                 provider_used = 'gemini'
-                logger.debug(f"Gemini score: {score:.3f}")
+                logger.debug("Gemini score: %.3f", score)
             except Exception as e:
-                logger.warning(f"Gemini scoring failed: {e}")
+                logger.warning("Gemini scoring failed: %s", _sanitize_log_value(str(e)))
                 score = None
 
         # Tier 5: Implicit signals (always available as fallback)
         if score is None:
             score = self._implicit_evaluator.evaluate_quality(memory, query)
             provider_used = 'implicit_signals'
-            logger.debug(f"Implicit signals score: {score:.3f}")
+            logger.debug("Implicit signals score: %.3f", score)
 
         # Store provider information in memory metadata
         memory.metadata['quality_provider'] = provider_used
@@ -218,13 +254,13 @@ class QualityEvaluator:
         Returns:
             List of quality scores between 0.0 and 1.0
         """
-        self._ensure_initialized()
-
         if not memories:
             return []
 
         if not self.config.enabled:
             return [0.5] * len(memories)
+
+        self._ensure_initialized()
 
         # Tier 1: Local ONNX batched scoring
         if self.config.ai_provider in ['local', 'auto']:
@@ -233,7 +269,7 @@ class QualityEvaluator:
                 try:
                     return self._score_with_fallback_batch(query, memories)
                 except Exception as e:
-                    logger.error(f"Batch fallback scoring failed: {e}")
+                    logger.error("Batch fallback scoring failed: %s", _sanitize_log_value(str(e)))
             # Single model mode
             elif self._onnx_ranker:
                 try:
@@ -243,7 +279,7 @@ class QualityEvaluator:
                         memory.metadata['quality_provider'] = 'onnx_local'
                     return scores
                 except Exception as e:
-                    logger.warning(f"Batch ONNX scoring failed: {e}")
+                    logger.warning("Batch ONNX scoring failed: %s", _sanitize_log_value(str(e)))
 
         # Fall back to sequential for non-ONNX tiers or on error
         logger.debug("Falling back to sequential evaluation for batch")
@@ -429,7 +465,7 @@ class QualityEvaluator:
             if result["status"] != "success":
                 error_msg = result.get("error", "Unknown error")
                 if "429" in str(error_msg):
-                    logger.warning(f"Groq rate limit on {model}, trying next model")
+                    logger.warning("Groq rate limit on %s, trying next model", _sanitize_log_value(str(model)))
                     last_error = error_msg
                     continue
                 raise RuntimeError(f"Groq API error: {error_msg}")
@@ -440,7 +476,7 @@ class QualityEvaluator:
                 score = float(response_text)
                 return max(0.0, min(1.0, score))
             except ValueError:
-                logger.warning(f"Could not parse Groq score from {model}: {response_text}")
+                logger.warning("Could not parse Groq score from %s: %s", _sanitize_log_value(str(model)), _sanitize_log_value(str(response_text)))
                 last_error = f"Invalid score format from {model}: {response_text}"
                 continue
 
@@ -496,9 +532,9 @@ class QualityEvaluator:
         # Step 1: Always score with DeBERTa first
         try:
             deberta_score = deberta.score_quality("", memory_content)
-            logger.debug(f"DeBERTa score: {deberta_score:.3f}")
+            logger.debug("DeBERTa score: %.3f", deberta_score)
         except Exception as e:
-            logger.error(f"DeBERTa scoring failed: {e}")
+            logger.error("DeBERTa scoring failed: %s", _sanitize_log_value(str(e)))
             return 0.5, {'error': str(e)}
 
         # Step 2: If DeBERTa confident (high score), use it
@@ -528,9 +564,9 @@ class QualityEvaluator:
             # Use empty query to force absolute quality evaluation (not query-document relevance)
             # This avoids self-matching bias where content matches itself perfectly
             ms_marco_score = ms_marco.score_quality("", memory_content)
-            logger.debug(f"MS-MARCO score: {ms_marco_score:.3f}")
+            logger.debug("MS-MARCO score: %.3f", ms_marco_score)
         except Exception as e:
-            logger.error(f"MS-MARCO scoring failed: {e}")
+            logger.error("MS-MARCO scoring failed: %s", _sanitize_log_value(str(e)))
             return deberta_score, {
                 'final_score': deberta_score,
                 'deberta_score': deberta_score,
