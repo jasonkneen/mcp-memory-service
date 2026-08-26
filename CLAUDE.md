@@ -345,7 +345,9 @@ the release notes.
   attach manual testing evidence or screenshots to the PR.
 - Removing a feature, port or command: run `grep -r "<term>" docs/ README.md` and clean
   up references in the same PR. `scripts/ci/check_dead_refs.sh` catches new dead refs
-  in CI on docs changes.
+  as check 6.8 of `pre_pr_check.sh` — **not** in CI, and it scans only `docs/` and
+  `README.md`, so `CONTRIBUTING.md` and `SECURITY.md` are outside its reach. Wiring it
+  into CI and widening the scan targets is issue #312.
 
 ### Extension points
 
