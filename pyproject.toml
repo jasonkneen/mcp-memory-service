@@ -116,11 +116,14 @@ milvus = [
     # install has no ONNX runtime to fall back on — same gap the sqlite extra
     # documents above (issue #162, reported for milvus in #213).
     "onnxruntime>=1.14.1",
-    # milvus-lite 2.5.x still imports `pkg_resources` from setuptools; that API
-    # was removed in setuptools 81. Pin setuptools below 81 on newer Pythons
-    # where the default wheels are affected. Safe no-op on Pythons that resolve
-    # older setuptools naturally.
-    "setuptools<83; python_version >= '3.13'",
+    # milvus-lite 2.5.x imports `pkg_resources` unguarded at module top
+    # (milvus_lite/__init__.py) but never declares setuptools itself. That API
+    # was removed in setuptools 82.0.0, so anything from 82 up breaks the import
+    # with ModuleNotFoundError -- and so does having no setuptools at all, which
+    # is the default in a venv since Python 3.12 dropped it from ensurepip.
+    # Declaring the bound unconditionally covers both: it guarantees setuptools
+    # is present and keeps it on a version that still ships pkg_resources.
+    "setuptools<82",
     "mcp-memory-service[ml]",
 ]
 # Full installation including all optional dependencies
