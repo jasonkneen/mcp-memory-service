@@ -3,6 +3,9 @@ Comprehensive unit tests for the quality scoring system.
 Tests ONNX ranker, implicit signals, AI evaluator, and composite scorer.
 """
 
+import tempfile
+import os
+import httpx
 import pytest
 import time
 import asyncio
@@ -339,7 +342,27 @@ class TestQualityEvaluator:
             }
         )
 
-        with patch('src.mcp_memory_service.quality.onnx_ranker.get_onnx_ranker_model', return_value=None):
+        # Two things were wrong with the previous target,
+        # 'src.mcp_memory_service.quality.onnx_ranker.get_onnx_ranker_model'.
+        #
+        # It patched the defining module rather than the using one. ai_evaluator
+        # does `from .onnx_ranker import get_onnx_ranker_model`, so rebinding the
+        # name in onnx_ranker never reaches the evaluator's own reference.
+        #
+        # And it patched a different module object than the one under test. This
+        # file imports through the `src.` prefix, and since src/ has no
+        # __init__.py that resolves as a namespace package -- so
+        # src.mcp_memory_service.* and mcp_memory_service.* are two distinct
+        # copies of the package. The patch applied cleanly to a copy nothing was
+        # using.
+        #
+        # The target below matches this file's own imports. That the tests reach
+        # the package through a shadow copy at all is a separate problem, filed
+        # on its own.
+        with patch(
+            'src.mcp_memory_service.quality.ai_evaluator.get_onnx_ranker_model',
+            return_value=None,
+        ):
             score = await evaluator.evaluate_quality("test query", memory)
 
             # Should fall back to implicit signals
@@ -551,8 +574,6 @@ class TestQualityAPILayer:
         from src.mcp_memory_service.server import MemoryServer
         from src.mcp_memory_service.models.memory import Memory
         from src.mcp_memory_service.storage.sqlite_vec import SqliteVecMemoryStorage
-        import tempfile
-        import os
 
         # Create temporary database
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -596,8 +617,6 @@ class TestQualityAPILayer:
         from src.mcp_memory_service.server import MemoryServer
         from src.mcp_memory_service.models.memory import Memory
         from src.mcp_memory_service.storage.sqlite_vec import SqliteVecMemoryStorage
-        import tempfile
-        import os
 
         # Create temporary database
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -640,8 +659,6 @@ class TestQualityAPILayer:
         from src.mcp_memory_service.server import MemoryServer
         from src.mcp_memory_service.models.memory import Memory
         from src.mcp_memory_service.storage.sqlite_vec import SqliteVecMemoryStorage
-        import tempfile
-        import os
 
         # Create temporary database
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -683,7 +700,6 @@ class TestQualityAPILayer:
     @pytest.mark.asyncio
     async def test_rate_memory_http_endpoint(self):
         """Test POST /api/quality/memories/{hash}/rate HTTP endpoint."""
-        import httpx
         from src.mcp_memory_service.web.app import app
         from src.mcp_memory_service.web.dependencies import get_storage
         from src.mcp_memory_service.web.oauth.middleware import (
@@ -691,8 +707,6 @@ class TestQualityAPILayer:
         )
         from src.mcp_memory_service.storage.sqlite_vec import SqliteVecMemoryStorage
         from src.mcp_memory_service.models.memory import Memory
-        import tempfile
-        import os
 
         # Create temporary database
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -741,7 +755,6 @@ class TestQualityAPILayer:
     @pytest.mark.asyncio
     async def test_get_quality_http_endpoint(self):
         """Test GET /api/quality/memories/{hash} HTTP endpoint."""
-        import httpx
         from src.mcp_memory_service.web.app import app
         from src.mcp_memory_service.web.dependencies import get_storage
         from src.mcp_memory_service.web.oauth.middleware import (
@@ -749,8 +762,6 @@ class TestQualityAPILayer:
         )
         from src.mcp_memory_service.storage.sqlite_vec import SqliteVecMemoryStorage
         from src.mcp_memory_service.models.memory import Memory
-        import tempfile
-        import os
 
         # Create temporary database
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -801,7 +812,6 @@ class TestQualityAPILayer:
     @pytest.mark.asyncio
     async def test_distribution_http_endpoint(self):
         """Test GET /api/quality/distribution HTTP endpoint."""
-        import httpx
         from src.mcp_memory_service.web.app import app
         from src.mcp_memory_service.web.dependencies import get_storage
         from src.mcp_memory_service.web.oauth.middleware import (
@@ -809,8 +819,6 @@ class TestQualityAPILayer:
         )
         from src.mcp_memory_service.storage.sqlite_vec import SqliteVecMemoryStorage
         from src.mcp_memory_service.models.memory import Memory
-        import tempfile
-        import os
 
         # Create temporary database
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -872,7 +880,6 @@ class TestQualityAPILayer:
         """Test async quality scoring doesn't block."""
         from src.mcp_memory_service.quality.async_scorer import AsyncQualityScorer
         from src.mcp_memory_service.models.memory import Memory
-        import time
 
         scorer = AsyncQualityScorer()
         await scorer.start()

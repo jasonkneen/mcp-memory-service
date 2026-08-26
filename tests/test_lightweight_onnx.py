@@ -10,6 +10,7 @@ Tests the complete workflow of:
 Author: Generated for PR #337
 """
 
+import sys
 import pytest
 import asyncio
 import numpy as np
@@ -18,7 +19,7 @@ from unittest.mock import Mock, AsyncMock, patch
 
 # Skip all tests if ONNX Runtime not available
 try:
-    import onnxruntime as ort
+    import onnxruntime as ort  # inline import: optional dependency probe
     ONNX_AVAILABLE = True
 except ImportError:
     ONNX_AVAILABLE = False
@@ -110,10 +111,13 @@ class TestLightweightONNXSetup:
         tokenizer.enable_truncation(max_length=512)
         tokenizer.enable_padding(length=512)
 
-        # Encode query-document pair
+        # Encode query-document pair. Tokenizer.encode takes the pair as two
+        # arguments -- passing a tuple as the first one makes it read the tuple
+        # as a pre-tokenized sequence and raise
+        # `TypeError: TextInputSequence must be str`.
         query = "python async patterns"
         document = "Async/await enables concurrent I/O operations."
-        encoded = tokenizer.encode((query, document))
+        encoded = tokenizer.encode(query, document)
 
         assert hasattr(encoded, 'type_ids'), "Should have type_ids for pairs"
         assert len(encoded.ids) == 512, "Should pad/truncate to 512 tokens"
@@ -520,7 +524,6 @@ class TestLightweightONNXEndToEnd:
     )
     def test_disk_usage_reduction(self):
         """Verify lightweight setup doesn't require transformers installation."""
-        import sys
 
         # Check if transformers is installed
         transformers_installed = 'transformers' in sys.modules or \
