@@ -3,6 +3,7 @@ embeddings on databases whose vec0 dimension differs from the 384 default, and
 must recover from a migration interrupted after the destructive DROP.
 """
 import os
+import sqlite3
 import struct
 
 import pytest
@@ -24,7 +25,6 @@ def _make_embedding(seed: int) -> bytes:
 
 
 def _raw_vec_connection(db_path: str):
-    import sqlite3
     conn = sqlite3.connect(db_path)
     conn.enable_load_extension(True)
     sqlite_vec.load(conn)
@@ -91,7 +91,13 @@ async def test_migration_preserves_1024_dim_embeddings(tmp_path, monkeypatch):
     _build_legacy_1024_db(db_path)
 
     storage = SqliteVecMemoryStorage(db_path)
-    await storage.initialize()
+    # strict_dimension_check=False on purpose: these fixtures build a 1024-dim
+    # database while the configured model produces 384, so the #143 guard would
+    # fire before the migration under test is ever reached. Setting
+    # MCP_MEMORY_USE_ONNX=false is not enough -- it only keeps a model out of
+    # the way when none of the ml extras are installed, and falls through to
+    # SentenceTransformer when they are. The guard has its own tests.
+    await storage.initialize(strict_dimension_check=False)
     try:
         sql = storage.conn.execute(
             "SELECT sql FROM sqlite_master WHERE name='memory_embeddings'"
@@ -150,7 +156,8 @@ async def test_recovery_restores_from_backup_after_interrupted_migration(tmp_pat
         conn.close()
 
     storage = SqliteVecMemoryStorage(db_path)
-    await storage.initialize()
+    # See the note in test_migration_preserves_1024_dim_embeddings.
+    await storage.initialize(strict_dimension_check=False)
     try:
         count = storage.conn.execute(
             "SELECT COUNT(*) FROM memory_embeddings"
@@ -206,7 +213,8 @@ async def test_recovery_partial_restore_does_not_crash(tmp_path, monkeypatch):
         conn.close()
 
     storage = SqliteVecMemoryStorage(db_path)
-    await storage.initialize()  # must not raise on the rowid=1 conflict
+    # See the note in test_migration_preserves_1024_dim_embeddings.
+    await storage.initialize(strict_dimension_check=False)  # must not raise on the rowid=1 conflict
     try:
         count = storage.conn.execute(
             "SELECT COUNT(*) FROM memory_embeddings"
