@@ -111,34 +111,21 @@ def check_horizon_requirements(
     return time_horizon in applicable_horizons
 
 
-# Horizon configuration
+# Horizon configuration.
+#
+# `window` is how far back a horizon reaches: a run considers memories created
+# within the last `window`, which is what the `memory_consolidate` tool
+# description promises for every horizon. `incremental` carries a window too,
+# but only as the bootstrap span for its first run -- afterwards it advances a
+# cursor from the last recorded run.
 HORIZON_CONFIGS = {
-    "daily": {"delta": timedelta(days=1), "cutoff_days": 2},
-    "weekly": {"delta": timedelta(days=7), "cutoff_days": None},
-    "monthly": {"delta": timedelta(days=30), "cutoff_days": None},
-    "quarterly": {"delta": timedelta(days=90), "cutoff_days": 90},
-    "yearly": {"delta": timedelta(days=365), "cutoff_days": 365},
-    "incremental": {"delta": timedelta(days=1), "cutoff_days": 1},
+    "daily": {"window": timedelta(days=1)},
+    "weekly": {"window": timedelta(days=7)},
+    "monthly": {"window": timedelta(days=30)},
+    "quarterly": {"window": timedelta(days=90)},
+    "yearly": {"window": timedelta(days=365)},
+    "incremental": {"window": timedelta(days=1)},
 }
-
-
-def filter_memories_by_age(
-    memories: List[Memory], cutoff_date: datetime
-) -> List[Memory]:
-    """Filter memories created before the cutoff date.
-
-    Args:
-        memories: List of Memory objects
-        cutoff_date: Only keep memories older than this
-
-    Returns:
-        Filtered list of memories
-    """
-    return [
-        m
-        for m in memories
-        if m.created_at and datetime.fromtimestamp(m.created_at, tz=timezone.utc) < cutoff_date
-    ]
 
 
 class DreamInspiredConsolidator:
@@ -488,10 +475,12 @@ class DreamInspiredConsolidator:
     async def _get_memories_for_horizon(
         self, time_horizon: str, **kwargs
     ) -> List[Memory]:
-        """Get memories appropriate for the given time horizon.
+        """Get the memories a horizon may touch: those created inside its window.
 
-        With incremental mode enabled, returns oldest-first batch of memories
-        that haven't been recently consolidated.
+        Every horizon reaches back exactly as far as its documented window
+        (`daily` one day, `weekly` seven, and so on). With incremental mode
+        enabled the window is then narrowed to the oldest `batch_size` memories
+        inside it, so a run stays bounded on a large store.
         """
         now = datetime.now(timezone.utc)
 
@@ -499,60 +488,53 @@ class DreamInspiredConsolidator:
         if time_horizon not in HORIZON_CONFIGS:
             raise ConsolidationError(f"Unknown time horizon: {time_horizon}")
 
-        config = HORIZON_CONFIGS[time_horizon]
+        window = HORIZON_CONFIGS[time_horizon]["window"]
 
         # Incremental: only memories created since last run
         if time_horizon == "incremental":
             last_run = None
             if self.run_tracker:
                 last_run = await self.run_tracker.get_last_run_at("incremental")
-            # Bootstrap: 24h window on first run
+            # Bootstrap: use the configured window on first run
             if last_run is None:
-                last_run = (now - timedelta(days=1)).timestamp()
+                last_run = (now - window).timestamp()
             end_time = now.timestamp()
             memories = await self.storage.get_memories_by_time_range(
                 last_run, end_time, include_embeddings=True,
             )
             return memories
 
-        # For daily processing, get recent memories (no change - already efficient)
-        if time_horizon == "daily":
-            cutoff_days = config.get("cutoff_days", 2)
-            start_time = (now - timedelta(days=cutoff_days)).timestamp()
-            end_time = now.timestamp()
-            memories = await self.storage.get_memories_by_time_range(
-                start_time, end_time, include_embeddings=True,
+        memories = await self.storage.get_memories_by_time_range(
+            (now - window).timestamp(), now.timestamp(), include_embeddings=True,
+        )
+
+        if self.config.incremental_mode:
+            memories = self._take_oldest_batch(memories)
+
+        return memories
+
+    def _take_oldest_batch(self, memories: List[Memory]) -> List[Memory]:
+        """Narrow a window to the oldest `batch_size` memories in it.
+
+        Least-recently-consolidated first, so repeated runs work through the
+        window instead of re-processing the same head every time.
+        """
+        def sort_key(memory: Memory) -> float:
+            # Check metadata for last consolidation timestamp
+            if memory.metadata and "last_consolidated_at" in memory.metadata:
+                return float(memory.metadata["last_consolidated_at"])
+            # Fall back to created_at (treat never-consolidated as oldest)
+            return memory.created_at if memory.created_at else 0.0
+
+        memories = sorted(memories, key=sort_key)
+
+        batch_size = self.config.batch_size
+        if len(memories) > batch_size:
+            self.logger.info(
+                f"Incremental mode: Processing {batch_size} oldest memories "
+                f"(out of {len(memories)} in the window)"
             )
-        else:
-            # For longer horizons: incremental oldest-first processing
-            memories = await self.storage.get_all_memories(include_embeddings=True)
-
-            # Filter by relevance to time horizon (quarterly/yearly still focus on old memories)
-            cutoff_days = config.get("cutoff_days")
-            if cutoff_days is not None:
-                cutoff_date = now - timedelta(days=cutoff_days)
-                memories = filter_memories_by_age(memories, cutoff_date)
-
-            # Incremental mode: Sort oldest-first and batch
-            if self.config.incremental_mode:
-                # Sort by last_consolidated_at (oldest first), fallback to created_at
-                def get_consolidation_sort_key(memory: Memory) -> float:
-                    # Check metadata for last consolidation timestamp
-                    if memory.metadata and "last_consolidated_at" in memory.metadata:
-                        return float(memory.metadata["last_consolidated_at"])
-                    # Fall back to created_at (treat never-consolidated as oldest)
-                    return memory.created_at if memory.created_at else 0.0
-
-                memories.sort(key=get_consolidation_sort_key)
-
-                # Limit to batch size
-                batch_size = self.config.batch_size
-                if len(memories) > batch_size:
-                    self.logger.info(
-                        f"Incremental mode: Processing {batch_size} oldest memories (out of {len(memories)} total)"
-                    )
-                    memories = memories[:batch_size]
-
+            memories = memories[:batch_size]
         return memories
 
     async def _update_relevance_scores(
