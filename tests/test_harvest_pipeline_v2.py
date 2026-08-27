@@ -1,5 +1,7 @@
 """Tests for harvest pipeline v2 improvements (TDD — written before implementation)."""
 
+import inspect
+import os
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from pathlib import Path
@@ -70,7 +72,6 @@ class TestContextAccumulated:
         from mcp_memory_service.harvest.rewriter import HarvestRewriter
         rewriter = HarvestRewriter()
         # Verificar que o método aceita o parâmetro
-        import inspect
         sig = inspect.signature(rewriter.rewrite)
         assert "already_extracted" in sig.parameters, \
             "rewrite() deve aceitar parâmetro 'already_extracted'"
@@ -79,7 +80,6 @@ class TestContextAccumulated:
         """rewrite_sync também deve aceitar already_extracted."""
         from mcp_memory_service.harvest.rewriter import HarvestRewriter
         rewriter = HarvestRewriter()
-        import inspect
         sig = inspect.signature(rewriter.rewrite_sync)
         assert "already_extracted" in sig.parameters, \
             "rewrite_sync() deve aceitar parâmetro 'already_extracted'"
@@ -174,7 +174,6 @@ class TestMultiProvider:
 
     def test_rewriter_has_providers_list(self):
         """Rewriter deve ter lista de providers configurável."""
-        import os
         os.environ["HARVEST_LLM_PROVIDERS"] = "groq,ollama"
         os.environ["HARVEST_LLM_OLLAMA_BASE_URL"] = "http://localhost:11434/v1"
         os.environ["HARVEST_LLM_OLLAMA_MODEL"] = "qwen2.5:14b"
@@ -194,7 +193,6 @@ class TestMultiProvider:
     async def test_fallback_on_rate_limit(self):
         """Se provider 1 retorna 429, tenta provider 2."""
         from mcp_memory_service.harvest.rewriter import HarvestRewriter, LLMProvider
-        import os
         os.environ["HARVEST_LLM_PROVIDERS"] = "groq,ollama"
         os.environ["HARVEST_LLM_GROQ_BASE_URL"] = "https://api.groq.com/openai/v1"
         os.environ["HARVEST_LLM_GROQ_MODEL"] = "llama-3.3-70b-versatile"
@@ -205,13 +203,13 @@ class TestMultiProvider:
         # Mock: first provider raises rate limit, second succeeds
         call_log = []
 
-        async def mock_call(base_url, model, api_key, prompt):
+        async def mock_call(base_url, model, api_key, prompt, timeout):
             call_log.append(base_url)
             if "groq" in base_url:
                 raise Exception("Rate limit exceeded 429")
             return "convention: Test insight"
 
         rewriter._call_openai_compatible = mock_call
-        result = await rewriter._call_llm("test prompt")
+        result = await rewriter._call_llm("test prompt", timeout=HarvestRewriter._CALL_TIMEOUT_SINGLE)
         assert len(call_log) == 2, f"Should try 2 providers, tried {len(call_log)}"
         assert "11434" in call_log[1]

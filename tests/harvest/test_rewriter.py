@@ -1,5 +1,6 @@
 """Tests for harvest LLM rewriter — converts conversational text to standalone insights."""
 
+import httpx
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 
@@ -241,3 +242,88 @@ class TestRewriterProviderChainDeepDive:
 
         assert result is not None
         assert mock_call.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_call_timeout_reaches_the_http_client(self, monkeypatch):
+        """_call_llm's timeout argument must reach _call_openai_compatible's
+        actual httpx client, not stop at a hardcoded value (#321)."""
+        monkeypatch.delenv('GROQ_API_KEY', raising=False)
+        monkeypatch.setenv('HARVEST_LLM_PROVIDERS', 'local')
+        monkeypatch.setenv('HARVEST_LLM_LOCAL_BASE_URL', 'http://localhost:11434/v1')
+        monkeypatch.setenv('HARVEST_LLM_LOCAL_MODEL', 'qwen2.5-coder')
+
+        rewriter = HarvestRewriter()
+
+        captured = {}
+
+        class _FakeAsyncClient:
+            def __init__(self, timeout):
+                captured['timeout'] = timeout
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *exc):
+                return False
+
+            async def post(self, *args, **kwargs):
+                class _Resp:
+                    status_code = 200
+
+                    def raise_for_status(self):
+                        pass
+
+                    def json(self):
+                        return {"choices": [{"message": {"content": "decision: ok"}}]}
+
+                return _Resp()
+
+        monkeypatch.setattr(httpx, "AsyncClient", _FakeAsyncClient)
+
+        await rewriter.rewrite("some text", suggested_type="decision")
+        assert captured['timeout'] == HarvestRewriter._CALL_TIMEOUT_SINGLE
+
+        captured.clear()
+        await rewriter.rewrite_batch([{"content": "some text", "memory_type": "decision"}])
+        assert captured['timeout'] == HarvestRewriter._CALL_TIMEOUT_BATCH
+
+    @pytest.mark.asyncio
+    async def test_wrapper_timeout_scales_with_provider_fallback_chain(self, monkeypatch):
+        """rewrite_sync/rewrite_batch_sync's ThreadPoolExecutor timeout must
+        grow with the number of fallback providers _call_llm may try in
+        sequence, or a working provider later in the chain never gets a
+        turn before the wrapper kills the call (#321).
+
+        Must run inside a running loop (hence @pytest.mark.asyncio) so
+        rewrite_sync/rewrite_batch_sync take the ThreadPoolExecutor branch
+        (asyncio.get_running_loop() succeeds) instead of falling through to
+        the direct asyncio.run() branch used when there's no loop at all.
+        """
+        monkeypatch.delenv('GROQ_API_KEY', raising=False)
+        monkeypatch.setenv('HARVEST_LLM_PROVIDERS', 'a,b,c')
+        for name in ('A', 'B', 'C'):
+            monkeypatch.setenv(f'HARVEST_LLM_{name}_BASE_URL', f'http://{name.lower()}/v1')
+            monkeypatch.setenv(f'HARVEST_LLM_{name}_MODEL', 'm')
+
+        rewriter = HarvestRewriter()
+        assert len(rewriter._providers) == 3
+
+        with patch('concurrent.futures.ThreadPoolExecutor') as mock_pool_cls:
+            mock_pool = MagicMock()
+            mock_pool_cls.return_value.__enter__.return_value = mock_pool
+            mock_future = MagicMock()
+
+            def _submit(fn, coro):
+                coro.close()  # never actually run; avoid an unawaited-coroutine warning
+                return mock_future
+
+            mock_pool.submit.side_effect = _submit
+            mock_future.result.return_value = None
+
+            rewriter.rewrite_sync("text")
+            single_timeout = mock_future.result.call_args.kwargs['timeout']
+            assert single_timeout == 3 * HarvestRewriter._CALL_TIMEOUT_SINGLE + HarvestRewriter._WRAPPER_MARGIN
+
+            rewriter.rewrite_batch_sync([{"content": "text", "memory_type": "decision"}])
+            batch_timeout = mock_future.result.call_args.kwargs['timeout']
+            assert batch_timeout == 3 * HarvestRewriter._CALL_TIMEOUT_BATCH + HarvestRewriter._WRAPPER_MARGIN
