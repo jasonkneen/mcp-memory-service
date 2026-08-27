@@ -245,10 +245,25 @@ class ConsolidationHealthMonitor:
         }
     
     async def _check_clustering_engine_health(self) -> Dict[str, Any]:
-        """Check clustering engine health."""
+        """Check clustering engine health.
+
+        Reports the algorithm that would actually run, not the one that was
+        configured -- those differ whenever scikit-learn is missing, and a health
+        check that hides the difference is how an unsatisfiable configuration
+        reads as healthy.
+        """
+        from .clustering import SKLEARN_AVAILABLE, resolve_clustering_algorithm
+
+        configured = self.config.clustering_algorithm
+        try:
+            algorithm = resolve_clustering_algorithm(configured)
+        except ConsolidationError:
+            algorithm = f"unsatisfiable: '{configured}' needs scikit-learn"
+
         return {
             'checks': {
-                'clustering_algorithm': 'available',
+                'clustering_algorithm': algorithm,
+                'sklearn': 'available' if SKLEARN_AVAILABLE else 'unavailable',
                 'minimum_cluster_size': 'configured',
                 'embedding_processing': 'functional'
             },

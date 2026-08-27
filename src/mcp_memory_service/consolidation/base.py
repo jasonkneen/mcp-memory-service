@@ -54,7 +54,7 @@ class ConsolidationConfig:
     # Clustering settings
     clustering_enabled: bool = True
     min_cluster_size: int = 5
-    clustering_algorithm: str = 'dbscan'  # 'dbscan', 'hierarchical'
+    clustering_algorithm: str = 'auto'  # 'auto', 'dbscan', 'hierarchical', 'simple'
     
     # Compression settings
     compression_enabled: bool = True
