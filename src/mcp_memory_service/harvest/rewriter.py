@@ -170,6 +170,10 @@ class HarvestRewriter:
         self._api_key = os.environ.get("GROQ_API_KEY", "")
         self._locale = os.environ.get("HARVEST_LOCALE", "en")
         self._locale_instruction = self._build_locale_instruction()
+        try:
+            self._llm_timeout = float(os.environ.get("HARVEST_LLM_TIMEOUT", "10"))
+        except ValueError:
+            self._llm_timeout = 10.0
 
     @property
     def is_configured(self) -> bool:
@@ -221,7 +225,10 @@ class HarvestRewriter:
             loop = asyncio.get_running_loop()
             with concurrent.futures.ThreadPoolExecutor() as pool:
                 future = pool.submit(asyncio.run, self.rewrite(text, suggested_type, already_extracted))
-                return future.result(timeout=30)
+                # Must exceed self._llm_timeout (the actual per-request HTTP
+                # timeout, provider-chain length included) or this wrapper
+                # kills the call before the inner client's own timeout would.
+                return future.result(timeout=self._llm_timeout + 10)
         except RuntimeError:
             # No running loop — safe to use asyncio.run directly
             return asyncio.run(self.rewrite(text, suggested_type, already_extracted))
@@ -258,7 +265,8 @@ class HarvestRewriter:
             loop = asyncio.get_running_loop()
             with concurrent.futures.ThreadPoolExecutor() as pool:
                 future = pool.submit(asyncio.run, self.rewrite_batch(items))
-                return future.result(timeout=60)
+                # See rewrite_sync: must exceed self._llm_timeout, not a magic number.
+                return future.result(timeout=self._llm_timeout + 10)
         except RuntimeError:
             return asyncio.run(self.rewrite_batch(items))
         except Exception as e:
