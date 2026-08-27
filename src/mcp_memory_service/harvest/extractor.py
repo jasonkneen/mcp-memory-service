@@ -137,15 +137,8 @@ class PatternExtractor:
 
         # Meta filter: skip messages about the harvest system itself
         if meta_filter and self._is_meta_discussion(clean_text):
-            # Exception: real decision/bug/convention/learning content is allowed
-            # through even if it mentions harvest internals — projects that use
-            # this feature on their own harvest code (or on any codebase whose
-            # domain vocabulary happens to overlap with harvest/rewriter/pipeline/
-            # extractor) have that vocabulary trip the meta-discussion check on
-            # every message, and a convention-only escape hatch silently discarded
-            # genuine decisions/bugs/learnings that never once involved a
-            # convention pattern.
-            if not self._has_any_pattern_match(clean_text):
+            # Exception: explicit conventions about the system are allowed
+            if not self._has_convention_match(clean_text):
                 return []
 
         # OpenClaw noise filter: reject prompt preamble injected by gateway
@@ -200,18 +193,6 @@ class PatternExtractor:
         for pattern, _ in convention_patterns:
             if pattern.search(text):
                 return True
-        return False
-
-    def _has_any_pattern_match(self, text: str) -> bool:
-        """Check if text matches any extraction pattern, of any memory type.
-
-        Used as the meta-filter escape hatch: real decision/bug/learning
-        content should survive even if it also mentions harvest internals.
-        """
-        for patterns in self._patterns.values():
-            for pattern, _ in patterns:
-                if pattern.search(text):
-                    return True
         return False
 
     def _is_meta_discussion(self, text: str) -> bool:
