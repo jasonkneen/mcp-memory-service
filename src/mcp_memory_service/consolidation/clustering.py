@@ -28,8 +28,59 @@ try:
 except ImportError:
     SKLEARN_AVAILABLE = False
 
-from .base import ConsolidationBase, ConsolidationConfig, MemoryCluster
+from .base import (
+    ConsolidationBase,
+    ConsolidationConfig,
+    ConsolidationError,
+    MemoryCluster,
+)
 from ..models.memory import Memory
+
+
+# Algorithms that cannot run without scikit-learn.
+SKLEARN_ALGORITHMS = ('dbscan', 'hierarchical')
+
+_INSTALL_HINT = (
+    "install the optional dependency, e.g. "
+    "pip install 'mcp-memory-service[clustering]'"
+)
+
+
+def _require_sklearn(algorithm: str) -> None:
+    """Fail with an actionable message rather than a NameError deeper in.
+
+    `resolve_clustering_algorithm` already rejects an unsatisfiable
+    configuration, but the algorithm can also be set on an engine directly, and
+    a missing import should still say what is missing and how to get it.
+    """
+    if not SKLEARN_AVAILABLE:
+        raise ConsolidationError(
+            f"Clustering algorithm '{algorithm}' requires scikit-learn, which is "
+            f"not installed. Either {_INSTALL_HINT}, or set "
+            f"MCP_CLUSTERING_ALGORITHM to 'auto' (best available) or 'simple'."
+        )
+
+
+def resolve_clustering_algorithm(configured: str) -> str:
+    """Turn a configured algorithm name into the one that will actually run.
+
+    `auto` means "the best algorithm this installation can support" and resolves
+    to `dbscan` when scikit-learn is importable and `simple` otherwise. Any other
+    value is taken literally: naming `dbscan` or `hierarchical` without
+    scikit-learn is a configuration error, not an invitation to quietly run a
+    different algorithm.
+
+    Raises:
+        ConsolidationError: the configured algorithm needs scikit-learn and it is
+            not installed.
+    """
+    if configured == 'auto':
+        return 'dbscan' if SKLEARN_AVAILABLE else 'simple'
+
+    if configured in SKLEARN_ALGORITHMS:
+        _require_sklearn(configured)
+
+    return configured
 
 class SemanticClusteringEngine(ConsolidationBase):
     """
@@ -42,11 +93,15 @@ class SemanticClusteringEngine(ConsolidationBase):
     def __init__(self, config: ConsolidationConfig):
         super().__init__(config)
         self.min_cluster_size = config.min_cluster_size
-        self.algorithm = config.clustering_algorithm
-        
-        if not SKLEARN_AVAILABLE:
-            self.logger.warning("sklearn not available, using simple clustering fallback")
-            self.algorithm = 'simple'
+        self.algorithm = resolve_clustering_algorithm(config.clustering_algorithm)
+
+        if self.algorithm != config.clustering_algorithm:
+            self.logger.info(
+                "Clustering algorithm '%s' resolved to '%s' (scikit-learn %s)",
+                config.clustering_algorithm,
+                self.algorithm,
+                "available" if SKLEARN_AVAILABLE else "not installed",
+            )
     
     async def process(self, memories: List[Memory], **kwargs) -> List[MemoryCluster]:
         """Create semantic clusters from memories."""
@@ -82,9 +137,8 @@ class SemanticClusteringEngine(ConsolidationBase):
     
     async def _dbscan_clustering(self, embeddings: np.ndarray) -> np.ndarray:
         """Perform DBSCAN clustering on embeddings."""
-        if not SKLEARN_AVAILABLE:
-            return await self._simple_clustering(embeddings)
-        
+        _require_sklearn('dbscan')
+
         # Adaptive epsilon based on data size and dimensionality
         n_samples, n_features = embeddings.shape
         eps = 0.5 - (n_samples / 10000) * 0.1  # Decrease eps for larger datasets
@@ -100,9 +154,8 @@ class SemanticClusteringEngine(ConsolidationBase):
     
     async def _hierarchical_clustering(self, embeddings: np.ndarray) -> np.ndarray:
         """Perform hierarchical clustering on embeddings."""
-        if not SKLEARN_AVAILABLE:
-            return await self._simple_clustering(embeddings)
-        
+        _require_sklearn('hierarchical')
+
         # Estimate number of clusters (heuristic: sqrt of samples / 2)
         n_samples = embeddings.shape[0]
         n_clusters = max(2, min(n_samples // self.min_cluster_size, int(np.sqrt(n_samples) / 2)))
