@@ -112,3 +112,34 @@ def test_reinstall_does_not_duplicate_existing_groups(installer):
     assert commands.count("some-users-own-hook") == 1
     assert sum("permission-request.js" in c for c in commands) == 1
     assert len(groups) == 2
+
+
+def test_opt_out_preserves_own_hook_sharing_a_group(installer):
+    """A user's own hook sharing permission-request.js's matcher group must
+    survive opting out -- group-level filtering used to drop it too, and
+    the "other PreToolUse hooks preserved" message falsely claimed it
+    hadn't."""
+    settings_path = installer.claude_hooks_dir.parent / "settings.json"
+    settings_path.write_text(json.dumps({
+        "hooks": {
+            "PreToolUse": [
+                {
+                    "matcher": "mcp__",
+                    "hooks": [
+                        {"type": "command", "command": str(
+                            installer.claude_hooks_dir / "core" / "permission-request.js"
+                        )},
+                        {"type": "command", "command": "some-users-own-hook"},
+                    ],
+                },
+            ]
+        }
+    }))
+
+    ok = installer.configure_claude_settings(install_permission_hook=False)
+    assert ok
+
+    groups = _pretooluse_groups(settings_path)
+    commands = [h["command"] for g in groups for h in g["hooks"]]
+    assert "some-users-own-hook" in commands
+    assert not any("permission-request.js" in c for c in commands)

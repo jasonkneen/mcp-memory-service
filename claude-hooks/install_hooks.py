@@ -1301,25 +1301,29 @@ class HookInstaller:
                         if key != 'hooks':
                             existing_settings[key] = value
 
-                    # Upgrade path: remove only the permission-request.js group when the
+                    # Upgrade path: remove only the permission-request.js hook when the
                     # user opted out (handles upgrades from v10.17.14 where the hook was
-                    # auto-installed). Must not delete the whole PreToolUse key — a user
-                    # can have other PreToolUse hooks of their own registered there, and
-                    # the previous version wiped all of them out on every reinstall where
-                    # the permission hook wasn't opted in (the default, since the prompt
-                    # is skipped non-interactively).
+                    # auto-installed). Filter at the individual hook level, not the group
+                    # level — a user's own hook can share a matcher group with
+                    # permission-request.js, and group-level filtering would silently
+                    # drop that hook too while claiming "other PreToolUse hooks
+                    # preserved". A group left empty after filtering is removed entirely.
                     if not install_permission_hook and "PreToolUse" in existing_settings.get("hooks", {}):
-                        remaining = [
-                            group for group in existing_settings["hooks"]["PreToolUse"]
-                            if not any('permission-request.js' in hook.get('command', '')
-                                       for hook in group.get('hooks', []))
-                        ]
-                        if len(remaining) != len(existing_settings["hooks"]["PreToolUse"]):
+                        original = existing_settings["hooks"]["PreToolUse"]
+                        remaining = []
+                        for group in original:
+                            kept = [h for h in group.get('hooks', [])
+                                    if 'permission-request.js' not in h.get('command', '')]
+                            if kept:
+                                remaining.append(group if len(kept) == len(group.get('hooks', []))
+                                                  else {**group, 'hooks': kept})
+                        if remaining != original:
                             if remaining:
                                 existing_settings["hooks"]["PreToolUse"] = remaining
                             else:
                                 del existing_settings["hooks"]["PreToolUse"]
-                            self.info("Removed permission-request PreToolUse group (opted out); other PreToolUse hooks preserved")
+                            self.info("Removed permission-request PreToolUse group (opted out); "
+                                      "other PreToolUse hooks preserved")
 
                     # Upgrade path: auto-capture moved from PostToolUse (fired per tool
                     # call -> duplicate captures per turn) to Stop (fires once per turn).
