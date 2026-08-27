@@ -158,6 +158,17 @@ class HarvestRewriter:
     language as the input text.
     """
 
+    # Per-call HTTP timeout budgets. Batch gets more headroom because one
+    # call generates output for every item in the batch, not just one.
+    # The ThreadPoolExecutor wrapper timeouts below must exceed these
+    # (times the number of fallback providers, since _call_llm tries each
+    # one in sequence) or the wrapper kills the call before the client's
+    # own timeout — and therefore before a working fallback provider ever
+    # gets a turn.
+    _CALL_TIMEOUT_SINGLE = 30.0
+    _CALL_TIMEOUT_BATCH = 60.0
+    _WRAPPER_MARGIN = 10.0
+
     def __init__(self):
         # Filtered through is_usable_provider so a credential-less legacy Groq
         # entry (synthesized by load_llm_providers when HARVEST_LLM_PROVIDERS
@@ -170,10 +181,6 @@ class HarvestRewriter:
         self._api_key = os.environ.get("GROQ_API_KEY", "")
         self._locale = os.environ.get("HARVEST_LOCALE", "en")
         self._locale_instruction = self._build_locale_instruction()
-        try:
-            self._llm_timeout = float(os.environ.get("HARVEST_LLM_TIMEOUT", "10"))
-        except ValueError:
-            self._llm_timeout = 10.0
 
     @property
     def is_configured(self) -> bool:
@@ -212,7 +219,7 @@ class HarvestRewriter:
         ) + context_block
 
         try:
-            response = await self._call_llm(prompt)
+            response = await self._call_llm(prompt, timeout=self._CALL_TIMEOUT_SINGLE)
         except Exception as e:
             logger.warning("LLM rewrite failed: %s", _sanitize_log_value(str(e)))
             return None
@@ -225,10 +232,12 @@ class HarvestRewriter:
             loop = asyncio.get_running_loop()
             with concurrent.futures.ThreadPoolExecutor() as pool:
                 future = pool.submit(asyncio.run, self.rewrite(text, suggested_type, already_extracted))
-                # Must exceed self._llm_timeout (the actual per-request HTTP
-                # timeout, provider-chain length included) or this wrapper
-                # kills the call before the inner client's own timeout would.
-                return future.result(timeout=self._llm_timeout + 10)
+                # Must exceed the actual per-request HTTP timeout times the
+                # number of fallback providers _call_llm may try in
+                # sequence, or this wrapper kills the call before a working
+                # provider further down the chain ever gets a turn.
+                wrapper_timeout = self._CALL_TIMEOUT_SINGLE * max(1, len(self._providers)) + self._WRAPPER_MARGIN
+                return future.result(timeout=wrapper_timeout)
         except RuntimeError:
             # No running loop — safe to use asyncio.run directly
             return asyncio.run(self.rewrite(text, suggested_type, already_extracted))
@@ -252,7 +261,7 @@ class HarvestRewriter:
         prompt = BATCH_PROMPT.format(n=len(items), memories=mem_block)
 
         try:
-            response = await self._call_llm(prompt)
+            response = await self._call_llm(prompt, timeout=self._CALL_TIMEOUT_BATCH)
         except Exception as e:
             logger.warning("Batch rewrite failed: %s", _sanitize_log_value(str(e)))
             return [None] * len(items)
@@ -265,8 +274,10 @@ class HarvestRewriter:
             loop = asyncio.get_running_loop()
             with concurrent.futures.ThreadPoolExecutor() as pool:
                 future = pool.submit(asyncio.run, self.rewrite_batch(items))
-                # See rewrite_sync: must exceed self._llm_timeout, not a magic number.
-                return future.result(timeout=self._llm_timeout + 10)
+                # See rewrite_sync: must exceed the per-call timeout times
+                # the fallback-provider count, not a magic number.
+                wrapper_timeout = self._CALL_TIMEOUT_BATCH * max(1, len(self._providers)) + self._WRAPPER_MARGIN
+                return future.result(timeout=wrapper_timeout)
         except RuntimeError:
             return asyncio.run(self.rewrite_batch(items))
         except Exception as e:
@@ -331,13 +342,18 @@ class HarvestRewriter:
         # No type prefix — use full response with suggested_type
         return RewriteResult(content=response, memory_type=suggested_type)
 
-    async def _call_llm(self, prompt: str) -> str:
-        """Call LLM with provider fallback chain."""
+    async def _call_llm(self, prompt: str, timeout: float) -> str:
+        """Call LLM with provider fallback chain.
+
+        ``timeout`` bounds each provider attempt individually — callers'
+        ThreadPoolExecutor wrapper timeouts (rewrite_sync/rewrite_batch_sync)
+        must account for this being applied once per provider in the chain.
+        """
         if self._providers:
             for provider in self._providers:
                 try:
                     return await self._call_openai_compatible(
-                        provider.base_url, provider.model, provider.api_key, prompt
+                        provider.base_url, provider.model, provider.api_key, prompt, timeout
                     )
                 except Exception as e:
                     err_str = str(e).lower()
@@ -353,10 +369,10 @@ class HarvestRewriter:
             raise RuntimeError("All LLM providers exhausted")
         # Legacy single-provider
         if self._provider == "groq":
-            return await self._call_groq(prompt)
+            return await self._call_groq(prompt, timeout)
         raise ValueError(f"Unknown LLM provider: {self._provider}")
 
-    async def _call_openai_compatible(self, base_url: str, model: str, api_key: str, prompt: str) -> str:
+    async def _call_openai_compatible(self, base_url: str, model: str, api_key: str, prompt: str, timeout: float) -> str:
         """Call any OpenAI-compatible API (Groq, DeepSeek, Ollama, etc.)."""
         # httpx costs ~36ms to import and nothing else on this path pulls it in.
         # classifier.py imports this module at top level and harvest/__init__.py
@@ -368,7 +384,7 @@ class HarvestRewriter:
         headers = {"Content-Type": "application/json"}
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
-        async with httpx.AsyncClient(timeout=120) as client:
+        async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.post(
                 f"{base_url}/chat/completions",
                 headers=headers,
@@ -384,14 +400,14 @@ class HarvestRewriter:
             resp.raise_for_status()
             return resp.json()["choices"][0]["message"]["content"] or ""
 
-    async def _call_groq(self, prompt: str) -> str:
+    async def _call_groq(self, prompt: str, timeout: float) -> str:
         """Call Groq API."""
         try:
             from groq import AsyncGroq
         except ImportError:
             raise RuntimeError("groq package not installed. Run: pip install groq")
 
-        client = AsyncGroq(api_key=self._api_key)
+        client = AsyncGroq(api_key=self._api_key, timeout=timeout)
         response = await client.chat.completions.create(
             model=self._model,
             messages=[{"role": "user", "content": prompt}],
