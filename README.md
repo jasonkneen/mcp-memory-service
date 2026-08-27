@@ -495,17 +495,20 @@ MCP Memory Service is **fully compatible** with the [SHODH Unified Memory API Sp
 
 ---
 
-## Latest Release: **v11.8.5** (August 25, 2026)
+## Latest Release: **v11.9.0** (August 27, 2026)
 
-**PATCH: two Docker fixes reproduced against the published images, plus a timezone-boundary bug in timeframe deletion (external contributor)**
+**MINOR: transformers 5.x closes two high-severity advisories with no 4.x fix, plus a quality-system bug the new ml-extras CI job caught on day one**
 
 **What's New:**
-- **fix(docker): move the remaining images off Python 3.10** (#295). The `:slim` image was the last one on an interpreter EOL in October 2026, and onnxruntime had already stopped publishing wheels for it, so `:slim` was six minor versions behind on the embedding runtime. Now on 3.12.14 for both amd64 and arm64, verified by building each exactly as `release.yml` does.
-- **fix(docker): make the images start without a path override** (#297). Every published image set `MCP_MEMORY_SQLITE_PATH` to a directory, so a bare `docker run` exited on startup with "unable to open database file." Default is now a file path; a directory is rejected with a message naming both the problem and the fix. Closes #296.
-- **fix(storage): use UTC midnight for timeframe-delete date boundaries** (#237, thanks timkjr). `delete_by_timeframe` and `delete_before_date` interpreted a naive datetime as host-local time while `created_at` is a UTC epoch everywhere else, silently missing memories near day boundaries on any host away from UTC.
-- **test(tz): give the timezone back after a test borrows it** (#298) — follow-up to #237, fixing a test-teardown ordering bug that leaked a changed timezone into later tests in the same worker.
+- **deps: move to transformers 5.x, closing two high-severity advisories** (#305). GHSA-29pf-2h5f-8g72 and GHSA-fgcw-684q-jj6r are both fixed only in 5.x. The reason to upgrade if you install the `[ml]` or `[nli]` extras.
+- **fix(quality): stop a disabled quality system from loading the ONNX ranker** (#316). `MCP_MEMORY_QUALITY_ENABLED=false` still triggered a full `torch.onnx.export` of DeBERTa on the first call — found when it blew pytest's 120s timeout in CI. Closes #315.
+- **fix(quality): let huggingface_hub resolve its own cache** (#307). `onnx_ranker` built cache paths by hand instead of letting the library resolve them, missing `HF_HOME`/`HF_HUB_CACHE` and sometimes picking an incomplete download. Closes #304.
+- **fix(deps): correct the setuptools bound that keeps milvus-lite importable** (#300).
+- **deps: put onnxscript in the `[ml]` extra so the quality export can actually run** (#310).
+- **ci: run the suite once with the ml and nli extras installed** (#303) — transformers and sentence-transformers had never been imported in CI before this.
 
 **Previous Releases** (v11 series — full history for all earlier versions in [CHANGELOG.md](CHANGELOG.md)):
+- **v11.8.5** - PATCH: two Docker fixes reproduced against the published images, plus a timezone-boundary bug in timeframe deletion, external contributor (#295, #297, #237, #298) (August 25, 2026)
 - **v11.8.4** - PATCH: hybrid deployment was burning through Cloudflare's D1 free-tier read allowance, plus three smaller correctness fixes (#289, #290, #287) (August 25, 2026)
 - **v11.8.3** - PATCH: reachable MCP transport advisory (CVE-2026-52869), HTTPS silently downgraded to HTTP on every restart, API key written to the access log (#277, #279, #285) (August 24, 2026)
 - **v11.8.2** - PATCH: OAuth `client_credentials` bypassed the owner API key (GHSA-5p27-64mv-pr73, CVSS 9.1) (August 23, 2026)
