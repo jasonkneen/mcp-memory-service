@@ -5,6 +5,17 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    # setuptools is held below 82 on purpose: milvus-lite imports pkg_resources
+    # without declaring setuptools, and 82.0.0 removed that API. The bound and
+    # its full reasoning live in pyproject.toml (the "milvus" extra). Without
+    # this entry Dependabot re-proposes the bump every week and drags the whole
+    # group PR down with it -- closing such a PR does not suppress the version,
+    # because the group is built from a `*` pattern (GitHub PR #1065).
+    # Drop this together with the pyproject bound once milvus-lite declares
+    # setuptools itself.
+    ignore:
+      - dependency-name: "setuptools"
+        versions: [">=82"]
     groups:
       uv:
         patterns:

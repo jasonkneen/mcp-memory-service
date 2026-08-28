@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with th
 
 Quick reference; each rule is expanded in the sections below. Violations cause real incidents.
 
-1. **Development happens on Codeberg. GitHub is a mirror.** `origin` is `codeberg.org:doobidoo/mcp-memory-service`; CI is Forgejo Actions (`.forgejo/workflows/`); issues, PRs, and releases are on Codeberg. The `github` remote is a synced mirror with Actions switched off and no repository secrets — `gh` is fine for reading it and for administering the mirror, but nothing about CI, releases, or issue handling runs there. **Never push tags to the mirror**, and never push it anything but a fast-forward of `main` (see "Source Control & Hosting").
+1. **Development happens on Codeberg. GitHub is a mirror.** `origin` is `codeberg.org:doobidoo/mcp-memory-service`; CI is Forgejo Actions (`.forgejo/workflows/`); issues, PRs, and releases are on Codeberg. The `github` remote is a synced mirror that holds **no repository secrets** — `gh` is fine for reading it and for administering the mirror, but nothing about CI, releases, or issue handling runs there. **Never push tags to the mirror**, and never push it anything but a fast-forward of `main` (see "Source Control & Hosting").
 2. **Never manually bump versions.** Follow the documented release workflow for every version bump and release.
 3. **Run `bash scripts/pr/pre_pr_check.sh` before every PR.** It is the mandatory pre-PR gate and must pass.
 4. **Use the project venv.** Run `.venv/bin/python` and `.venv/bin/pytest` (Python 3.12) — the system interpreters are not the project environment.
@@ -40,7 +40,8 @@ Quick reference; each rule is expanded in the sections below. Violations cause r
 
 - **Codeberg is where the work happens.** CI runs as **Forgejo Actions** in `.forgejo/workflows/` (`ci.yml`, `release.yml`, `deploy-site.yml`, `cleanup-images.yml`). Issues and PRs are on Codeberg, and the tag push that starts a release goes to Codeberg.
 - **`.github/workflows/` holds exactly one workflow, `codeql.yml`, and that is deliberate.** Forgejo ignores that directory, so it runs only on the mirror. CodeQL is the one capability GitHub has that Codeberg has no equivalent for, and the Forgejo CI has no security-analysis job — so the mirror carries it and reports into the GitHub Security tab. Nothing else may be added there: no release, site-deploy, or image-cleanup workflow, because publishing belongs to exactly one forge.
-- **The GitHub mirror is read-only in practice.** It exists for discovery and as a fallback. Actions are disabled there and it holds no secrets, so nothing can publish from it. Two hard rules: only ever fast-forward `main` onto it, and **never push tags** — tag-triggered workflows run the workflow files of the tag's own commit, and every tag from before June 2026 carries publish workflows that would push to PyPI and Docker Hub a second time.
+- **The GitHub mirror is read-only in practice.** It exists for discovery and as a fallback. Actions there are **enabled, not disabled** — that is what runs CodeQL, Pages and Dependabot — but restricted to selected actions with SHA-pinning required, and the repository holds **zero secrets**. That last part is what makes publishing impossible: every publish path in the old workflows authenticates with a stored secret (`secrets.PYPI_TOKEN` via twine, `secrets.DOCKER_USERNAME`/`DOCKER_PASSWORD` for Docker Hub), and none of them uses PyPI Trusted Publishing, so there is no OIDC route that works without one. Two hard rules: only ever fast-forward `main` onto it, and **never push tags**.
+- **Why the tag rule, precisely.** A tag-triggered workflow runs the workflow files of the tag's own commit, and tags up to roughly v10.59.2 carry four to seven publish workflows in `.github/workflows/` (from about v10.73.0 onward they carry none, and current tags carry only `codeql.yml`). Pushing such a tag would **not** double-publish to PyPI or Docker Hub — those steps fail at authentication with the secrets gone. What it would produce is a burst of failing runs, and potentially a GHCR image or a GitHub release object, because `secrets.GITHUB_TOKEN` is provided automatically and needs no stored secret. Noise and stray artifacts, not a duplicate release. The rule stands for that reason; it is not a claim that a second publish is possible.
 - Before pushing the mirror, prove the fast-forward rather than assuming it:
   ```bash
   git fetch origin main
@@ -62,11 +63,8 @@ Before merging or releasing:
 
 ## Overview
 
-**Current Version:** v11.10.0 - MINOR release. The reason it's MINOR and not PATCH: `MCP_CLUSTERING_ALGORITHM` defaults to `dbscan`, but scikit-learn — which the clustering engine imports `DBSCAN`/`AgglomerativeClustering` from — was declared in no extra, so the default silently ran a `simple` fallback behind one WARNING line. A new `[clustering]` extra fixes the install gap, the default becomes `auto`, and naming `dbscan`/`hierarchical` explicitly without scikit-learn installed now raises `ConsolidationError` instead of degrading silently — a deliberate fail-loud behavior change under an existing config (#329, closes #326). Alongside it, all five `memory_consolidate` time horizons now mean the window the tool description documents; four of five didn't before (#325, closes #324) — no horizon reaches past 365 days any more, tracked as a follow-up (#327). Three hook fixes round out the release: two from external contributor timkjr on hardcoded harvest timeouts and a settings-merge bug that could wipe a user's own hooks (#321, #323), and one from alivirgo porting a Stop-hook transcript-pairing fix from the GitHub mirror, which takes no PRs of its own (#330). The Claude Code plugin manifest moves to 1.0.4 so the hook fixes reach already-installed users. See [CHANGELOG.md](CHANGELOG.md) for details. (Issue/PR numbers refer to Codeberg.)
-
-> Note: v11.8.1 was tagged but never published — its tag was created through the forge API rather than pushed with git, so `release.yml` never fired. v11.8.2 supersedes it on PyPI and Docker Hub, and anyone installing from either goes 11.8.0 → 11.8.2. See the tag rule in [`.claude/directives/version-management.md`](.claude/directives/version-management.md).
-
-> **History (v10.0.0):** The v10 API consolidation unified 34 tools into 12. The deprecated tool-name alias layer (`compat.DEPRECATED_TOOLS`) was later **removed in v11** (Issue #53) — old tool names no longer resolve. The registry has since grown to ~28 tools (see `src/mcp_memory_service/tools/registry.py`).
+Current version and release history: [CHANGELOG.md](CHANGELOG.md). The forge-API tag trap that
+left v11.8.1 unpublished is documented in [`.claude/directives/version-management.md`](.claude/directives/version-management.md).
 
 ## Essential Commands
 
@@ -98,44 +96,11 @@ The commands below are written as bare `python`/`pytest` for brevity — run the
 
 ### Development Server
 
-**Recommended (lifecycle CLI):**
-```bash
-# Start HTTP server in background with PID tracking, logs, health check
-memory launch                              # Background (default)
-memory launch --foreground                 # Foreground (same as server --http)
-memory launch --storage-backend hybrid     # With specific backend
-memory launch --debug                      # With debug logging
-
-# Check if server is running
-memory info
-
-# Stop server
-memory stop
-
-# Restart (preserves --storage-backend and --debug from running server)
-memory restart
-
-# View logs
-memory logs
-memory logs -n 50
-```
-
-**Legacy entry points (still available, but the CLI is preferred):**
-```bash
-# MCP server (for Claude Desktop integration)
-python -m mcp_memory_service.server
-
-# HTTP API server (dashboard + REST API)
-python scripts/server/run_http_server.py
-
-# Quick update after git pull (installs deps, restarts server)
-./scripts/update_and_restart.sh
-```
-
-> **Note:** The `memory launch/stop/restart/info/logs` CLI commands are the
-> preferred way to manage the server going forward. The legacy scripts
-> (`scripts/server/run_http_server.py`, `scripts/update_and_restart.sh`) still
-> work but may be deprecated in a future release. For new deployments, use the CLI.
+The lifecycle CLI (`memory launch|stop|restart|info|logs`, see `memory --help`) is the
+preferred way to manage the server. The legacy entry points
+(`python -m mcp_memory_service.server`, `scripts/server/run_http_server.py`,
+`scripts/update_and_restart.sh`) still work but may be deprecated in a future release;
+`run_http_server.py` and `update_and_restart.sh` are not the path for new deployments.
 
 ### Testing
 
