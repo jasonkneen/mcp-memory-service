@@ -40,10 +40,19 @@ def isolated_cwd(tmp_path, monkeypatch):
     Also resets the module-level warn-once flag so tests don't leak state
     into each other.
 
+    Also points the PID file at tmp_path. _base_url() consults
+    _recorded_scheme() first, which reads the scheme out of the running
+    server's PID file at ~/.local/share/mcp-memory/server.pid. On a
+    developer machine with an HTTPS server running that file says
+    "https", so TestBaseUrl's http assertions fail and, worse, its https
+    assertion passes for the wrong reason. CI has no such file, which is
+    why this only ever shows up locally.
+
     The _kill_process real-signal guard and MCP_HTTP_PORT/HOST pinning
     live in conftest.py's autouse _lifecycle_process_safety_net fixture
     and apply here automatically."""
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(lifecycle, "_pid_file", lambda: tmp_path / "server.pid")
     monkeypatch.delenv("MCP_MEMORY_ALLOW_SELF_SIGNED_CERTS", raising=False)
     monkeypatch.delenv("MCP_HTTPS_ENABLED", raising=False)
     monkeypatch.setattr(lifecycle, "_self_signed_warning_shown", False)
