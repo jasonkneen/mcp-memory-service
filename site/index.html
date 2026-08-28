@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Memory for AI Agents — REST, MCP, OAuth, CLI · mcp-memory-service v11.9.0</title>
+<title>Memory for AI Agents — REST, MCP, OAuth, CLI · mcp-memory-service v11.10.0</title>
 <meta name="description" content="Memory layer for AI agents. REST API + MCP + OAuth + CLI + dashboard — one self-hosted service, every transport. 14+ client integrations, knowledge graph, automatic consolidation. LongMemEval R@5 86%, session ingestion, zero cloud cost.">
-<meta property="og:title" content="MCP Memory Service v11.9.0">
-<meta property="og:description" content="transformers 5.x closes two high-severity advisories with no fix in the 4.x line. Self-hosted AI memory — REST, MCP, OAuth 2.1, CLI. LongMemEval R@5 86%.">
+<meta property="og:title" content="MCP Memory Service v11.10.0">
+<meta property="og:description" content="Consolidation clustering now fails loudly instead of silently degrading, plus a time-horizon fix. Self-hosted AI memory — REST, MCP, OAuth 2.1, CLI. LongMemEval R@5 86%.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://mcpmemory.services/">
 <meta property="twitter:card" content="summary_large_image">
@@ -121,7 +121,7 @@ footer a{color:var(--cyan)}
 <!-- Hero -->
 <header class="hero">
   <img src="brain-icon.png" alt="Memory for AI Agents" class="hero-logo">
-  <span class="hero-badge">mcp-memory-service v11.9 &mdash; Now Available</span>
+  <span class="hero-badge">mcp-memory-service v11.10 &mdash; Now Available</span>
   <h1>Memory for AI Agents</h1>
   <p>Persistent memory for AI agents &mdash; REST API, MCP, OAuth, CLI, dashboard. Semantic search, knowledge graph, automatic consolidation. One self-hosted service, every transport.</p>
   <div class="hero-buttons">
@@ -161,23 +161,23 @@ footer a{color:var(--cyan)}
 <!-- Features -->
 <section id="features">
   <div class="container">
-    <h2 class="section-title">What's New in v11.9</h2>
-    <p class="section-subtitle">MINOR release: transformers 5.x closes two high-severity advisories with no fix in the 4.x line, verified by a new CI job that finally installs the ml/nli extras — and that job caught a real quality-system bug on day one. ~2,966 tests.</p>
+    <h2 class="section-title">What's New in v11.10</h2>
+    <p class="section-subtitle">MINOR release: consolidation clustering now fails loudly instead of silently degrading when scikit-learn is missing, every time horizon means the window it documents, and three hook fixes land — two from external contributor timkjr, one ported from the GitHub mirror. ~3,007 tests.</p>
     <div class="features-grid">
       <div class="feature-card" data-delay="0">
         <div class="feature-icon privacy">&#128274;</div>
-        <h3>transformers 5.x, Two Advisories Closed</h3>
-        <p>GHSA-29pf-2h5f-8g72 and GHSA-fgcw-684q-jj6r are both fixed only in 5.x, so the [ml] and [nli] extras now require transformers 5.5 or later, below 6. The reason to upgrade if you install either extra. (#305)</p>
+        <h3>Clustering Fails Loud Instead of Silently Degrading</h3>
+        <p>MCP_CLUSTERING_ALGORITHM defaulted to dbscan, but scikit-learn was declared in no extra, so clustering silently ran a simple fallback behind one WARNING line. New [clustering] extra, default now auto; naming dbscan/hierarchical explicitly without scikit-learn installed now raises a clear error. (#329)</p>
       </div>
       <div class="feature-card" data-delay="150">
         <div class="feature-icon consolidation">&#128295;</div>
-        <h3>Disabled Quality System Stopped Exporting Models</h3>
-        <p>MCP_MEMORY_QUALITY_ENABLED=false still triggered a full torch.onnx.export of DeBERTa on the first call, because both entry points checked config.enabled after initializing. Found when it blew pytest's 120s CI timeout. (#316, closes #315)</p>
+        <h3>Every Consolidation Horizon Means Its Documented Window</h3>
+        <p>Four of the five memory_consolidate time horizons didn't match what the tool description promised — daily reached 2 days, weekly and monthly applied no age filter at all, quarterly and yearly kept memories OLDER than their window. All five now filter to the window they document. (#325)</p>
       </div>
       <div class="feature-card" data-delay="300">
         <div class="feature-icon http">&#128240;</div>
-        <h3>ML Extras Finally Run in CI</h3>
-        <p>transformers and sentence-transformers had never been imported in CI before this job (#303) — it's what made the transformers 5.x move verifiable, and what caught the quality-system bug above. Cache-resolution and setuptools fixes ride along. (#307, #300, #310)</p>
+        <h3>Three Hook Fixes, Two From the Community</h3>
+        <p>External contributor timkjr fixed hardcoded harvest wrapper timeouts and a settings-merge bug that could wipe a user's own hooks; alivirgo ported a Stop-hook transcript-pairing fix from the GitHub mirror. Plugin manifest bumped so installed users actually get them. (#321, #323, #330)</p>
       </div>
     </div>
   </div>
@@ -218,6 +218,10 @@ footer a{color:var(--cyan)}
       <span class="arch-label"><span class="dot dot-cyan"></span> Data flow</span>
       <span class="arch-label"><span class="dot dot-purple"></span> Auth boundary</span>
     </div>
+    <div class="hero-buttons" style="margin-top:2rem">
+      <a href="/architecture/" class="btn btn-secondary">Architecture diagram (German)</a>
+      <a href="/deployment/" class="btn btn-secondary">Deployment landscape (German)</a>
+    </div>
   </div>
 </section>
 
@@ -228,7 +232,7 @@ footer a{color:var(--cyan)}
     <p class="section-subtitle">Battle-tested with comprehensive testing and optimized for performance.</p>
     <div class="stats-grid">
       <div class="stat-card" data-delay="0">
-        <div class="stat-number" data-target="2966">0</div>
+        <div class="stat-number" data-target="3007">0</div>
         <div class="stat-label">Tests</div>
       </div>
       <div class="stat-card" data-delay="100">
@@ -290,7 +294,7 @@ footer a{color:var(--cyan)}
       <a href="blog/remote-mcp-tutorial.html" class="btn btn-secondary">
         Blog: 5-Min claude.ai Setup
       </a>
-      <a href="https://codeberg.org/doobidoo/mcp-memory-service/releases/tag/v11.9.0" class="btn btn-secondary" target="_blank">
+      <a href="https://codeberg.org/doobidoo/mcp-memory-service/releases/tag/v11.10.0" class="btn btn-secondary" target="_blank">
         Release Notes
       </a>
     </div>

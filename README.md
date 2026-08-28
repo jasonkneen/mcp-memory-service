@@ -495,19 +495,20 @@ MCP Memory Service is **fully compatible** with the [SHODH Unified Memory API Sp
 
 ---
 
-## Latest Release: **v11.9.0** (August 27, 2026)
+## Latest Release: **v11.10.0** (August 28, 2026)
 
-**MINOR: transformers 5.x closes two high-severity advisories with no 4.x fix, plus a quality-system bug the new ml-extras CI job caught on day one**
+**MINOR: clustering now fails loudly instead of silently degrading when scikit-learn is missing, plus a consolidation time-horizon fix and three hook fixes (two from external contributor timkjr, one from alivirgo)**
 
 **What's New:**
-- **deps: move to transformers 5.x, closing two high-severity advisories** (#305). GHSA-29pf-2h5f-8g72 and GHSA-fgcw-684q-jj6r are both fixed only in 5.x. The reason to upgrade if you install the `[ml]` or `[nli]` extras.
-- **fix(quality): stop a disabled quality system from loading the ONNX ranker** (#316). `MCP_MEMORY_QUALITY_ENABLED=false` still triggered a full `torch.onnx.export` of DeBERTa on the first call — found when it blew pytest's 120s timeout in CI. Closes #315.
-- **fix(quality): let huggingface_hub resolve its own cache** (#307). `onnx_ranker` built cache paths by hand instead of letting the library resolve them, missing `HF_HOME`/`HF_HUB_CACHE` and sometimes picking an incomplete download. Closes #304.
-- **fix(deps): correct the setuptools bound that keeps milvus-lite importable** (#300).
-- **deps: put onnxscript in the `[ml]` extra so the quality export can actually run** (#310).
-- **ci: run the suite once with the ml and nli extras installed** (#303) — transformers and sentence-transformers had never been imported in CI before this.
+- **fix(consolidation): make the configured clustering algorithm the one that runs** (#329). `MCP_CLUSTERING_ALGORITHM` defaulted to `dbscan`, but scikit-learn was declared in no extra, so clustering silently ran the `simple` fallback behind one WARNING line. New `[clustering]` extra, default changed to `auto`; naming `dbscan`/`hierarchical` explicitly without scikit-learn installed now raises `ConsolidationError` instead of degrading silently. Closes #326. **Upgrade note:** if you set `MCP_CLUSTERING_ALGORITHM=dbscan`/`hierarchical` without scikit-learn installed, consolidation now errors — install with `pip install 'mcp-memory-service[clustering]'` or set `MCP_CLUSTERING_ALGORITHM=auto`.
+- **fix(consolidation): make every time horizon mean the window it documents** (#325). Four of the five `memory_consolidate` horizons didn't match their documented window — daily reached 2 days, weekly/monthly applied no age filter at all, quarterly/yearly kept memories OLDER than their window. Closes #324. Known follow-up: no horizon reaches past 365 days any more (#327, not fixed here).
+- **fix(harvest): stop hardcoded 30s/60s wrapper timeouts overriding `HARVEST_LLM_TIMEOUT`** (#321, external contributor timkjr).
+- **fix(hooks): settings.json merge in `configure_claude_settings`** (#323, external contributor timkjr) — a plugin reinstall could wipe a user's own `PreToolUse` hooks.
+- **fix(hooks): pair the last assistant turn with the prompt that preceded it** (#330, authored by alivirgo) — ports a Stop-hook fix from the GitHub mirror, which takes no PRs directly.
+- **claude-hooks: plugin manifest bumped to 1.0.4** so the two hook fixes above reach already-installed users.
 
 **Previous Releases** (v11 series — full history for all earlier versions in [CHANGELOG.md](CHANGELOG.md)):
+- **v11.9.0** - MINOR: transformers 5.x closes two high-severity advisories with no 4.x fix, plus a quality-system bug the new ml-extras CI job caught on day one (#305, #316, #307, #303) (August 27, 2026)
 - **v11.8.5** - PATCH: two Docker fixes reproduced against the published images, plus a timezone-boundary bug in timeframe deletion, external contributor (#295, #297, #237, #298) (August 25, 2026)
 - **v11.8.4** - PATCH: hybrid deployment was burning through Cloudflare's D1 free-tier read allowance, plus three smaller correctness fixes (#289, #290, #287) (August 25, 2026)
 - **v11.8.3** - PATCH: reachable MCP transport advisory (CVE-2026-52869), HTTPS silently downgraded to HTTP on every restart, API key written to the access log (#277, #279, #285) (August 24, 2026)
