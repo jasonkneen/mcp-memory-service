@@ -222,10 +222,20 @@ async def get_recommendations(time_horizon: str, user: AuthenticationResult = De
         # Get recommendations
         recommendations = await consolidator.get_consolidation_recommendations(time_horizon)
 
-        # Sanitize all values before returning to prevent stack-trace exposure (CWE-209)
-        _SAFE_RECOMMENDATIONS = {"CONSOLIDATION_BENEFICIAL", "NO_CONSOLIDATION_NEEDED", "UNKNOWN"}
-        raw_rec = recommendations.get("recommendation", "UNKNOWN")
-        safe_rec = raw_rec if raw_rec in _SAFE_RECOMMENDATIONS else "UNKNOWN"
+        # Map the consolidator's internal recommendation values onto this
+        # endpoint's public contract, and sanitize before returning to
+        # prevent stack-trace exposure (CWE-209). The consolidator returns
+        # lowercase/snake_case values ("consolidation_beneficial", "optional",
+        # "no_action", "error") that never matched the allowlist this endpoint
+        # checked against, so every response fell through to "UNKNOWN"
+        # regardless of actual state (#340).
+        _RECOMMENDATION_MAP = {
+            "consolidation_beneficial": "CONSOLIDATION_BENEFICIAL",
+            "optional": "NO_CONSOLIDATION_NEEDED",
+            "no_action": "NO_CONSOLIDATION_NEEDED",
+        }
+        raw_rec = recommendations.get("recommendation", "unknown")
+        safe_rec = _RECOMMENDATION_MAP.get(raw_rec, "UNKNOWN")
 
         try:
             safe_count = int(recommendations.get("memory_count", 0))
