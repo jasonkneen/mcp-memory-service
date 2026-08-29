@@ -24,6 +24,7 @@ import re
 try:
     from sklearn.cluster import DBSCAN
     from sklearn.cluster import AgglomerativeClustering
+    from sklearn.neighbors import NearestNeighbors
     SKLEARN_AVAILABLE = True
 except ImportError:
     SKLEARN_AVAILABLE = False
@@ -177,17 +178,18 @@ class SemanticClusteringEngine(ConsolidationBase):
         if n_samples <= min_samples:
             return 0.3  # Too few points to estimate a k-distance curve.
 
-        normalized = embeddings / np.clip(
-            np.linalg.norm(embeddings, axis=1, keepdims=True), 1e-12, None
-        )
-        cosine_distance = 1.0 - (normalized @ normalized.T)
+        # Use NearestNeighbors rather than a full n x n distance matrix: the
+        # matrix approach is O(n^2) in both memory and time, which is fine at
+        # a few thousand memories but becomes expensive as a store grows.
+        # NearestNeighbors handles the metric's normalization itself, so no
+        # separate L2-normalization step is needed here either.
+        neighbors = NearestNeighbors(n_neighbors=min_samples + 1, metric='cosine')
+        neighbors.fit(embeddings)
+        distances, _ = neighbors.kneighbors(embeddings)
 
-        # k-th nearest neighbor distance for every point (excludes itself,
-        # since distance-to-self is 0 and always the closest).
-        k_distances = np.sort(
-            np.partition(cosine_distance, min_samples, axis=1)[:, :min_samples + 1],
-            axis=1,
-        )[:, -1]
+        # Column 0 is always distance-to-self (0.0); the k-th neighbor
+        # distance for each point is the last column.
+        k_distances = np.sort(distances[:, -1])
         sorted_k_distances = np.sort(k_distances)
 
         # Knee = point of maximum distance from the line connecting the

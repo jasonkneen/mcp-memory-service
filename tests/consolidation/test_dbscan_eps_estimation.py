@@ -11,11 +11,13 @@ narrow, elevated baseline cosine similarity across unrelated content, so that
 size-only eps let DBSCAN's density-reachability chain unrelated memories
 into one giant cluster.
 
-These tests exercise `_estimate_eps` directly (pure numpy, no scikit-learn
-required) and verify -- via a from-scratch connected-components check at a
-given eps, so no DBSCAN/sklearn dependency is needed here either -- that the
-new knee-based eps avoids the chaining failure mode on synthetic data shaped
-like the production symptom.
+These tests exercise `_estimate_eps` directly. It uses
+`sklearn.neighbors.NearestNeighbors` internally for the k-distance lookup
+(replacing an earlier full n x n distance matrix, which was O(n^2) memory
+and time -- flagged in review), so scikit-learn is required to run these
+tests. Chaining verification itself uses a from-scratch connected-components
+check rather than DBSCAN, so no additional dependency is needed for that
+part.
 """
 
 import numpy as np
