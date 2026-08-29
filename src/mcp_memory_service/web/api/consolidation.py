@@ -228,11 +228,12 @@ async def get_recommendations(time_horizon: str, user: AuthenticationResult = De
         # lowercase/snake_case values ("consolidation_beneficial", "optional",
         # "no_action", "error") that never matched the allowlist this endpoint
         # checked against, so every response fell through to "UNKNOWN"
-        # regardless of actual state (#340).
+        # regardless of actual state (#328).
         _RECOMMENDATION_MAP = {
             "consolidation_beneficial": "CONSOLIDATION_BENEFICIAL",
             "optional": "NO_CONSOLIDATION_NEEDED",
             "no_action": "NO_CONSOLIDATION_NEEDED",
+            "error": "UNKNOWN",
         }
         raw_rec = recommendations.get("recommendation", "unknown")
         safe_rec = _RECOMMENDATION_MAP.get(raw_rec, "UNKNOWN")
