@@ -1,28 +1,20 @@
 name: "CodeQL Security Analysis"
 
-# The only workflow on the GitHub side, and it is here on purpose.
+# CodeQL is the security-analysis lane. The rest of CI lives in ci.yml; this stays
+# separate because it reports into the Security tab rather than into check runs, and
+# it is the one analysis the Forgejo CI never had an equivalent for.
 #
-# Development, CI, and releases live on Codeberg (.forgejo/workflows/). Forgejo
-# ignores this directory, so nothing here runs there. CodeQL is the one capability
-# GitHub has that Codeberg has no equivalent for, and the Forgejo CI has no
-# security-analysis job at all — so the mirror carries it and reports into the
-# GitHub Security tab.
-#
-# Deliberate omissions: no release, site-deploy, or image-cleanup workflow may be
-# added here. Publishing belongs to exactly one forge, and that forge is Codeberg.
-# This job needs no repository secrets, and the mirror holds none.
+# This job needs no repository secrets.
 
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   schedule:
-    # Weekly, Mondays 00:00 UTC. The mirror only receives fast-forwards of main,
-    # so pushes are infrequent and the schedule is what gives regular coverage.
+    # Weekly, Mondays 00:00 UTC, so coverage does not depend on push frequency.
     - cron: '0 0 * * 1'
   workflow_dispatch:
-
-# Pull requests are not triggered on purpose: they are opened on Codeberg, and a
-# PR against the mirror gets redirected rather than reviewed.
 
 permissions:
   contents: read
