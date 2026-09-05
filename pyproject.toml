@@ -124,7 +124,10 @@ sqlite-ml = [
 milvus = [
     # 3.x has breaking API changes and nothing here tests Milvus: the Test Milvus (Docker)
     # job was dropped during the Codeberg era and never restored, so a break would be silent.
-    # Do not widen this bound until a Milvus CI job runs green against 3.x — see issue #261.
+    # Do not widen this bound until a Milvus CI job runs green against 3.x — see issue #1112.
+    # Dependabot cannot widen it any more either: .github/dependabot.yml ignores
+    # major updates for pymilvus, because a group bump rewrites this line rather
+    # than respecting it.
     # A bulk uv-group bump (#976) already widened it to <4.0.0 once by accident.
     "pymilvus>=2.5.0,<3.0.0",
     "milvus-lite>=2.4.10",

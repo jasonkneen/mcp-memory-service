@@ -1,6 +1,6 @@
 """
 Regression tests for the /api/consolidation/recommendations/{time_horizon}
-sanitization mismatch (#340).
+sanitization mismatch (#1125, filed on Codeberg as #328).
 
 The endpoint's CWE-209 sanitization allowlisted only uppercase values
 ("CONSOLIDATION_BENEFICIAL", "NO_CONSOLIDATION_NEEDED", "UNKNOWN"), but
