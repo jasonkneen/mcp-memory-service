@@ -17,6 +17,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- Apply memory eligibility filters before SQLite-vec nearest-neighbor limits in
+  `recall()` and `retrieve()`. Deleted, out-of-window, and filtered metadata rows
+  no longer crowd out valid semantic matches, including beyond the previous
+  candidate-pool cap ([#1077](https://github.com/doobidoo/mcp-memory-service/issues/1077)).
+
 ## [11.11.0] - 2026-09-05
 
 MINOR release. Closes three critical advisories reported by alivirgo, and moves development back to GitHub.
