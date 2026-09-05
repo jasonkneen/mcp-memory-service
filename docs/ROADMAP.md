@@ -2,7 +2,7 @@
 
 **The official roadmap has moved to the Wiki for easier maintenance and community collaboration.**
 
-📖 **[View Development Roadmap on Wiki](https://codeberg.org/doobidoo/mcp-memory-service/wiki/13-Development-Roadmap)**
+📖 **[View Development Roadmap on Wiki](https://github.com/doobidoo/mcp-memory-service/wiki/13-Development-Roadmap)**
 
 The Wiki version includes:
 - ✅ Completed milestones (v8.0–v11.8)
@@ -42,11 +42,11 @@ The Wiki provides several advantages for roadmap documentation:
 
 The roadmap on the Wiki tracks strategic direction. For day-to-day development:
 
-- **[Open Issues](https://codeberg.org/doobidoo/mcp-memory-service/issues)** — Bug reports and feature requests
-- **[Pull Requests](https://codeberg.org/doobidoo/mcp-memory-service/pulls)** — Active code changes
+- **[Open Issues](https://github.com/doobidoo/mcp-memory-service/issues)** — Bug reports and feature requests
+- **[Pull Requests](https://github.com/doobidoo/mcp-memory-service/pulls)** — Active code changes
 - **[CHANGELOG.md](../CHANGELOG.md)** — Release history and completed features
 
 ---
 
 **Maintainer**: @doobidoo
-**Last Updated**: August 2026
+**Last Updated**: September 2026
