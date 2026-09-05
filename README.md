@@ -14,7 +14,7 @@ context in 5ms — without cloud lock-in or API costs.
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![PyPI version](https://img.shields.io/pypi/v/mcp-memory-service?color=blue&logo=pypi&logoColor=white)](https://pypi.org/project/mcp-memory-service/)
 [![Python](https://img.shields.io/pypi/pyversions/mcp-memory-service?logo=python&logoColor=white)](https://pypi.org/project/mcp-memory-service/)
-[![Codeberg stars](https://img.shields.io/gitea/stars/doobidoo/mcp-memory-service?gitea_url=https%3A%2F%2Fcodeberg.org&logo=codeberg&label=stars)](https://codeberg.org/doobidoo/mcp-memory-service)
+[![GitHub stars](https://img.shields.io/github/stars/doobidoo/mcp-memory-service?logo=github&label=stars)](https://github.com/doobidoo/mcp-memory-service)
 [![Works with LangGraph](https://img.shields.io/badge/Works%20with-LangGraph-green)](https://github.com/langchain-ai/langgraph)
 [![Works with CrewAI](https://img.shields.io/badge/Works%20with-CrewAI-orange)](https://crewai.com)
 [![Works with AutoGen](https://img.shields.io/badge/Works%20with-AutoGen-purple)](https://github.com/microsoft/autogen)
@@ -154,7 +154,7 @@ MCP_ALLOW_ANONYMOUS_ACCESS=true memory server --http
 Install the local plugin:
 
 ```bash
-git clone https://codeberg.org/doobidoo/mcp-memory-service.git
+git clone https://github.com/doobidoo/mcp-memory-service.git
 cd mcp-memory-service
 mkdir -p ~/.config/opencode/plugins
 cp opencode/memory-plugin.js ~/.config/opencode/plugins/
@@ -204,7 +204,7 @@ cloudflared tunnel --url http://localhost:8765
 ```
 
 **Production Setup:** [Remote MCP Setup Guide](docs/remote-mcp-setup.md) (Let's Encrypt, nginx, Docker, firewall).
-**Step-by-Step Tutorial:** [Blog: 5-Minute claude.ai Setup](https://mcpmemory.services/blog/remote-mcp-tutorial.html) | [Wiki Guide](https://codeberg.org/doobidoo/mcp-memory-service/wiki/Claude-AI-Remote-MCP-Integration)
+**Step-by-Step Tutorial:** [Blog: 5-Minute claude.ai Setup](https://mcpmemory.services/blog/remote-mcp-tutorial.html) | [Wiki Guide](https://github.com/doobidoo/mcp-memory-service/wiki/Claude-AI-Remote-MCP-Integration)
 
 </details>
 
@@ -214,7 +214,7 @@ cloudflared tunnel --url http://localhost:8765
 For production deployments, team collaboration, or cloud sync:
 
 ```bash
-git clone https://codeberg.org/doobidoo/mcp-memory-service.git
+git clone https://github.com/doobidoo/mcp-memory-service.git
 cd mcp-memory-service
 python scripts/installation/install.py
 ```
@@ -269,13 +269,15 @@ Choose from:
 ### 🖥️ Dashboard Preview
 
 <p align="center">
-  <img src="https://codeberg.org/doobidoo/mcp-memory-service/wiki/raw/images/dashboard/mcp-memory-dashboard-v9.3.0-tour.gif" alt="MCP Memory Dashboard Tour" width="800"/>
+  <!-- Served from the wiki repo, which has its own raw host: raw.githubusercontent.com/wiki/... ,
+       not the /raw/ path a Forgejo wiki uses. The asset lives at images/dashboard/ in the wiki. -->
+  <img src="https://raw.githubusercontent.com/wiki/doobidoo/mcp-memory-service/images/dashboard/mcp-memory-dashboard-v9.3.0-tour.gif" alt="MCP Memory Dashboard Tour" width="800"/>
 </p>
 
 **8 Dashboard Tabs:** Dashboard • Search • Browse • Documents • Manage • Analytics • Quality • API Docs
 
 🎬 **[Watch the Web Dashboard Walkthrough on YouTube](https://youtu.be/W34r8VFoSdQ)** — semantic search, tag browser, document ingestion, analytics, quality scoring, and API docs in under 2 minutes.
-📖 See [Web Dashboard Guide](https://codeberg.org/doobidoo/mcp-memory-service/wiki/Web-Dashboard-Guide) for complete documentation.
+📖 See [Web Dashboard Guide](https://github.com/doobidoo/mcp-memory-service/wiki/Web-Dashboard-Guide) for complete documentation.
 
 ---
 
@@ -533,7 +535,7 @@ MCP Memory Service is **fully compatible** with the [SHODH Unified Memory API Sp
 - **v11.1.0** - MINOR: two-phase query API aggregation + maintenance script hardening (PR #78, @filhocf) (June 18, 2026)
 - **v11.0.0** - MAJOR: legacy tool-name alias removal + optional ML dependencies / ONNX-first fallback (PR #72, #49, #71) (June 13, 2026)
 
-**Full version history**: [CHANGELOG.md](CHANGELOG.md) | [Older versions (v10.36.3 and earlier)](docs/archive/CHANGELOG-HISTORIC.md) | [All Releases](https://codeberg.org/doobidoo/mcp-memory-service/releases)
+**Full version history**: [CHANGELOG.md](CHANGELOG.md) | [Older versions (v10.36.3 and earlier)](docs/archive/CHANGELOG-HISTORIC.md) | [All Releases](https://github.com/doobidoo/mcp-memory-service/releases)
 
 ---
 
@@ -552,8 +554,8 @@ MCP Memory Service is **fully compatible** with the [SHODH Unified Memory API Sp
 - **[Migration Guide](docs/MIGRATION.md)** – Upgrading between major versions (v9+ migrations run automatically on restart)
 - **[Troubleshooting](docs/troubleshooting/)** – Common issues and solutions
 - **[Technical Video Demo (2 min)](https://www.youtube.com/watch?v=veJME5qVu-A)** – Performance, architecture, AI/ML intelligence
-- **[API Reference](https://codeberg.org/doobidoo/mcp-memory-service/wiki)** – Programmatic usage
-- **[Wiki](https://codeberg.org/doobidoo/mcp-memory-service/wiki)** – Complete documentation
+- **[API Reference](https://github.com/doobidoo/mcp-memory-service/wiki)** – Programmatic usage
+- **[Wiki](https://github.com/doobidoo/mcp-memory-service/wiki)** – Complete documentation
 - [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/doobidoo/mcp-memory-service) – AI-powered documentation assistant
 - **[MCP Starter Kit](https://kruppster57.gumroad.com/l/glbhd)** – Build your own MCP server using the patterns from this project
 
@@ -568,7 +570,7 @@ it reaches `main`: [AUTHORSHIP.md](AUTHORSHIP.md).
 
 **Quick Development Setup:**
 ```bash
-git clone https://codeberg.org/doobidoo/mcp-memory-service.git
+git clone https://github.com/doobidoo/mcp-memory-service.git
 cd mcp-memory-service
 pip install -e .  # Editable install
 pytest tests/      # Run test suite

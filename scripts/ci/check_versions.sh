@@ -30,7 +30,7 @@ if [ -z "$CANONICAL" ]; then
 fi
 
 # Default scan target: site/index.html only (the mcpmemory.services landing
-# page, deployed to Cloudflare Pages via .forgejo/workflows/deploy-site.yml).
+# page, deployed to Cloudflare Pages via .github/workflows/deploy-site.yml).
 # docs/index.html is a plain redirect stub to mcpmemory.services and carries
 # no version strings anymore.
 #
