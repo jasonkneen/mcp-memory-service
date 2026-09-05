@@ -252,6 +252,13 @@ a weekly pyscn review with trend tracking. Health score below 50 blocks a releas
 50-69 means refactor within two weeks, 70 and up is fine. Complexity target is grade
 A-B, meaning 8 or lower.
 
+The PR gate's complexity check is scoped to the diff: a finding counts only when it
+names a function the change actually touched (`scripts/pr/lib/touched_functions.py`).
+An untouched function above the budget in the same file is the file's pre-existing
+state and does not block — it used to, which made the gate unpassable for anyone
+working in `storage/hybrid.py` or `storage/base.py`. Everything the gate does report
+blocks; there is no "warning" tier below it.
+
 ### Log injection guard (v10.68.0, from CodeQL GHSA-84hp-mqvj-3p8h)
 
 User-provided values in raw f-string log calls trigger CodeQL `py/log-injection`.

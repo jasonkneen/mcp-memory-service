@@ -11,12 +11,19 @@
 #   2. `grep -c ... || echo 0` produced "0\n0" and killed the arithmetic test
 #      in check 3 under set -e
 #   3. the complexity pattern matched score 8, which the documented budget allows
+#   4. complexity was scored per file, so a change to a file holding an unrelated
+#      complex function failed the gate on proximity (#1118)
+#   5. check 4 grepped for the word "breaking", which matches the model's own
+#      "No breaking changes found."
+#   6. the findings that set exit 1 were printed under "WARNINGS (non-blocking)"
 
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 GATE="$REPO_ROOT/scripts/pr/quality_gate.sh"
 HELPER="$REPO_ROOT/scripts/pr/lib/llm_prompt.py"
+SCOPE="$REPO_ROOT/scripts/pr/lib/scope_findings.py"
+TOUCHED="$REPO_ROOT/scripts/pr/lib/touched_functions.py"
 
 PASS=0
 FAIL=0
@@ -70,8 +77,60 @@ test_file_counts_use_grep_exit_only() {
 
 # --- Test: complexity 8 is within budget and must not be flagged ---
 test_complexity_threshold_allows_8() {
-  grep -qF 'grep -qi "score 9\|score 10"' "$GATE" \
-    || { echo "   complexity pattern does not match only 9 and 10"; return 1; }
+  local out
+  out=$(printf 'handler: Score 8 - borderline\n' | python3 "$SCOPE" handler) && {
+    echo "   score 8 was reported as a finding: $out"; return 1
+  }
+  out=$(printf 'handler: Score 9 - too much\n' | python3 "$SCOPE" handler) \
+    || { echo "   score 9 was not reported"; return 1; }
+  [[ "$out" == *"Score 9"* ]] || { echo "   finding text lost: $out"; return 1; }
+}
+
+# --- Test: a finding on a function the diff did not touch is dropped (#1118) ---
+test_findings_scoped_to_touched_functions() {
+  printf 'untouched_helper: Score 10 - pre-existing\n' | python3 "$SCOPE" the_one_i_edited && {
+    echo "   a finding on an untouched function still blocks"; return 1
+  }
+  local out
+  out=$(printf 'MyClass.the_one_i_edited: Score 9 - mine\n' | python3 "$SCOPE" the_one_i_edited) \
+    || { echo "   a qualified name did not match its own leaf"; return 1; }
+  [[ "$out" == *"Score 9"* ]] || { echo "   qualified-name finding lost: $out"; return 1; }
+}
+
+# --- Test: touched_functions attributes a change to the function that holds it ---
+test_touched_functions_maps_lines_to_functions() {
+  local tmp
+  tmp=$(mktemp -d)
+  (
+    cd "$tmp" || exit 1
+    git init -q . && git config user.email t@example.com && git config user.name t
+    printf 'def alpha():\n    return 1\n\n\ndef beta():\n    return 2\n' > m.py
+    git add m.py && git commit -qm base
+    printf 'def alpha():\n    return 1\n\n\ndef beta():\n    return 22\n' > m.py
+    git add m.py
+    python3 "$TOUCHED" --staged m.py
+  ) > "$tmp/out" 2>/dev/null
+  local out
+  out=$(cat "$tmp/out")
+  rm -rf "$tmp"
+  [[ "$out" == *"beta"* ]] || { echo "   the edited function was not reported: $out"; return 1; }
+  [[ "$out" != *"alpha"* ]] || { echo "   an untouched function was reported: $out"; return 1; }
+}
+
+# --- Test: the breaking-change check needs a marker, not the word "breaking" ---
+test_breaking_change_needs_marker() {
+  grep -q 'grep -q "\^BREAKING_CHANGE_DETECTED:"' "$GATE" \
+    || { echo "   check 4 does not key off a machine marker"; return 1; }
+  ! grep -q 'grep -qi "breaking\\|CRITICAL\\|HIGH"' "$GATE" \
+    || { echo "   the old pattern remains and matches \"No breaking changes found\""; return 1; }
+}
+
+# --- Test: findings that set exit 1 are not labelled non-blocking ---
+test_blocking_findings_are_labelled_blocking() {
+  grep -q 'echo "FINDINGS (blocking)"' "$GATE" \
+    || { echo "   the failing summary does not say it blocks"; return 1; }
+  ! grep -q 'WARNINGS (non-blocking)' "$GATE" \
+    || { echo "   the gate still calls its blocking findings non-blocking"; return 1; }
 }
 
 # --- Test: the helper reports an unusable endpoint as no-backend, not as a reply ---
@@ -99,6 +158,10 @@ run_test "file counts rely on grep's own output" test_file_counts_use_grep_exit_
 run_test "complexity threshold allows a score of 8" test_complexity_threshold_allows_8
 run_test "helper exits 3 when the endpoint is unusable" test_helper_signals_no_backend
 run_test "skipped pyscn is not summarised as OK" test_pyscn_skip_not_reported_as_ok
+run_test "findings are scoped to the functions the diff touched" test_findings_scoped_to_touched_functions
+run_test "touched_functions maps changed lines to their function" test_touched_functions_maps_lines_to_functions
+run_test "breaking-change check needs a marker" test_breaking_change_needs_marker
+run_test "blocking findings are labelled blocking" test_blocking_findings_are_labelled_blocking
 
 echo ""
 echo "passed: $PASS, failed: $FAIL"
