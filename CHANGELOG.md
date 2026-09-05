@@ -4,6 +4,13 @@
 
 All notable changes to the MCP Memory Service project will be documented in this file.
 
+> **A note on issue and PR numbers.** This project was hosted on Codeberg from June to
+> September 2026. Entries from that period cite Codeberg numbers, and GitHub will
+> auto-link a bare `#123` to its own issue of that number, which is a different thing.
+> Roughly: numbers under #341 in v10.71.0 through v11.10.0 entries are Codeberg. The
+> originals stay readable at https://codeberg.org/doobidoo/mcp-memory-service. Older
+> entries predate the move and their numbers are GitHub numbers again.
+
 **Versions v10.36.3 and earlier** – See [docs/archive/CHANGELOG-HISTORIC.md](./docs/archive/CHANGELOG-HISTORIC.md).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).

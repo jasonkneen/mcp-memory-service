@@ -6,14 +6,17 @@ This project provides semantic memory and persistent storage for AI assistants t
 
 ## Where development happens
 
-All development happens on **Codeberg**: https://codeberg.org/doobidoo/mcp-memory-service
+All development happens on **GitHub**: https://github.com/doobidoo/mcp-memory-service
 
 That is where issues, pull requests, CI, and releases live. Open your issue or PR there.
 
-The GitHub repository at https://github.com/doobidoo/mcp-memory-service is a synced
-mirror. It exists for discoverability and as a fallback; issues and pull requests
-opened there are not reviewed or merged, and will be redirected here. The one
-exception is security reports - see [Handling a security vulnerability](#handling-a-security-vulnerability).
+From June to September 2026 the project was hosted on Codeberg. That repository at
+https://codeberg.org/doobidoo/mcp-memory-service stays readable so older links, issue
+numbers, and pull request references still resolve, but it is an archive: it receives
+no further pushes and runs no CI.
+
+Vulnerabilities are the one thing that does not belong in a public issue - see
+[Handling a security vulnerability](#handling-a-security-vulnerability).
 
 ## Table of Contents
 
@@ -291,7 +294,7 @@ When adding features or making significant changes:
 4. Update AGENTS.md or CLAUDE.md if development workflow changes
 
 **Advanced Workflow Automation**:
-- See [Context Provider Workflow Automation](https://codeberg.org/doobidoo/mcp-memory-service/wiki/Context-Provider-Workflow-Automation) for automating development workflows with intelligent patterns
+- See [Context Provider Workflow Automation](https://github.com/doobidoo/mcp-memory-service/wiki/Context-Provider-Workflow-Automation) for automating development workflows with intelligent patterns
 
 ### API Documentation
 
@@ -366,12 +369,12 @@ The following areas require extra care. PRs touching them receive additional scr
 
 ### Handling a security vulnerability
 
-Do **not** open a public issue. Report it through GitHub's private [Security Advisories](https://github.com/doobidoo/mcp-memory-service/security/advisories/new) on the mirror.
+Do **not** open a public issue. Report it through GitHub's private [Security Advisories](https://github.com/doobidoo/mcp-memory-service/security/advisories/new).
 
-That is deliberately the one thing that does not happen on Codeberg: Forgejo has no
-confidential-issue or security-advisory feature, so a Codeberg issue is always public.
-Private vulnerability reporting on the GitHub mirror is the project's only
-confidential channel. See [SECURITY.md](SECURITY.md) for what to include.
+Issues and pull requests are public from the moment you open them, which is fine for
+everything except an unfixed vulnerability. Security Advisories are the confidential
+channel for that: the report stays private until a fix ships, and you are credited in
+the advisory. See [SECURITY.md](SECURITY.md) for what to include.
 
 ## Autonomous Agents & AI-Generated PRs
 
@@ -449,15 +452,15 @@ For feature requests, describe:
 
 ### Getting Help
 
-- **Documentation**: Check the [Wiki](https://codeberg.org/doobidoo/mcp-memory-service/wiki) first
-- **Issues**: Search existing [issues](https://codeberg.org/doobidoo/mcp-memory-service/issues?state=all) before creating new ones
-- **Questions**: Open an [issue on Codeberg](https://codeberg.org/doobidoo/mcp-memory-service/issues) - there is no separate discussions forum
+- **Documentation**: Check the [Wiki](https://github.com/doobidoo/mcp-memory-service/wiki) first
+- **Issues**: Search existing [issues](https://github.com/doobidoo/mcp-memory-service/issues?q=is%3Aissue) before creating new ones
+- **Questions**: [Discussions](https://github.com/doobidoo/mcp-memory-service/discussions) for open-ended questions, [issues](https://github.com/doobidoo/mcp-memory-service/issues) for anything with a reproduction
 - **Response Time**: Maintainers typically respond within 2-3 days
 
 ### Communication Channels
 
-- **Codeberg Issues**: Bug reports, feature requests, and general questions
-- **Codeberg Pull Requests**: Code contributions and reviews
+- **GitHub Issues**: Bug reports, feature requests, and general questions
+- **GitHub Pull Requests**: Code contributions and reviews
 - **GitHub Security Advisories**: Confidential vulnerability reports only
 
 ### For AI Agents
@@ -465,7 +468,7 @@ For feature requests, describe:
 If you're an AI coding assistant, also check:
 - [AGENTS.md](AGENTS.md) - Generic AI agent instructions
 - [CLAUDE.md](CLAUDE.md) - Claude-specific guidelines
-- [Context Provider Workflow Automation](https://codeberg.org/doobidoo/mcp-memory-service/wiki/Context-Provider-Workflow-Automation) - Automate development workflows with intelligent patterns
+- [Context Provider Workflow Automation](https://github.com/doobidoo/mcp-memory-service/wiki/Context-Provider-Workflow-Automation) - Automate development workflows with intelligent patterns
 
 ## Recognition
 
@@ -489,4 +492,4 @@ We value all contributions! Contributors are:
 
 Thank you for contributing to MCP Memory Service! Your efforts help make AI assistants more capable and useful for everyone. 🚀
 
-If you have questions not covered here, please open an [issue on Codeberg](https://codeberg.org/doobidoo/mcp-memory-service/issues) or check our [Wiki](https://codeberg.org/doobidoo/mcp-memory-service/wiki).
+If you have questions not covered here, please open an [issue on GitHub](https://github.com/doobidoo/mcp-memory-service/issues) or check our [Wiki](https://github.com/doobidoo/mcp-memory-service/wiki).

@@ -27,7 +27,7 @@ feature-branches → main (development)
    git tag -a vX.Y.Z -m "<summary>" <merge-sha>
    git push origin refs/tags/vX.Y.Z     # explicit refspec, never --tags
    ```
-   The **push** is what triggers `.forgejo/workflows/release.yml` (PyPI main + lite,
+   The **push** is what triggers `.github/workflows/release.yml` (PyPI main + lite,
    Docker Hub). Never create the tag through the forge API or the web UI — see the
    rule below.
 6. **Verify the artifacts**, not just the run (see below)
@@ -41,7 +41,7 @@ the release API, or by filling in the tag field on the release form — is **not
 event**, so nothing fires and the release publishes nothing at all.
 
 This is not hypothetical. **v11.8.1 was tagged that way on 2026-08-22 and never
-published.** Paging back through 300 Forgejo action tasks shows the full
+published.** Paging back through the workflow run history shows the full
 Test → PyPI → Docker chain for v11.8.0 and v11.7.0 and no run whatsoever for v11.8.1.
 PyPI stayed on 11.8.0 and `docker 11.8.1` returned 404 for a full day, with eight
 fixes in it. It hid because a release object with notes looks exactly like a finished
@@ -117,7 +117,7 @@ git log <last-tag>..HEAD --oneline
 tag `archive/github-workflows-pre-codeberg`.
 
 PR creation, review-comment retrieval, squash-merge, and the release object all run
-against the forge REST API (`https://codeberg.org/api/v1`, token from `.env`). The
+against the GitHub REST API via `gh`. The
 release automation carries the concrete calls; there is no `gh`-based path for the
 release itself.
 

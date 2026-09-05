@@ -119,7 +119,7 @@ fi
 # pytest inside $(...) aborts this script immediately, so the TEST_EXIT_CODE
 # handling below never ran and a failing suite looked like the gate itself
 # crashing with no message.
-# The selection mirrors .forgejo/workflows/ci.yml so that a green gate here
+# The selection mirrors .github/workflows/ci.yml so that a green gate here
 # means the same thing CI will say. Benchmarks, consolidation and integration
 # are excluded there (heavy, network, or services the runner lacks); running
 # them here made the gate fail locally on tests CI never executes.
@@ -148,7 +148,7 @@ fi
 
 # Coverage threshold check.
 #
-# Advisory, not blocking — same stance as .forgejo/workflows/ci.yml, which runs
+# Advisory, not blocking — same stance as .github/workflows/ci.yml, which runs
 # coverage without --cov-fail-under and says so: "coverage is report-only for
 # now, re-introduce a gate once the deterministic-subset baseline is known and
 # stable". The deterministic subset currently sits near 60%, so a hard 80% here
@@ -285,7 +285,7 @@ fi
 
 # Check 6.8: Dead references in active docs
 # scripts/ci/check_dead_refs.sh existed since #702 but was invoked by nothing —
-# no Forgejo workflow, no hook, not this gate — while CLAUDE.md told contributors
+# no CI workflow, no hook, not this gate — while CLAUDE.md told contributors
 # it ran in CI on docs changes. Running it here is the cheap half of the fix
 # (0.5s, whole-tree scan of docs/ and README.md); the CI trigger is issue #312.
 echo -e "\n${YELLOW}[6.8/9]${NC} Checking active docs for dead references..."
@@ -347,7 +347,7 @@ if [ $FAILED_CHECKS -eq 0 ]; then
     echo ""
     echo -e "Next steps:"
     echo -e "  1. Run code-quality-guard agent for final review"
-    echo -e "  2. Create PR: ${BLUE}tea pr create --title '<title>' --description '<body>'${NC}"
+    echo -e "  2. Create PR: ${BLUE}gh pr create --title '<title>' --body '<body>'${NC}"
     echo ""
     exit 0
 else

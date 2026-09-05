@@ -87,7 +87,7 @@ test_gate_maps_exit_3_to_skip() {
 
 # --- Test: local test selection matches CI so a green gate means what CI says ---
 test_selection_matches_ci() {
-  local ci="$REPO_ROOT/.forgejo/workflows/ci.yml"
+  local ci="$REPO_ROOT/.github/workflows/ci.yml"
   [ -f "$ci" ] || { echo "   ci.yml not found"; return 1; }
   local ignore
   for ignore in tests/consolidation tests/benchmarks tests/integration; do
