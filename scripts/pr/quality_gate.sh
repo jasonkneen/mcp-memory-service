@@ -101,10 +101,12 @@ critical_issues=()
 
 # Get changed files
 echo "Fetching changed files..."
+pr_head_branch=""
 if [ "$MODE" = "staged" ]; then
     all_changed=$(git diff --cached --name-only --diff-filter=ACMR)
 else
     all_changed=$(gh pr diff $PR_NUMBER --name-only)
+    pr_head_branch=$(gh pr view $PR_NUMBER --json headRefName --jq '.headRefName')
 fi
 changed_files=$(echo "$all_changed" | grep '\.py$' || echo "")
 
@@ -132,18 +134,33 @@ while IFS= read -r file; do
         continue
     fi
 
+    # Which functions does this change actually touch? The model scores the whole
+    # file, so without this every change to a file that already holds a complex
+    # function failed the gate -- proximity, not the change (#1118).
+    if [ "$MODE" = "staged" ]; then
+        touched=$(python3 "$SCRIPT_DIR/lib/touched_functions.py" --staged "$file")
+    else
+        touched=$(python3 "$SCRIPT_DIR/lib/touched_functions.py" --range "origin/main...origin/$pr_head_branch" "$file")
+    fi
+
+    if [ -z "$touched" ]; then
+        echo "Skipping $file (no function bodies touched)"
+        continue
+    fi
+
     echo "Analyzing: $file"
     result=$(analyze "Analyze code complexity. Rate each function 1-10 (1=simple, 10=very complex). Report ONLY functions with score >7 in format 'FunctionName: Score X - Reason'. File content:
 
 $(cat "$file")")
 
     # The documented budget is grade A-B, complexity <= 8, so 8 is acceptable and
-    # only 9 and 10 are findings. The old pattern also matched 8 and would have
-    # flagged code that meets the standard.
-    if echo "$result" | grep -qi "score 9\|score 10"; then
-        warnings+=("High complexity in $file: $result")
+    # only 9 and 10 are findings. Findings on functions this diff did not touch
+    # are dropped: they are the file's pre-existing state, and the author of an
+    # unrelated change is not the person to refactor them.
+    scoped=$(printf '%s' "$result" | python3 "$SCRIPT_DIR/lib/scope_findings.py" $touched) && {
+        warnings+=("High complexity in $file: $scoped")
         exit_code=1
-    fi
+    }
 done < <(echo "$changed_files")
 echo ""
 
@@ -205,19 +222,29 @@ api_paths=(src/mcp_memory_service/tools src/mcp_memory_service/web/api)
 if [ "$MODE" = "staged" ]; then
     api_changes=$(git diff --cached -- "${api_paths[@]}" 2>/dev/null || echo "")
 else
-    head_branch=$(gh pr view $PR_NUMBER --json headRefName --jq '.headRefName')
-    api_changes=$(git diff origin/main...origin/$head_branch -- "${api_paths[@]}" 2>/dev/null || echo "")
+    api_changes=$(git diff "origin/main...origin/$pr_head_branch" -- "${api_paths[@]}" 2>/dev/null || echo "")
 fi
 
 if [ ! -z "$api_changes" ]; then
     echo "Analyzing API changes..."
     # Truncate to 200 lines to bound the prompt. Large diffs still lose context,
     # which is an accepted trade-off here.
-    breaking_result=$(analyze "Analyze for breaking changes. Breaking changes include: removed functions/endpoints, changed signatures (parameters removed/reordered), changed return types, renamed public APIs, changed HTTP paths/methods. Report ONLY if breaking changes found with severity (CRITICAL/HIGH/MEDIUM). Changes:
+    # The marker is required for the same reason the security check has one: the
+    # old pattern grepped for the word "breaking", which matches the model's own
+    # "No breaking changes found." Every API change reported a finding whose text
+    # said there was none.
+    breaking_result=$(analyze "Analyze for breaking changes. Breaking changes include: removed functions/endpoints, changed signatures (parameters removed/reordered), changed return types, renamed public APIs, changed HTTP paths/methods.
+
+IMPORTANT: Output format:
+- If ANY breaking change is found, start the response with: BREAKING_CHANGE_DETECTED: [severity CRITICAL/HIGH/MEDIUM]
+- If there are none, start the response with: NO_BREAKING_CHANGES
+- Then provide details
+
+Changes:
 
 $(echo "$api_changes" | head -200)")
 
-    if echo "$breaking_result" | grep -qi "breaking\|CRITICAL\|HIGH"; then
+    if echo "$breaking_result" | grep -q "^BREAKING_CHANGE_DETECTED:"; then
         warnings+=("Potential breaking changes detected: $breaking_result")
         if [ $exit_code -eq 0 ]; then
             exit_code=1
@@ -317,7 +344,10 @@ Run \`bash scripts/security/scan_vulnerabilities.sh\` locally and fix all securi
     fi
 
 else
-    echo "WARNINGS (non-blocking)"
+    # These block: exit 1 is what pre_pr_check.sh reads to fail check 2. The
+    # heading used to say "non-blocking", so the gate contradicted itself in the
+    # same breath (#1118).
+    echo "FINDINGS (blocking)"
     echo ""
     for warning in "${warnings[@]}"; do
         echo "- $warning"
@@ -327,14 +357,13 @@ else
     if [ "$MODE" = "pr" ]; then
         warnings_md=$(printf '%s\n' "${warnings[@]}" | sed 's/^/- /')
 
-        gh pr comment $PR_NUMBER --body "**Quality Gate WARNINGS**
+        gh pr comment $PR_NUMBER --body "**Quality Gate FAILED**
 
-Some checks require attention (non-blocking):
+These findings block the gate:
 
 $warnings_md
 
-**Recommendation:**
-Consider addressing these issues before requesting review to improve code quality."
+Each names a function this change touched. Findings on untouched functions in the same file are not reported."
     fi
 
 fi
