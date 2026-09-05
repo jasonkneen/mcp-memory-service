@@ -21,7 +21,7 @@ feature-branches → main (development)
 1. **Development**: All feature/fix branches merge to `main`
 2. **Release Preparation**: Create `release/vX.Y.Z` branch from `main`
 3. **Version Bump**: Update version files on release branch
-4. **PR & Merge**: Create PR, squash-merge it
+4. **PR & Merge**: Create PR, wait for CI, merge it
 5. **Tag**: Create the annotated tag locally and push it **with git**:
    ```bash
    git tag -a vX.Y.Z -m "<summary>" <merge-sha>
@@ -83,15 +83,15 @@ Always bumped together, in one commit:
 1. `src/mcp_memory_service/_version.py` (`__version__ = "X.Y.Z"`) — this is the canonical source
 2. `pyproject.toml` (line ~7: `version = "X.Y.Z"`)
 3. `README.md` (Latest Release section)
-4. `CLAUDE.md` (Current Version line)
-5. `CHANGELOG.md` (convert [Unreleased] to [X.Y.Z] with date)
-6. `uv lock` to update the dependency lock file
+4. `CHANGELOG.md` (convert [Unreleased] to [X.Y.Z] with date)
+5. `uv lock` to update the dependency lock file
 
-Of those six, **only `_version.py` and `pyproject.toml` are covered by a CI gate.**
-`CLAUDE.md` is the one that actually gets forgotten — v11.8.2 shipped without it, and
-nothing failed, so main announced the previous version until someone noticed by eye.
-Check it explicitly (`grep -n '^\*\*Current Version' CLAUDE.md`) rather than trusting a
-green gate.
+Of those five, **only `_version.py` and `pyproject.toml` are covered by a CI gate.**
+
+`CLAUDE.md` used to carry a "Current Version" line and was the one that actually got
+forgotten: v11.8.2 shipped without it, nothing failed, and main announced the previous
+version until someone noticed by eye. That line was removed on 2026-09-05 in favour of a
+pointer to CHANGELOG.md, which is the real fix. Do not reintroduce it.
 
 Conditional, and each one is enforced by a CI gate:
 
@@ -117,14 +117,14 @@ git log <last-tag>..HEAD --oneline
 tag `archive/github-workflows-pre-codeberg`.
 
 PR creation, review-comment retrieval, squash-merge, and the release object all run
-against the GitHub REST API via `gh`. The
-release automation carries the concrete calls; there is no `gh`-based path for the
-release itself.
+against the GitHub REST API via `gh`.
 
 ## Merge Discipline
 
-`main` carries no branch-protection rule, so nothing technically blocks a direct push —
-the discipline is convention, not enforcement:
+`main` carries a ruleset named `ProtectMain` that requires changes to arrive through a
+pull request. It required one approving review until 2026-09-05; that was dropped to
+zero, because the author cannot approve their own PR and a solo maintainer is always the
+author, so every PR needed an admin bypass. The PR requirement itself stays:
 
 - Never commit straight to `main`; branch first.
 - Merge through a PR, squash.
