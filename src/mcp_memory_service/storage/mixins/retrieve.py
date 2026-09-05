@@ -121,8 +121,11 @@ class RetrieveMixin:
                         SELECT rowid, distance
                         FROM memory_embeddings
                         WHERE content_embedding MATCH ? AND k = ?{store_condition}
+                          AND rowid IN (
+                              SELECT m.id FROM memories m
+                              WHERE m.deleted_at IS NULL{superseded_filter}{tag_conditions}{time_conditions}
+                          )
                     ) e ON m.id = e.rowid
-                    WHERE m.deleted_at IS NULL{superseded_filter}{tag_conditions}{time_conditions}
                     ORDER BY e.distance
                     LIMIT ?
                 '''
@@ -1016,7 +1019,12 @@ class RetrieveMixin:
                 try:
                     query_embedding = self._generate_embedding(query)
 
-                    base_query = '''
+                    # Filter eligible rows inside KNN so excluded neighbors do not consume k.
+                    memory_filter = "deleted_at IS NULL"
+                    if time_where:
+                        memory_filter += f" AND {time_where}"
+
+                    base_query = f'''
                         SELECT m.content_hash, m.content, m.tags, m.memory_type, m.metadata,
                                m.created_at, m.updated_at, m.created_at_iso, m.updated_at_iso,
                                e.distance
@@ -1025,13 +1033,9 @@ class RetrieveMixin:
                             SELECT rowid, distance
                             FROM memory_embeddings
                             WHERE content_embedding MATCH ? AND k = ?
+                              AND rowid IN (SELECT id FROM memories WHERE {memory_filter})
                         ) e ON m.id = e.rowid
                     '''
-
-                    if time_where:
-                        base_query += f" WHERE m.deleted_at IS NULL AND {time_where}"
-                    else:
-                        base_query += " WHERE m.deleted_at IS NULL"
 
                     base_query += " ORDER BY e.distance"
 
