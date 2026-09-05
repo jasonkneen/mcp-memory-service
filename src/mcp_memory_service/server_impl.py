@@ -261,6 +261,14 @@ class MemoryServer:
         self.server = Server(SERVER_NAME)
         self.system_info = get_system_info()
 
+        # Whether this instance is reachable by a caller who does not already
+        # have filesystem access on the host. Defaults to False, which is the
+        # stdio case: the caller is a local process that could read those files
+        # anyway. Every remote transport must set this to True before serving,
+        # which is what makes `local_only_tools()` take effect. See
+        # `_reject_local_only()`.
+        self.remote_transport = False
+
         # Initialize query time tracking
         self.query_times = deque(maxlen=50)  # Keep last 50 query times for averaging
 
@@ -1521,12 +1529,22 @@ class MemoryServer:
         into a confused-deputy primitive that can read any file the
         server process can read.
 
-        The HTTP MCP shim filters these out of `tools/list` and rejects
-        `tools/call` for them (including their deprecated aliases). Stdio
-        keeps them since the caller already has the filesystem access the
-        handler would otherwise grant.
+        Enforced here, in `list_tools()` and `call_tool()`, so that every
+        transport inherits the filter rather than each one having to
+        remember it. Until 2026-09-05 only the HTTP MCP shim in
+        `web/api/mcp.py` applied it, which left the Streamable HTTP and SSE
+        transports serving these tools to remote callers
+        (GHSA-7crr-2r7w-cpfm). The shim keeps its own checks: it answers
+        JSON-RPC directly and also has to cover the deprecated aliases.
+
+        Stdio keeps these tools, since the caller already has the
+        filesystem access the handler would otherwise grant.
         """
         return frozenset({"memory_harvest", "memory_ingest"})
+
+    def _reject_local_only(self, name: str) -> bool:
+        """True when `name` must not be served to the current caller."""
+        return self.remote_transport and name in self.local_only_tools()
 
     async def list_tools(self) -> List[types.Tool]:
         """Return the canonical MCP tool list from declarative registry."""
@@ -1536,6 +1554,8 @@ class MemoryServer:
 
             tools = []
             for tool_def in TOOL_REGISTRY:
+                if self._reject_local_only(tool_def.name):
+                    continue
                 annotations = None
                 if tool_def.annotations:
                     annotations = types.ToolAnnotations(**tool_def.annotations)
@@ -1559,6 +1579,17 @@ class MemoryServer:
         logger.info("=== HANDLING TOOL CALL: %s ===", _sanitize_log_value(name))
         if arguments is None:
             arguments = {}
+
+        # Refuse before the handler resolves, so a remote caller cannot reach a
+        # filesystem tool by naming it directly even though tools/list hid it.
+        if self._reject_local_only(name):
+            logger.warning(
+                "Refused local-only tool over a remote transport: %s",
+                _sanitize_log_value(name),
+            )
+            return [types.TextContent(type="text", text=json.dumps(
+                {"error": f"Tool not available over this transport: {name}"}
+            ))]
 
         # Resolve handler from routing table
         from mcp_memory_service.tools.routing import resolve_handler
