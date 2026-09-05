@@ -497,19 +497,22 @@ MCP Memory Service is **fully compatible** with the [SHODH Unified Memory API Sp
 
 ---
 
-## Latest Release: **v11.10.0** (August 28, 2026)
+## Latest Release: **v11.11.0** (September 5, 2026)
 
-**MINOR: clustering now fails loudly instead of silently degrading when scikit-learn is missing, plus a consolidation time-horizon fix and three hook fixes (two from external contributor timkjr, one from alivirgo)**
+**MINOR: three critical advisories closed (remote transports served filesystem tools, SSE had no authentication, open DCR handed out read-write tokens), and development moved back to GitHub**
 
 **What's New:**
-- **fix(consolidation): make the configured clustering algorithm the one that runs** (#329). `MCP_CLUSTERING_ALGORITHM` defaulted to `dbscan`, but scikit-learn was declared in no extra, so clustering silently ran the `simple` fallback behind one WARNING line. New `[clustering]` extra, default changed to `auto`; naming `dbscan`/`hierarchical` explicitly without scikit-learn installed now raises `ConsolidationError` instead of degrading silently. Closes #326. **Upgrade note:** if you set `MCP_CLUSTERING_ALGORITHM=dbscan`/`hierarchical` without scikit-learn installed, consolidation now errors — install with `pip install 'mcp-memory-service[clustering]'` or set `MCP_CLUSTERING_ALGORITHM=auto`.
-- **fix(consolidation): make every time horizon mean the window it documents** (#325). Four of the five `memory_consolidate` horizons didn't match their documented window — daily reached 2 days, weekly/monthly applied no age filter at all, quarterly/yearly kept memories OLDER than their window. Closes #324. Known follow-up: no horizon reaches past 365 days any more (#327, not fixed here).
-- **fix(harvest): stop hardcoded 30s/60s wrapper timeouts overriding `HARVEST_LLM_TIMEOUT`** (#321, external contributor timkjr).
-- **fix(hooks): settings.json merge in `configure_claude_settings`** (#323, external contributor timkjr) — a plugin reinstall could wipe a user's own `PreToolUse` hooks.
-- **fix(hooks): pair the last assistant turn with the prompt that preceded it** (#330, authored by alivirgo) — ports a Stop-hook fix from the GitHub mirror, which takes no PRs directly.
-- **claude-hooks: plugin manifest bumped to 1.0.4** so the two hook fixes above reach already-installed users.
+- **fix(security): filesystem tools were reachable over remote transports** (GHSA-7crr-2r7w-cpfm). `memory_harvest` and `memory_ingest` take a caller-controlled path, and the `local_only_tools()` filter ran in only one of three transports. It now lives in `MemoryServer.list_tools()` and `call_tool()`, so every transport inherits it.
+- **fix(security): the SSE transport had no authentication** (GHSA-2hh8-qjxc-43x3). `/sse` and `/messages/` both reach the full tool surface and neither was gated. The check was a closure inside another transport's function and simply not reachable from SSE.
+- **fix(security): open DCR handed out read-write tokens** (GHSA-6mvm-q4j3-27qg). A caller could register itself as a confidential client and exchange its own credentials for a `read write` token without the owner being consulted.
+- **Development moved back to GitHub.** Issues, PRs, CI, releases and the wiki are here again; the Forgejo workflows were ported to GitHub Actions. Codeberg stays readable as an archive so old links resolve.
+
+**Upgrade notes** — two deliberate behaviour changes, both fail loudly rather than degrading quietly:
+- `client_credentials` is refused while Dynamic Client Registration is open. Set `MCP_DCR_REGISTRATION_KEY` and register with it, or use `authorization_code` with PKCE (the flow Claude.ai Remote MCP uses, unaffected).
+- An MCP transport refuses to start on a non-loopback bind with no authentication configured. Set `MCP_API_KEY`, enable OAuth, or bind to `127.0.0.1`.
 
 **Previous Releases** (v11 series — full history for all earlier versions in [CHANGELOG.md](CHANGELOG.md)):
+- **v11.10.0** - MINOR: clustering fails loudly instead of silently degrading without scikit-learn, a consolidation time-horizon fix, three hook fixes (#329, #325, #321, #323, #330) (August 28, 2026)
 - **v11.9.0** - MINOR: transformers 5.x closes two high-severity advisories with no 4.x fix, plus a quality-system bug the new ml-extras CI job caught on day one (#305, #316, #307, #303) (August 27, 2026)
 - **v11.8.5** - PATCH: two Docker fixes reproduced against the published images, plus a timezone-boundary bug in timeframe deletion, external contributor (#295, #297, #237, #298) (August 25, 2026)
 - **v11.8.4** - PATCH: hybrid deployment was burning through Cloudflare's D1 free-tier read allowance, plus three smaller correctness fixes (#289, #290, #287) (August 25, 2026)

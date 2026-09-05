@@ -17,6 +17,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+## [11.11.0] - 2026-09-05
+
+MINOR release. Closes three critical advisories reported by alivirgo, and moves development back to GitHub.
+
+The three advisories share a shape worth naming: in each case the guard existed and was simply not reachable from where it was needed. `local_only_tools()` was applied by one transport out of three. The SSE auth check was a closure inside another transport's function. The `client_credentials` hardening from GHSA-5p27-64mv-pr73 checked how a client authenticates but not how it came to exist. Each fix moves the guard to where every caller passes, rather than adding a second copy.
+
+### Security
+
+- **`memory_harvest` and `memory_ingest` were reachable over remote transports** (GHSA-7crr-2r7w-cpfm). Both take a caller-controlled filesystem path. The `local_only_tools()` filter ran only in the FastAPI JSON-RPC shim, so Streamable HTTP and SSE served them to remote callers. The filter now lives in `MemoryServer.list_tools()` and `call_tool()`, which every transport goes through. `call_tool()` refuses before the handler resolves, since hiding a tool from `tools/list` does nothing about a caller that names it directly.
+- **The SSE transport had no authentication at all** (GHSA-2hh8-qjxc-43x3). `/sse` and `/messages/` both reach the full MCP tool surface and neither was gated. The check now lives at module level and both transports call it.
+- **Open Dynamic Client Registration handed out read-write tokens** (GHSA-6mvm-q4j3-27qg). With `MCP_DCR_REGISTRATION_KEY` unset, a caller could register itself as a confidential client, exchange its own credentials, and hold a `read write` token the owner never granted.
+
+### Behaviour changes
+
+Both are deliberate, and both fail loudly rather than degrading quietly.
+
+- **`client_credentials` is refused while Dynamic Client Registration is open.** If you use that grant, set `MCP_DCR_REGISTRATION_KEY` and register with it. `authorization_code` with PKCE is unaffected, which is the flow Claude.ai Remote MCP uses.
+- **An MCP transport refuses to start on a non-loopback bind with no authentication configured.** Set `MCP_API_KEY`, enable OAuth with `MCP_OAUTH_ENABLED=true`, or bind to `127.0.0.1`. This covers Streamable HTTP as well as SSE: its `/mcp` gate is conditional on `OAUTH_ENABLED or API_KEY`, so with neither set it was equally open.
+
+### Infrastructure
+
+- **Development moved back to GitHub.** Issues, pull requests, CI, releases and the wiki are at github.com/doobidoo/mcp-memory-service. The four Forgejo workflows were ported to GitHub Actions and `.forgejo/` removed. Codeberg remains readable as an archive so existing links resolve.
+- Issue and PR numbers below #341 in entries from June to September 2026 are Codeberg numbers. See the note at the top of this file.
+- `claude-hooks` plugin manifest bumped to 1.0.5: its marketplace homepage pointed at the old forge.
+
+
 ## [11.10.0] - 2026-08-28
 
 Special thanks to timkjr for two of the fixes below (#321, #323) and to alivirgo for porting a Stop-hook fix over from the GitHub mirror (#330), which cannot take pull requests directly.
