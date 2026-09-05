@@ -62,7 +62,8 @@ class TestPatternExtractor:
         assert len(candidates) == 0
 
     def test_meta_discussion_without_convention_is_filtered(self, extractor):
-        """The meta-discussion filter's escape hatch is convention-only (#322):
+        """The meta-discussion filter's escape hatch is convention-only
+        (Codeberg PR #322):
         a bug/decision/learning candidate about the harvest system itself
         must still be discarded, even though it matches a real pattern."""
         msg = ParsedMessage(

@@ -17,12 +17,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+Thanks to eunwoo song for the retrieval fix below (#1128) and to timkjr for the two consolidation fixes (#1087, #1088), both carried over from pull requests opened on Codeberg before the move.
+
 ### Fixed
 
-- Apply memory eligibility filters before SQLite-vec nearest-neighbor limits in
-  `recall()` and `retrieve()`. Deleted, out-of-window, and filtered metadata rows
-  no longer crowd out valid semantic matches, including beyond the previous
-  candidate-pool cap ([#1077](https://github.com/doobidoo/mcp-memory-service/issues/1077)).
+- **fix(storage): apply eligibility filters before the nearest-neighbour limit (#1128, eunwoo song, closes #1077).** `recall()` and `retrieve()` asked sqlite-vec for the k nearest embeddings first and filtered afterwards, so soft-deleted rows, rows outside the requested time window, and rows excluded by tag or supersession consumed the candidate budget before a valid match could be seen. With enough excluded neighbours the result set came back short or empty even though matching memories existed. Both queries now restrict the KNN scan to eligible rowids, so k counts only memories that can actually be returned. The tests run against real sqlite-vec with 4,100 excluded neighbours crowding five valid ones, which is what distinguishes a fix here from a fix that merely reorders the same failure.
+- **fix(consolidation): map recommendation values onto the API's public contract (#1087, timkjr).** `/api/consolidation/recommendations/{time_horizon}` sanitized its output against an allowlist of uppercase values, but `DreamInspiredConsolidator.get_consolidation_recommendations()` has always returned lowercase snake_case ones (`consolidation_beneficial`, `optional`, `no_action`, `error`). Nothing ever matched, so every call returned `"recommendation": "UNKNOWN"` regardless of the consolidator's actual assessment. The values are now mapped explicitly, with the CWE-209 fallback kept for anything unrecognised. Traces back to Codeberg #328, ported here from Codeberg PR #339.
+- **fix(consolidation): derive DBSCAN's eps from the data's own k-distance curve (#1088, timkjr).** `eps` was computed from dataset size alone (`0.5 - n/10000`, clamped), which bakes in an assumption about how far apart an embedding model puts unrelated text. all-MiniLM-L6-v2 keeps unrelated content at a narrow, elevated baseline similarity, so density-reachability chained memories into one giant cluster — observed at 989 of 1,104 memories in a single cluster with coherence 0.461. `eps` now comes from the knee of the sorted k-distance curve (Ester et al., 1996), computed with `NearestNeighbors` rather than a full n×n distance matrix. Ported from Codeberg PR #340.
+
+### Internal
+
+No user-visible effect; recorded because they change how the repository is maintained.
+
+- **A harvest regression test that was missing (#1089, timkjr).** The meta-discussion filter's escape hatch is convention-only, and nothing pinned that. Two tests now do. Behaviour is unchanged: the widening originally proposed in Codeberg PR #322 was reverted before the merge.
+- **Dependabot no longer widens load-bearing version bounds (#1130).** A grouped bump rewrites the constraint in `pyproject.toml` rather than respecting it, and #1086 used that to lift `mcp` to `<3.0.0` and `pymilvus` to `<4.0.0`. mcp 2.x removes `mcp.shared.session`, which broke test collection outright; pymilvus 3.x has no CI coverage here at all (#1112), so it would have gone in silent. Major updates for both are now ignored. The `github-actions` ecosystem gained a group as well, because `codeql-action`'s `init` and `analyze` steps must move in the same commit — split across #1080 and #1081 they deadlocked, with analyze refusing to run against a config written by a different version. Both are now on v4.37.9 (#1129).
 
 ## [11.11.0] - 2026-09-05
 
