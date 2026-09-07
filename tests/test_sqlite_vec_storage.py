@@ -20,11 +20,11 @@ try:
 except ImportError:
     SQLITE_VEC_AVAILABLE = False
 
-from src.mcp_memory_service.models.memory import Memory, MemoryQueryResult
-from src.mcp_memory_service.utils.hashing import generate_content_hash
+from mcp_memory_service.models.memory import Memory, MemoryQueryResult
+from mcp_memory_service.utils.hashing import generate_content_hash
 
 if SQLITE_VEC_AVAILABLE:
-    from src.mcp_memory_service.storage.sqlite_vec import SqliteVecMemoryStorage
+    from mcp_memory_service.storage.sqlite_vec import SqliteVecMemoryStorage
 
 # Skip all tests if sqlite-vec is not available
 pytestmark = pytest.mark.skipif(not SQLITE_VEC_AVAILABLE, reason="sqlite-vec not available")
@@ -1672,12 +1672,9 @@ class TestSqliteVecStorageWithoutEmbeddings:
 
         try:
             with patch('mcp_memory_service.storage.mixins.embeddings._MODEL_CACHE', {}), \
-                 patch('src.mcp_memory_service.storage.mixins.embeddings._MODEL_CACHE', {}), \
                  patch('mcp_memory_service.storage.sqlite_vec.SENTENCE_TRANSFORMERS_AVAILABLE', False), \
                  patch('mcp_memory_service.storage.mixins.embeddings.SENTENCE_TRANSFORMERS_AVAILABLE', False), \
                  patch('mcp_memory_service.storage.mixins.embeddings.SentenceTransformer', None), \
-                 patch('src.mcp_memory_service.storage.mixins.embeddings.SENTENCE_TRANSFORMERS_AVAILABLE', False), \
-                 patch('src.mcp_memory_service.storage.mixins.embeddings.SentenceTransformer', None), \
                  patch.dict(os.environ, {'MCP_MEMORY_USE_ONNX': '0'}):
                 storage = SqliteVecMemoryStorage(db_path)
                 await storage.initialize()
@@ -1699,12 +1696,9 @@ class TestSqliteVecStorageWithoutEmbeddings:
         
         try:
             with patch('mcp_memory_service.storage.mixins.embeddings._MODEL_CACHE', {}), \
-                 patch('src.mcp_memory_service.storage.mixins.embeddings._MODEL_CACHE', {}), \
                  patch('mcp_memory_service.storage.sqlite_vec.SENTENCE_TRANSFORMERS_AVAILABLE', False), \
                  patch('mcp_memory_service.storage.mixins.embeddings.SENTENCE_TRANSFORMERS_AVAILABLE', False), \
                  patch('mcp_memory_service.storage.mixins.embeddings.SentenceTransformer', None), \
-                 patch('src.mcp_memory_service.storage.mixins.embeddings.SENTENCE_TRANSFORMERS_AVAILABLE', False), \
-                 patch('src.mcp_memory_service.storage.mixins.embeddings.SentenceTransformer', None), \
                  patch.dict(os.environ, {'MCP_MEMORY_USE_ONNX': '0'}):
                 storage = SqliteVecMemoryStorage(db_path)
                 await storage.initialize()
