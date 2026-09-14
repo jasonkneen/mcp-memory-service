@@ -1,3 +1,15 @@
+> ## This repository has moved to GitHub
+>
+> Active development, issues, pull requests, CI and releases are at
+> **https://github.com/doobidoo/mcp-memory-service** as of 5 September 2026.
+>
+> This copy stays here, readable and unchanged, so that existing links, issue
+> numbers and pull request references keep resolving. It receives no further
+> pushes and its CI no longer runs. Please do not open issues or pull requests
+> here, they will not be seen.
+>
+> The wiki moved too: https://github.com/doobidoo/mcp-memory-service/wiki
+
 # mcp-memory-service
 
 ## Persistent Shared Memory for AI Agent Pipelines
