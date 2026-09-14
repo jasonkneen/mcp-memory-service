@@ -25,14 +25,9 @@ Thanks to eunwoo song for the retrieval fix below (#1128) and to timkjr for the 
 
 ### Fixed
 
-- **`memory launch` now matches the supervised HTTP launcher (#1116).** HTTPS
-  launches without explicit certificate paths reuse the packaged self-signed
-  certificate generator, including configured additional IP and hostname SANs.
-  Certificate generation failures now stop both launch paths instead of letting
-  the legacy script downgrade an HTTPS configuration to HTTP.
-  The documented launchd template now runs `memory launch --foreground`, and the
-  service guide explains that a `KeepAlive` agent must be unloaded before
-  `memory stop` can remain stopped.
+- **Maintenance and Cloudflare scripts no longer write on a `--help` smoke test (#1226).** The Cloudflare integration test and ONNX embedding repair now parse arguments before loading storage code, print the backend and database target, and require confirmation unless `--yes` is passed. The SQLite-only repair refuses Cloudflare and other non-local backends; Cloudflare resource setup has the same target/confirmation guard and a bootstrap helper for deliberate setup runs.
+
+- **`memory launch` now matches the supervised HTTP launcher (#1116).** HTTPS launches without explicit certificate paths reuse the packaged self-signed certificate generator, including configured additional IP and hostname SANs. Certificate generation failures now stop both launch paths instead of letting the legacy script downgrade an HTTPS configuration to HTTP. The documented launchd template now runs `memory launch --foreground`, and the service guide explains that a `KeepAlive` agent must be unloaded before `memory stop` can remain stopped.
 
 - **HTTP dashboard and API support a stripped reverse-proxy path prefix (#1176).** `MCP_HTTP_ROOT_PATH` now configures the ASGI root path, OpenAPI server URL, auto-detected OAuth issuer, mounted static files, and browser-side REST/SSE links. A deployment exposed at `/memory/` can therefore serve the dashboard, documentation, static assets, OAuth form, and API calls through the same prefix while the proxy forwards stripped paths internally.
 
