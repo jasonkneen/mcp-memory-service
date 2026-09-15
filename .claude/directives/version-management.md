@@ -166,15 +166,20 @@ As of 2026-09-15 it carries two rules:
 
 - `pull_request` with `required_approving_review_count: 1`. This paragraph previously
   said the count had been dropped to zero on 2026-09-05; it never was. The author
-  cannot approve their own pull request — but Greptile can, and does: it posts an
-  approving review when it finds nothing, which satisfies the requirement and puts the
-  PR at `CLEAN`, mergeable without `--admin`. When it finds something it comments
-  instead of approving, and the PR stays `BLOCKED` until a human approves or an admin
-  bypasses. So the review gate is in practice "Greptile is happy, or someone looked",
-  and reaching for `--admin` is how a PR with unread findings gets merged. That is
-  exactly what happened to the five findings on the v11.12.0 release PRs. A
-  contributor PR that Greptile has commented on, like filhocf's #1243, sits at
-  `BLOCKED` for the same reason and wants a real review, not a bypass.
+  cannot approve their own pull request. Greptile sometimes supplies the approval:
+  #1249 (maintainer, no findings) was approved by the bot and went to `CLEAN`,
+  mergeable without `--admin`; #1246 and #1248 (maintainer, findings) got inline
+  comments and no approval; #1243 (contributor, no findings) got no review object at
+  all and stayed `BLOCKED` until it was approved by hand. Three observations, not a
+  rule — do not infer from `BLOCKED` what the reviewer did or did not say. Open the
+  comments and look:
+
+  ```bash
+  gh api repos/doobidoo/mcp-memory-service/pulls/<N>/comments
+  ```
+
+  `--admin` merges past whatever is there unread. That is how five valid findings
+  went in on the v11.12.0 PRs.
 - `required_status_checks` with `strict_required_status_checks_policy: true` and one
   required context, `Analyze Python Code`. Strict means a branch has to be up to date
   with `main` before it can merge. Added on 2026-09-15 after three regressions in one
@@ -206,9 +211,9 @@ The rest of the discipline:
   its findings arrive as inline review comments and are invisible to that status.
   `gh api repos/doobidoo/mcp-memory-service/pulls/<N>/comments` lists them. All five
   findings it left on the v11.12.0 release PRs were valid and were merged over,
-  including a stale `og:description` and a dropped `[Unreleased]` heading. A PR sitting
-  at `BLOCKED` while its checks are green is the signal: Greptile declined to approve,
-  which means it wrote something. Read that before reaching for `--admin`.
+  including a stale `og:description` and a dropped `[Unreleased]` heading. `BLOCKED`
+  on a green board is worth a look for the same reason, but it is not itself evidence
+  of anything — see the ruleset section above.
 - Keep an empty `## [Unreleased]` heading above the new version when cutting a release
   (see the version-bump procedure above). v11.11.0 and every release before it kept
   one; v11.12.0 dropped it, which Greptile caught and the merge ignored.
