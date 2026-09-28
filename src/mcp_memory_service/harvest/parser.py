@@ -24,13 +24,15 @@ class TranscriptParser:
     Format is detected from the first message in the file:
     - If "traceSchema" is "openclaw-trajectory" → OpenClaw gateway format
     - If "type" key exists → Claude Code format
-    - If "kind" key exists → Kiro CLI format
+    - If "kind" key exists → Kiro CLI format (legacy)
+    - If "payload" with "type" exists → Kiro CLI v4 format (payload-wrapped)
     - Unknown → warning logged, returns empty
     """
 
     RELEVANT_TYPES = {"user", "assistant"}
     KIRO_KIND_MAP = {"Prompt": "user", "Response": "assistant", "AssistantMessage": "assistant"}
     OPENCLAW_MESSAGE_TYPES = {"prompt.submitted", "model.completed"}
+    PAYLOAD_ROLE_MAP = {"user": "user", "assistant": "assistant"}
 
     # --- Phase 0 coverage instrument (#1287) -------------------------------
     # Counts, per block kind/type, how many were seen vs extracted vs dropped,
@@ -134,6 +136,8 @@ class TranscriptParser:
                         format_detected = "claude"
                     elif "kind" in obj:
                         format_detected = "kiro"
+                    elif isinstance(obj.get("payload"), dict) and "type" in obj["payload"]:
+                        format_detected = "kiro-cli-v4"
                     else:
                         logger.warning(f"Unknown session format in {filepath.name}, skipping")
                         return messages
@@ -142,6 +146,8 @@ class TranscriptParser:
                     msgs = self._parse_claude_line(obj)
                 elif format_detected == "kiro":
                     msgs = self._parse_kiro_line(obj)
+                elif format_detected == "kiro-cli-v4":
+                    msgs = self._parse_kiro_v4_line(obj)
                 elif format_detected == "openclaw":
                     msgs = self._parse_openclaw_line(obj)
                 else:
@@ -213,6 +219,59 @@ class TranscriptParser:
                 self._record_coverage(block_kind, was_extracted=False)
         return results
 
+    def _parse_kiro_v4_line(self, obj: dict) -> List[ParsedMessage]:
+        """Parse a single Kiro CLI v4 (payload-wrapped) JSONL line.
+        
+        Format: {"id": "...", "timestamp": "...", "payload": {"type": "...", "content": "...", ...}}
+        """
+        pl = obj.get("payload")
+        # Guard against malformed records: a valid JSON line whose payload is null
+        # or not an object, or whose type is unhashable (list/dict), must not abort
+        # the whole run — record it as an unparseable block and move on.
+        if not isinstance(pl, dict):
+            self._record_coverage("kiro-cli-v4:invalid-payload", was_extracted=False)
+            return []
+        ptype = pl.get("type")
+        if not isinstance(ptype, (str, type(None))):
+            self._record_coverage("kiro-cli-v4:invalid-type", was_extracted=False)
+            return []
+        ts = obj.get("timestamp")
+        uid = obj.get("id")
+        
+        # Handle user/assistant messages
+        if ptype in self.PAYLOAD_ROLE_MAP:
+            role = self.PAYLOAD_ROLE_MAP[ptype]
+            content = pl.get("content")
+            if isinstance(content, str) and content.strip() and not self._is_system_content(content):
+                self._record_coverage(ptype, was_extracted=True)
+                return [ParsedMessage(role=role, text=content.strip(), timestamp=ts, uuid=uid)]
+            else:
+                self._record_coverage(ptype, was_extracted=False)
+                return []
+        
+        # Handle tool_result as assistant message with rich content.
+        # Reject injected markers (system-reminder / command / ide) so an injected
+        # payload inside a tool result cannot become a harvested memory — but do NOT
+        # apply the >10k length cutoff that _is_system_content uses: a long tool
+        # result is exactly the rich analytical data #1346 wants (query dumps,
+        # diagnostic reports). The content is passed verbatim, like every other
+        # parser; the extractor caps each candidate (MAX_CANDIDATE_CONTENT_LENGTH)
+        # and scans the whole text, so nothing after an arbitrary parser-side cutoff
+        # is silently lost.
+        elif ptype == "tool_result":
+            content = pl.get("content")
+            if isinstance(content, str) and content.strip() and not self._is_injected_content(content):
+                self._record_coverage("tool_result", was_extracted=True)
+                return [ParsedMessage(role="assistant", text=content, timestamp=ts, uuid=uid)]
+            else:
+                self._record_coverage("tool_result", was_extracted=False)
+                return []
+        
+        # Handle tool_call and metadata - not extracted but counted in coverage
+        else:
+            self._record_coverage(ptype, was_extracted=False)
+            return []
+
     def _parse_openclaw_line(self, obj: dict) -> List[ParsedMessage]:
         """Parse a single OpenClaw gateway trajectory JSONL line.
 
@@ -245,18 +304,28 @@ class TranscriptParser:
         return []
 
     @staticmethod
-    def _is_system_content(text: str) -> bool:
-        """Filter out system prompts, skill outputs, and injected content."""
-        # System reminder tags injected by Claude Code
+    def _is_injected_content(text: str) -> bool:
+        """True if the text carries a harness-injected marker (reminder/command/ide).
+
+        No length heuristic here: this is the shared 'is it injected?' check. Used
+        directly for tool results, where large content is legitimate rich data.
+        """
         if "<system-reminder>" in text or "</system-reminder>" in text:
             return True
-        # Skill/command outputs (e.g. /release, /commit)
         if "<command-name>" in text or "<command-message>" in text:
             return True
-        # IDE context injections
         if text.startswith("<ide_opened_file>"):
             return True
-        # Extremely long blocks (>10k chars) — likely injected context, not conversation
+        return False
+
+    @staticmethod
+    def _is_system_content(text: str) -> bool:
+        """Filter out system prompts, skill outputs, and injected content."""
+        if TranscriptParser._is_injected_content(text):
+            return True
+        # Extremely long blocks (>10k chars) — likely injected context, not conversation.
+        # This length cutoff is intentionally NOT applied to tool results (see
+        # _parse_kiro_v4_line), where long output is the rich data we want.
         if len(text) > 10000:
             return True
         return False
