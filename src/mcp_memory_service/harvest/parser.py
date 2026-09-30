@@ -1,7 +1,10 @@
 """JSONL transcript parser for Claude Code and Kiro CLI session files."""
 
+import copy
 import json
 import logging
+import re
+import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
@@ -45,7 +48,7 @@ class TranscriptParser:
     # non-text block dropped both show up); a non-harvestable message (e.g. a Kiro
     # ToolResult) records one entry keyed by its message kind. This keeps
     # extracted <= seen per kind — the per-message len(results) counting broke that.
-    def _record_coverage(self, kind, was_extracted: bool) -> None:
+    def _record_coverage(self, kind, was_extracted: bool, text: Optional[str] = None) -> None:
         cov = getattr(self, "_coverage", None)
         if cov is None:
             cov = {}
@@ -56,22 +59,80 @@ class TranscriptParser:
             entry["extracted"] += 1
         else:
             entry["dropped"] += 1
+        # --- I0-lang: language dimension (R0.4) ----------------------------
+        # Record the detected language ONLY for text-bearing blocks, split by
+        # OUTCOME (extracted vs dropped). A block without text (tool_use,
+        # invalid-payload) passes text=None and gets no language tally. Splitting
+        # by outcome lets the report answer "how much of the DROPPED content is
+        # pt-BR?" separately from the kept content — the coverage-gap metric,
+        # which a single merged counter could not show. Measurement, not
+        # inference: a cheap pt/en heuristic isolated in _detect_language.
+        if text is not None:
+            langs = entry.setdefault("languages", {"extracted": {}, "dropped": {}})
+            bucket = langs["extracted" if was_extracted else "dropped"]
+            lang = self._detect_language(text)
+            bucket[lang] = bucket.get(lang, 0) + 1
+
+    # Cheap, zero-dependency pt-BR vs. English detector for the Phase 0 language
+    # dimension. Deliberately NOT a full langid model: the goal is to quantify
+    # how much of the coverage gap is pt-BR, accurately enough to decide whether
+    # the design extractor (I2/R3.1) must be multilingual — not to classify with
+    # production precision. Marker words are frequent and near-exclusive to each
+    # language; ties or no-signal return "unknown" rather than guessing. Kept in
+    # one method so a later langid/fastText upgrade is a single-point change.
+    _PT_MARKERS = frozenset({
+        "não", "que", "para", "com", "está", "são", "foi", "uma", "por", "mais",
+        "como", "mas", "isso", "ção", "então", "porque", "também", "já", "ser",
+        "das", "dos", "análise", "decisão", "correto",
+    })
+    _EN_MARKERS = frozenset({
+        "the", "and", "with", "this", "that", "was", "for", "not", "are", "were",
+        "which", "because", "should", "would", "correct", "analysis", "decision",
+        "keep", "before", "changing",
+    })
+
+    def _detect_language(self, text: Optional[str]) -> str:
+        """Return "pt", "en", or "unknown" for a text block (cheap heuristic)."""
+        if not text:
+            return "unknown"
+        # Text is already lower-cased; [a-zà-ÿ] covers ASCII letters plus the
+        # Latin-1 accented range (á, ã, ç, é, ê, õ, ü, ...) without the duplicate
+        # chars / overlapping ranges CodeQL flags.
+        tokens = re.findall(r"[a-zà-ÿ]+", text.lower())
+        if len(tokens) < 3:
+            return "unknown"
+        token_set = set(tokens)
+        pt_hits = len(token_set & self._PT_MARKERS)
+        en_hits = len(token_set & self._EN_MARKERS)
+        # Portuguese-specific diacritics/cedilla are a strong pt signal on their own.
+        if re.search(r"[ãõçâêô]|ção", text.lower()):
+            pt_hits += 1
+        if pt_hits == 0 and en_hits == 0:
+            return "unknown"
+        if pt_hits == en_hits:
+            return "unknown"
+        return "pt" if pt_hits > en_hits else "en"
 
     def coverage_report(self) -> dict:
         """Per-kind coverage since this parser instance was created.
 
-        Returns {kind: {"seen": n, "extracted": n, "dropped": n}}. Empty until
-        something is parsed. Read-only; does not affect harvesting.
+        Returns {kind: {"seen": n, "extracted": n, "dropped": n,
+        "languages": {"extracted": {lang: n}, "dropped": {lang: n}}}}.
+        The "languages" sub-tally (I0-lang, R0.4) counts detected language per
+        text-bearing block, split by outcome so the report can show how much of
+        the DROPPED content (the coverage gap) is pt-BR vs. the kept content. It
+        is absent for non-text kinds. Empty until something is parsed. Read-only;
+        does not affect harvesting.
 
         Accumulates across multiple parse_file() calls on the same instance (by
         design — a harvest run aggregates coverage over many sessions). Create a
         fresh parser to reset. Not thread-safe: the instrument assumes the
         sequential, single-parser use the harvest scheduler already has.
 
-        Returns a deep copy: mutating the result never affects the internal
-        counters or a later report.
+        Returns a deep copy: mutating the result (including the nested
+        "languages" dict) never affects the internal counters or a later report.
         """
-        return {kind: dict(counts) for kind, counts in (getattr(self, "_coverage", {}) or {}).items()}
+        return copy.deepcopy(getattr(self, "_coverage", {}) or {})
 
 
     def find_sessions(self, project_dir: Path, count: int = 1) -> List[Path]:
@@ -172,6 +233,120 @@ class TranscriptParser:
 
         return messages
 
+    def parse_sqlite(self, db_path: Path) -> List[ParsedMessage]:
+        """Parse Kiro CLI v3 conversations from a SQLite database (read-only).
+
+        The CLI v3 source of truth is `data.sqlite3`, table `conversations_v2`,
+        where each row's `value` is a JSON blob with a structured `history[]`.
+        The .jsonl mirror does not always cover these, so this reads the db
+        directly (RFC harvest-kiro-sessions v2.0, RB.1-RB.3).
+
+        Opened strictly read-only (`file:...?mode=ro`) — NEVER open the live
+        Kiro db in write mode (RB.2). Feeds the same Phase 0 coverage instrument
+        (with language) as the jsonl parsers, so SQLite content enters the
+        coverage matrix. Missing table or malformed rows are skipped, not fatal.
+        """
+        db_path = Path(db_path)
+        messages: List[ParsedMessage] = []
+        if not db_path.exists():
+            return messages
+
+        try:
+            conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        except sqlite3.Error as e:
+            logger.warning("parse_sqlite: cannot open %s read-only: %s", db_path.name, e)
+            return messages
+
+        try:
+            cur = conn.cursor()
+            try:
+                cur.execute("SELECT value FROM conversations_v2")
+            except sqlite3.Error:
+                # No conversations_v2 table (or unreadable) — nothing to harvest.
+                return messages
+            # Iterate the cursor rather than fetchall(): each value can be ~2MB
+            # and there are hundreds of rows, so streaming avoids loading the
+            # whole table into memory at once.
+            for (value,) in cur:
+                if not isinstance(value, str):
+                    continue
+                try:
+                    obj = json.loads(value)
+                except (json.JSONDecodeError, TypeError):
+                    logger.debug("parse_sqlite: skipping malformed conversation value")
+                    continue
+                # Valid JSON that is not an object (e.g. null, []) has no
+                # .get — skip the row instead of letting AttributeError abort
+                # the whole database read.
+                if not isinstance(obj, dict):
+                    continue
+                history = obj.get("history")
+                if isinstance(history, list):
+                    messages.extend(self._extract_history_turns(history))
+        finally:
+            conn.close()
+
+        return messages
+
+    def _extract_history_turns(self, history: list) -> List[ParsedMessage]:
+        """Extract user/assistant text from a conversations_v2 `history[]`.
+
+        Each turn is {"user": {...}, "assistant": {...}}:
+        - user text lives at content.Prompt.prompt (a ToolUseResults user turn
+          carries no conversational text and is recorded as dropped);
+        - assistant text lives at the `.content` of either a Response or a
+          ToolUse variant (both carry a text preface).
+        """
+        results: List[ParsedMessage] = []
+        for turn in history:
+            if not isinstance(turn, dict):
+                continue
+
+            # --- user side ---
+            user = turn.get("user")
+            if isinstance(user, dict):
+                content = user.get("content")
+                if isinstance(content, dict):
+                    prompt = content.get("Prompt")
+                    if isinstance(prompt, dict):
+                        text = (prompt.get("prompt") or "").strip()
+                        if text and not self._is_system_content(text):
+                            results.append(ParsedMessage(role="user", text=text))
+                            self._record_coverage("sqlite:Prompt", was_extracted=True, text=text)
+                        else:
+                            self._record_coverage("sqlite:Prompt", was_extracted=False, text=text or None)
+                    else:
+                        # e.g. ToolUseResults — no conversational text.
+                        self._record_coverage("sqlite:user-nontext", was_extracted=False)
+
+            # --- assistant side ---
+            assistant = turn.get("assistant")
+            if isinstance(assistant, dict):
+                # Text lives under a known variant's .content. Look for Response
+                # or ToolUse explicitly rather than the first dict key — key order
+                # is not a contract, and an unknown variant should not be mined
+                # for arbitrary .content (avoids capturing non-conversational junk).
+                for variant_key in ("Response", "ToolUse"):
+                    variant = assistant.get(variant_key)
+                    if not isinstance(variant, dict):
+                        continue
+                    text = (variant.get("content") or "").strip()
+                    kind = f"sqlite:{variant_key}"
+                    if text and not self._is_system_content(text):
+                        results.append(ParsedMessage(role="assistant", text=text))
+                        self._record_coverage(kind, was_extracted=True, text=text)
+                    else:
+                        self._record_coverage(kind, was_extracted=False, text=text or None)
+                    break
+                else:
+                    # No known variant matched. Record the unsupported turn under
+                    # its actual variant key so the coverage instrument still
+                    # shows what the parser dropped (a future format gap must be
+                    # measurable, not silently invisible).
+                    unknown_key = next(iter(assistant), "unknown")
+                    self._record_coverage(f"sqlite:{unknown_key}", was_extracted=False)
+        return results
+
     def _parse_claude_line(self, obj: dict) -> List[ParsedMessage]:
         """Parse a single Claude Code JSONL line."""
         msg_type = obj.get("type")
@@ -211,9 +386,9 @@ class TranscriptParser:
         if isinstance(data.get("content"), str):
             text = data["content"].strip()
             if text and not self._is_system_content(text):
-                self._record_coverage(kind, was_extracted=True)
+                self._record_coverage(kind, was_extracted=True, text=text)
                 return [ParsedMessage(role=role, text=text, timestamp=timestamp, uuid=uuid)]
-            self._record_coverage(kind, was_extracted=False)
+            self._record_coverage(kind, was_extracted=False, text=text or None)
             return []
 
         results = []
@@ -225,9 +400,9 @@ class TranscriptParser:
                 text = block.get("data", "").strip()
                 if text and not self._is_system_content(text):
                     results.append(ParsedMessage(role=role, text=text, timestamp=timestamp, uuid=uuid))
-                    self._record_coverage(block_kind, was_extracted=True)
+                    self._record_coverage(block_kind, was_extracted=True, text=text)
                 else:
-                    self._record_coverage(block_kind, was_extracted=False)
+                    self._record_coverage(block_kind, was_extracted=False, text=text or None)
             else:
                 # Non-text block (e.g. tool_use) — dropped, but now visible per kind.
                 self._record_coverage(block_kind, was_extracted=False)
@@ -257,10 +432,11 @@ class TranscriptParser:
             role = self.PAYLOAD_ROLE_MAP[ptype]
             content = pl.get("content")
             if isinstance(content, str) and content.strip() and not self._is_system_content(content):
-                self._record_coverage(ptype, was_extracted=True)
+                self._record_coverage(ptype, was_extracted=True, text=content.strip())
                 return [ParsedMessage(role=role, text=content.strip(), timestamp=ts, uuid=uid)]
             else:
-                self._record_coverage(ptype, was_extracted=False)
+                self._record_coverage(ptype, was_extracted=False,
+                                      text=content.strip() if isinstance(content, str) and content.strip() else None)
                 return []
         
         # Handle tool_result as assistant message with rich content.
@@ -275,10 +451,11 @@ class TranscriptParser:
         elif ptype == "tool_result":
             content = pl.get("content")
             if isinstance(content, str) and content.strip() and not self._is_injected_content(content):
-                self._record_coverage("tool_result", was_extracted=True)
+                self._record_coverage("tool_result", was_extracted=True, text=content)
                 return [ParsedMessage(role="assistant", text=content, timestamp=ts, uuid=uid)]
             else:
-                self._record_coverage("tool_result", was_extracted=False)
+                self._record_coverage("tool_result", was_extracted=False,
+                                      text=content if isinstance(content, str) and content.strip() else None)
                 return []
         
         # Handle tool_call and metadata - not extracted but counted in coverage
